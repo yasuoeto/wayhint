@@ -10,6 +10,11 @@ if [ ! -d .venv ]; then
     python3 -m venv --system-site-packages .venv
     echo "setup: created .venv"
 fi
+# A venv created before this flag was added needs it switched on in place.
+if ! grep -q '^include-system-site-packages = true' .venv/pyvenv.cfg; then
+    sed -i 's/^include-system-site-packages = .*/include-system-site-packages = true/' .venv/pyvenv.cfg
+    echo "setup: enabled system site-packages in existing .venv"
+fi
 .venv/bin/python -m pip install --quiet --upgrade ruamel.yaml wayfire
 echo "setup: python deps installed into .venv"
 echo "setup: gtk4-layer-shell needs the distribution packages (see docs/PHASE0.md)"
