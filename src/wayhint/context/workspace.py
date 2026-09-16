@@ -141,10 +141,17 @@ class WorkspaceWatcher:
         return self._display.get_fd()
 
     def dispatch(self) -> bool:
-        """Read pending events. False when the connection is gone and the watch must be dropped."""
+        """Drain the socket and run the handlers. False when the connection is gone.
+
+        Call this when the descriptor is readable. ``read`` is what actually empties the socket:
+        ``dispatch(block=False)`` only runs events that are already queued, so calling it alone
+        leaves the descriptor readable forever and the caller's watch spins at full CPU.
+        """
         if self._display is None:
             return False
         try:
+            self._display.flush()
+            self._display.read()
             self._display.dispatch(block=False)
             self._display.flush()
         except Exception as e:  # noqa: BLE001 - a dead connection must not take the daemon down

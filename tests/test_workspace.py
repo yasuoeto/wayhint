@@ -112,6 +112,34 @@ class WatcherBookkeepingTest(unittest.TestCase):
         self.assertFalse(self.watcher.dispatch())
         self.assertFalse(self.watcher.roundtrip())
 
+    def test_dispatch_reads_the_socket_before_dispatching(self) -> None:
+        # dispatch(block=False) alone never empties the socket, so the descriptor stays readable
+        # and the caller's watch spins. read() is what drains it.
+        calls = []
+
+        class FakeDisplay:
+            def flush(self):
+                calls.append("flush")
+
+            def read(self):
+                calls.append("read")
+
+            def dispatch(self, block=False):
+                calls.append(f"dispatch(block={block})")
+
+        self.watcher._display = FakeDisplay()
+        self.assertTrue(self.watcher.dispatch())
+        self.assertEqual(calls.index("read"), 1)
+        self.assertLess(calls.index("read"), calls.index("dispatch(block=False)"))
+
+    def test_dispatch_reports_a_broken_connection(self) -> None:
+        class Dead:
+            def flush(self):
+                raise RuntimeError("connection closed")
+
+        self.watcher._display = Dead()
+        self.assertFalse(self.watcher.dispatch())
+
 
 class ConfigScopeTest(unittest.TestCase):
     def test_default_and_values(self) -> None:
