@@ -107,3 +107,15 @@ mistaken for one, and so the first real decision gets number 0001):
   で指定(V1 では設定を増やさない方針)。
 - **Consequences**: 特定の sheet を優先させたい場合は `priority` を使う。category の並びを変え
   たい場合は YAML 内の hint の順を変える。
+
+## 0008 — IPC メッセージは 1 接続 1 リクエストの改行終端 JSON
+
+- **Date**: 2026-09-16
+- **Status**: accepted
+- **Context**: DECISIONS 0004 で UDS は決めたが、メッセージ形式(1行テキスト or JSON)は未決だった。
+- **Decision**: client は `{"cmd": "<toggle|show|hide|refresh|reload|ping>"}\n` を1つ送って
+  書き込み側を閉じ、daemon は `{"ok": true, ...}` か `{"ok": false, "error": "..."}` を1つ返して
+  切断する。上限 4096 bytes。未知の `cmd` は error。
+- **Alternatives**: 1行テキスト(`toggle\n`)。将来 `show --sheet X` のような引数を足す時に再設計
+  になるので JSON にした。長寿命接続 + event push は V1 に不要。
+- **Consequences**: CLI 1 回 = 接続 1 回。daemon 側は GLib の IO watch で accept し、非同期に読む。
