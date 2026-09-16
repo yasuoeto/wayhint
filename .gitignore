@@ -1,0 +1,19 @@
+# Local-only agent state. Shared configuration is tracked; per-machine overrides are not.
+.claude/settings.local.json
+.claude/state/
+.codex/state/
+.codex/*.local.toml
+.codex/log/
+.serena/
+
+# Editor and OS noise
+.DS_Store
+*.swp
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/

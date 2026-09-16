@@ -1,0 +1,8 @@
+# Tool configuration only. Packaging metadata is added when this repository is published.
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

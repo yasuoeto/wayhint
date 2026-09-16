@@ -1,0 +1,12 @@
+#!/bin/sh
+# Prepare a working copy (python profile).
+set -eu
+CDPATH=''
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+
+if [ ! -d .venv ]; then
+    python3 -m venv .venv
+    echo "setup: created .venv"
+fi
+echo "setup: activate with . .venv/bin/activate, then run ./scripts/check"
