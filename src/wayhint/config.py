@@ -16,6 +16,7 @@ from wayhint.models import ANCHORS, EDITOR_PLACEHOLDERS, DisplayConfig, Margin, 
 
 _PLACEHOLDER_RE = re.compile(r"\{([^{}]*)\}")
 LOG_LEVELS = ("debug", "info", "warning", "error")
+CONTEXT_BACKENDS = ("auto", "wayland", "wayfire")
 
 
 def config_dir() -> Path:
@@ -49,6 +50,7 @@ class GlobalConfig:
     editor: EditorConfig = field(default_factory=EditorConfig)
     parent_tags: tuple[str, ...] = ()
     live_update: bool = False
+    context_backend: str = "auto"  # auto | wayland | wayfire
     max_results: int = 50
     log_level: str = "warning"
 
@@ -193,6 +195,9 @@ def parse_global_config(data: object) -> GlobalConfig:
     nested = _mapping(root.get("nested"), "nested")
     context = _mapping(root.get("context"), "context")
     search = _mapping(root.get("search"), "search")
+    backend = context.get("backend", defaults.context_backend)
+    if not isinstance(backend, str) or backend not in CONTEXT_BACKENDS:
+        raise ConfigError("context.backend", f"must be one of {', '.join(CONTEXT_BACKENDS)}")
     logging_node = _mapping(root.get("logging"), "logging")
     level = logging_node.get("level", defaults.log_level)
     if not isinstance(level, str) or level.lower() not in LOG_LEVELS:
@@ -205,6 +210,7 @@ def parse_global_config(data: object) -> GlobalConfig:
         editor=editor,
         parent_tags=_str_list(nested.get("parent_tags"), "nested.parent_tags"),
         live_update=_bool(context.get("live_update"), "context.live_update", False),
+        context_backend=backend,
         max_results=_int(search.get("max_results"), "search.max_results", 50, minimum=1),
         log_level=level.lower(),
     )

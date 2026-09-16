@@ -1,4 +1,4 @@
-"""Wayfire adapter. The only module allowed to import PyWayfire.
+"""Wayfire IPC adapter (optional backend). The only module allowed to import PyWayfire.
 
 A fresh socket is opened per call: calls happen only on show/refresh (no polling), and a
 short-lived connection cannot go stale across compositor restarts.
@@ -49,18 +49,18 @@ class WayfireContextProvider:
             focused_output = _output_info(_safe(sock.get_focused_output))
             output = None
             app_id = title = None
-            view_id = None
+            view_ref = None
             if isinstance(view, Mapping):
                 app_id = view.get("app-id") or None
                 title = view.get("title") or None
-                view_id = view.get("id") if isinstance(view.get("id"), int) else None
+                view_ref = str(view["id"]) if isinstance(view.get("id"), int) else None
                 out_id = view.get("output-id")
                 if isinstance(out_id, int):
                     output = _output_info(_safe(lambda: sock.get_output(out_id)))
             return DesktopSnapshot(
                 app_id=app_id,
                 title=title,
-                view_id=view_id,
+                view_ref=view_ref,
                 output=output or focused_output,
                 focused_output=focused_output,
             )
@@ -79,10 +79,11 @@ class WayfireContextProvider:
         finally:
             _safe(sock.close)
 
-    def focus_view(self, view_id: int) -> bool:
+    def focus_view(self, view_ref: str) -> bool:
         try:
+            view_id = int(view_ref)
             sock = self._connect()
-        except ContextError:
+        except (ValueError, ContextError):
             return False
         try:
             result = _safe(lambda: sock.set_focus(view_id))

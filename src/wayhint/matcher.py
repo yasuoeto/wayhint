@@ -64,7 +64,7 @@ def _best(sheets: Sequence[HintSheet], score: Sequence[int]) -> HintSheet | None
 
 
 def match_app(sheets: Sequence[HintSheet], app_id: str | None) -> HintSheet | None:
-    """Sheet for the Wayfire active view's ``app_id`` (desktop context)."""
+    """Sheet for the active toplevel's ``app_id`` (desktop context)."""
     return _best(sheets, [app_specificity(s, app_id) for s in sheets])
 
 

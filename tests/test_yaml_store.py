@@ -125,7 +125,7 @@ class SheetValidationTest(unittest.TestCase):
 
     def test_invalid_regex_anchor_size_kind(self) -> None:
         self.assert_issue(
-            "id: x\ntitle: X\nmatch:\n  wayfire:\n    app_id_regex: ['(']\n",
+            "id: x\ntitle: X\nmatch:\n  wayland:\n    app_id_regex: ['(']\n",
             "invalid regex",
             line=5,
         )

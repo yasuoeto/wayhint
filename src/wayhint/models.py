@@ -1,4 +1,4 @@
-"""Pure data types shared by every layer. No GTK, Wayfire or Herdr imports here."""
+"""Pure data types shared by every layer. No GTK, Wayland or Herdr imports here."""
 
 from __future__ import annotations
 
@@ -159,8 +159,8 @@ class ResolvedContext:
     desktop_app: str | None = None
     desktop_title: str | None = None
     output: OutputInfo | None = None
-    view_id: int | None = None  # Wayfire view to hand focus back to after search
+    view_ref: str | None = None  # opaque toplevel reference to hand focus back to after search
     parent_context: str | None = None  # parent sheet id when a nested context applies
     foreground_process: ProcessInfo | None = None
     active_sheet: str | None = None
-    error: str | None = None  # e.g. Wayfire IPC unavailable; shown in the overlay
+    error: str | None = None  # e.g. desktop context unavailable; shown in the overlay

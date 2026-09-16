@@ -9,7 +9,9 @@
 | GTK4 | 4.22.4 (`gir1.2-gtk-4.0`, `libgtk-4-1`) | `gi.require_version("Gtk","4.0")` OK |
 | PyGObject | 3.57.1 (`python3-gi`) | system site-packages。venv からは `--system-site-packages` か `PyGObject` wheel が必要 |
 | gtk4-layer-shell | 1.3.0(2026-09-16 導入) | apt: `libgtk4-layer-shell0` + `gir1.2-gtk4layershell-1.0`。`gi.require_version("Gtk4LayerShell","1.0")` OK |
-| PyWayfire | 4.0(2026-09-16 `.venv` に導入) | PyPI 名は `wayfire`。`pywayfire` という名前では取れない |
+| pywayland | 0.4.19(2026-09-16 `.venv` に導入) | 既定 backend。`wlr-foreign-toplevel-management` の生成コードは repo に vendor(`protocols/`, `scripts/gen-protocol`) |
+| PyWayfire | 4.0(2026-09-16 `.venv` に導入) | PyPI 名は `wayfire`。`pywayfire` という名前では取れない。fallback backend 用、任意 |
+| labwc | 起動中(tty1 からネイティブ) | `zwlr_foreign_toplevel_manager_v1` v3、`wl_output` v4 を advertise。foot / chromium / firefox の toplevel と activated 状態、`activate` を確認 |
 | ruamel.yaml | 0.19.1(2026-09-16 `.venv` に導入) | apt には無し(`python3-ruyaml` は別 fork) |
 | Herdr | 0.8.2 (`~/.local/bin/herdr`) | 下記 |
 | gvim | Vim 9.2 (`/usr/bin/gvim` → alternatives) | OK |
@@ -31,10 +33,12 @@ venv 側(`scripts/setup` を更新して自動化する):
 
 ```sh
 python3 -m venv --system-site-packages .venv   # PyGObject/GTK を共有
-.venv/bin/pip install wayfire ruamel.yaml
+.venv/bin/pip install pywayland ruamel.yaml wayfire
 ```
 
 ## 未確認(Wayfire セッションでのみ確認可能)
+
+- `foreign-toplevel` plugin 有効時に同じ protocol が出るか(出れば wayland backend がそのまま使える)。
 
 - `WAYFIRE_SOCKET` の実在と PyWayfire での active view / output 取得。
 - layer-shell `ON_DEMAND` keyboard mode の挙動(§47)。

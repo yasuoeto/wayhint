@@ -53,17 +53,17 @@ mistaken for one, and so the first real decision gets number 0001):
 - **Alternatives**: PyYAML(行番号を取るには Loader を拡張する必要があり、コメント保持もできない)。
 - **Consequences**: 依存が1つ増える。将来 GUI 編集を足すときも構造保持で有利。
 
-## 0004 — hotkey は Wayfire に委譲し、CLI ↔ daemon は Unix domain socket
+## 0004 — hotkey は compositor に委譲し、CLI ↔ daemon は Unix domain socket
 
 - **Date**: 2026-09-16
 - **Status**: accepted
 - **Context**: global hotkey を Wayland client 側で取るのは困難で、compositor が担うのが自然。
   toggle の入口は1つに固定したい。
-- **Decision**: Wayfire の keybinding から `wayhint toggle` を実行。CLI は
+- **Decision**: compositor の keybinding(当初 Wayfire、0010 以降 labwc も)から `wayhint toggle` を実行。CLI は
   `$XDG_RUNTIME_DIR/wayhint.sock` へ送るだけ。ネットワーク socket は使わない。
 - **Alternatives**: D-Bus(依存と定型が増える); daemon 自身で keybinding を取る(Wayland では
   不可・不安定)。
-- **Consequences**: Wayfire 以外へ移植する際は keybinding 設定を各 compositor 側に書く。
+- **Consequences**: compositor ごとに keybinding 設定を書く(README「Compositor setup」)。
   socket path が runtime dir に依存する。
 
 ## 0005 — command は表示・copy のみ、実行しない
@@ -134,3 +134,25 @@ mistaken for one, and so the first real decision gets number 0001):
   `wayhintd` を直接叩くと再現しない)。
 - **Consequences**: ライブラリのファイル名(soname)に依存する。見つからない場合は
   `Daemon.start` が `is_supported()` で検出して終了する。
+
+## 0010 — desktop context は wlr-foreign-toplevel を既定にし、Wayfire IPC は fallback
+
+- **Date**: 2026-09-16
+- **Status**: accepted
+- **Context**: 実機は X11 → Wayland 移行後 labwc をネイティブに起動しており、Wayfire は動いて
+  いなかった。labwc には window を問い合わせる IPC が無い。両 compositor で同じコードを動かしたい。
+- **Decision**: `context/wayland.py` が `wlr-foreign-toplevel-management-unstable-v1`(pywayland、
+  生成コードは `protocols/*.xml` から `scripts/gen-protocol` で `_wlr_foreign_toplevel.py` に vendor)
+  で activated toplevel の app_id / title / output を取り、`activate` で focus を返す。
+  `context.backend: auto`(既定)は wayland を使い、protocol が無く `WAYFIRE_SOCKET` がある時だけ
+  `context/wayfire.py` へ fallback。`ResolvedContext.view_id: int` は backend 不透明な
+  `view_ref: str` に変更(wayland: `"<app_id>\t<title>"`、wayfire: view id 文字列)。
+  YAML の `match.wayfire` は `match.wayland` に改名し、旧綴りも同義として読む。
+- **Alternatives**: `ext-foreign-toplevel-list-v1`(activated 状態と activate 要求が無い);
+  永続接続で handle を保持(event loop 統合が増え、compositor 再起動で stale になる。呼び出し毎
+  接続の方針 0001 と合わせた); labwc 専用 adapter(問い合わせ手段が無い)。
+- **Consequences**: pywayland が必須依存、PyWayfire は任意。pid が取れないので desktop 段の
+  match は app_id のみ(従来どおり)。focus 復帰は同 app_id の window が複数で title が変わると
+  失敗し得る。focused output は protocol に無く、複数 output で active toplevel が無い時は
+  global fallback に落ちる。pywayland の proxy は display 切断前に destroy しないと GC 時に
+  segfault するため、`_Session.close()` で明示破棄する。

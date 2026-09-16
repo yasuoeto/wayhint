@@ -41,7 +41,7 @@ from wayhint import ipc  # noqa: E402
 from wayhint.config import GlobalConfig, config_dir  # noqa: E402
 from wayhint.context.herdr import HerdrContextProvider  # noqa: E402
 from wayhint.context.resolver import ContextResolver  # noqa: E402
-from wayhint.context.wayfire import WayfireContextProvider  # noqa: E402
+from wayhint.context.select import select_desktop_provider  # noqa: E402
 from wayhint.editor import EditorError, open_in_editor  # noqa: E402
 from wayhint.models import Hint, HintSheet  # noqa: E402
 from wayhint.ui import style  # noqa: E402
@@ -59,8 +59,9 @@ class Daemon:
         self.config = GlobalConfig()
         self.config_issues: list[Issue] = []
         self.store = SheetStore(root / "hints")
-        self.desktop = WayfireContextProvider()
+        self.desktop = select_desktop_provider(self.config.context_backend)
         self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
+        self._backend = self.config.context_backend
         self.window: HintWindow | None = None
         self._pending_reload: dict[Path, int] = {}
         self._monitors: list[Gio.FileMonitor] = []
@@ -102,6 +103,10 @@ class Daemon:
         if result.config is not None:
             self.config = result.config  # else keep last-known-good config
         logging.getLogger("wayhint").setLevel(self.config.log_level.upper())
+        if self.config.context_backend != self._backend:
+            self._backend = self.config.context_backend
+            self.desktop = select_desktop_provider(self._backend)
+            self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
 
     def _after_reload(self) -> None:
         if self.window is not None and self.window.is_shown() and self.window.context is not None:
@@ -202,9 +207,9 @@ class Daemon:
         except EditorError as e:
             self.window.show_message(f"⚠ {e}")
 
-    def _refocus(self, view_id: int | None) -> None:
-        if view_id is not None and not self.desktop.focus_view(view_id):
-            log.info("could not return focus to view %s", view_id)
+    def _refocus(self, view_ref: str | None) -> None:
+        if view_ref is not None and not self.desktop.focus_view(view_ref):
+            log.info("could not return focus to toplevel %s", view_ref)
 
     # --- socket server ---------------------------------------------------------------------
 

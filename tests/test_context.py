@@ -74,9 +74,9 @@ class FakeHerdr:
         return self.proc
 
 
-def snap(app_id, view_id=7, output=DP1, focused=DP1, title="T"):
+def snap(app_id, view_ref="7", output=DP1, focused=DP1, title="T"):
     return DesktopSnapshot(
-        app_id=app_id, title=title, view_id=view_id, output=output, focused_output=focused
+        app_id=app_id, title=title, view_ref=view_ref, output=output, focused_output=focused
     )
 
 
@@ -89,11 +89,11 @@ def proc(argv, name=None):
 class ResolverTest(unittest.TestCase):
     cfg = GlobalConfig()
 
-    def test_wayfire_unavailable_yields_error(self) -> None:
-        ctx = ContextResolver(FakeDesktop(error="Wayfire IPC unavailable")).resolve(
+    def test_desktop_unavailable_yields_error(self) -> None:
+        ctx = ContextResolver(FakeDesktop(error="desktop context unavailable")).resolve(
             SHEETS, self.cfg
         )
-        self.assertEqual(ctx.error, "Wayfire IPC unavailable")
+        self.assertEqual(ctx.error, "desktop context unavailable")
         self.assertIsNone(ctx.active_sheet)
 
     def test_desktop_app(self) -> None:
@@ -101,7 +101,7 @@ class ResolverTest(unittest.TestCase):
         self.assertEqual(ctx.active_sheet, "inkscape")
         self.assertIsNone(ctx.parent_context)
         self.assertEqual(ctx.output, DP2)  # sheet output override wins
-        self.assertEqual(ctx.view_id, 7)
+        self.assertEqual(ctx.view_ref, "7")
 
     def test_unknown_app(self) -> None:
         ctx = ContextResolver(FakeDesktop(snap("foot"))).resolve(SHEETS, self.cfg)

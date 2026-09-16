@@ -6,7 +6,7 @@
 
 ## Problem
 
-Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検索を繰り返している。よく使う操作が
+Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検索を繰り返している。よく使う操作が
 一定位置に無いため視線が定まらず、過去に調べた操作・Tips・注意事項が蓄積されない。Herdrのような
 入れ子環境では、外側のterminalではなく内側で動いているアプリ(Claude Code, Codex…)のヒントが
 必要になる。
@@ -31,9 +31,10 @@ Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検�
 
 ### In scope
 
-- 対応環境(V1正式対象): Linux / Wayland / Wayfire / Python 3 / GTK4 / PyGObject /
-  gtk4-layer-shell / PyWayfire / YAML。
-- context判定の階層: Wayfire active view → application → (Herdrなら) focused pane →
+- 対応環境(V1正式対象): Linux / Wayland(wlroots 系: labwc, Wayfire)/ Python 3 / GTK4 /
+  PyGObject / gtk4-layer-shell / pywayland(wlr-foreign-toplevel)/ YAML。Wayfire IPC(PyWayfire)
+  は任意の fallback。
+- context判定の階層: compositor の active toplevel → application → (Herdrなら) focused pane →
   foreground process。V1はforeground processまで。
 - 入れ子表示: 子sheet(例 Claude Code)のhint + 親sheet(Herdr)のうち指定tag(既定
   `nested-common`)を持つhintのみ。
@@ -43,13 +44,14 @@ Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検�
 - 外部editorによる編集(Edit sheet / Edit hint行jump)、YAML保存時の自動reload、
   invalid YAML時のlast-known-good保持。
 - daemon + CLI(`wayhint toggle|show|hide|refresh|validate`)、Unix domain socket IPC、
-  hotkeyはWayfire側keybindingに委譲。
+  hotkeyはcompositor側keybindingに委譲。
 - 表示位置(9 anchor)、px/%サイズ、margin、multi-monitor(active output自動選択 + override)、
   font指定、GTK CSS override。
 
 ### Out of scope (V1で実装しないもの — 設計書 §75)
 
-- X11 / GNOME / KDE / Sway 対応保証(Wayfire依存はadapterに隔離するが、移植は要件外)
+- X11 / GNOME / KDE 対応保証(compositor 依存はadapterに隔離。wlr-foreign-toplevel と layer-shell
+  を出す wlroots 系以外への移植は要件外)
 - AIによるhint自動生成、Webからのhint自動取得、クラウド同期、hint usage analytics
 - **command自動実行**(YAML内の `command` は表示・copyのみ)
 - terminal screen scraping による context 推測
@@ -72,10 +74,10 @@ Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検�
    予約しない(§6)。位置は anchor + margin + size、絶対座標は主方式にしない(§7, §9)。
 4. **size**: px と % の混在可。% は対象outputのlogical sizeに対する割合(§8)。
 5. **multi-monitor**: 表示先の優先順位 = sheet output override → active viewのoutput →
-   Wayfire focused output → global fallback(§10)。
+   compositor の focused output(取れる場合)→ global fallback(§10)。
 6. **context snapshot**: 開いた瞬間のcontextを表示中固定(`context.live_update: false`)。
    再判定は閉じて開く / Refresh / 明示reload(§11)。
-7. **matcher**: `match.wayfire.app_id_regex` / `match.process.{argv_regex,cmdline_regex}`。
+7. **matcher**: `match.wayland.app_id_regex`(旧 `match.wayfire`) / `match.process.{argv_regex,cmdline_regex}`。
    複数一致は priority → matcher specificity → file order(§16, §59)。
 8. **Herdr adapter**: `herdr pane current` / `herdr pane process-info --pane <id>` から
    foreground process (name/argv/cmdline/pid/cwd) を取得。name だけに依存せず argv basename
@@ -95,7 +97,7 @@ Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検�
 16. **validate CLI**: YAML syntax / duplicate sheet id / duplicate hint id / invalid regex /
     invalid size / invalid anchor / invalid editor placeholder / unknown required field。
     エラー時 exit code ≠ 0(§60)。
-17. **failure policy**: Wayfire IPC不可 → error表示・crashしない。Herdr不可 → desktop context
+17. **failure policy**: desktop context 不可 → error表示・crashしない。Herdr不可 → desktop context
     へfallback。editor不在 → GUIでerror(§63)。
 
 ### Non-functional
@@ -104,14 +106,14 @@ Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検�
   文字列は data であり command として実行しない。editor は設定済argvのみ実行。
 - **性能**(§64, §65): idle polling なし。context取得は表示時のみ。file監視は event-driven。
 - **ログ**(§61): 標準 logging、既定 warning。個人情報・terminal buffer を記録しない。
-- **構造**(§77): Wayfire依存は `context/wayfire`、Herdr依存は `context/herdr` に隔離。
-  UIは `ResolvedContext` のみを受け取り、Wayfire/Herdr CLI を直接呼ばない。YAML schema を
+- **構造**(§77): compositor 依存は `context/wayland`(+ fallback `context/wayfire`)、Herdr依存は
+  `context/herdr` に隔離。UIは `ResolvedContext` のみを受け取り、compositor/Herdr CLI を直接呼ばない。YAML schema を
   理由なく変更しない。外部APIが想定と異なる場合はadapter内部を変え、上位仕様は変えない。
 
 ## Success criteria
 
 - 設計書 §74 Acceptance Criteria 全項目。
-- Wayfire実機テスト §69 (Test 1–11): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
+- 実機テスト §69 (Test 1–11、labwc と Wayfire の双方): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
   output override、px/%サイズ、Search時のみ入力可、Search後にgrabが残らない、gvim Edit sheet、
   gvim Edit hint行jump。
 - Herdr実機テスト §70: bash → Herdr hints、Claude Code / Codex → 各hints + Herdr指定tag、
@@ -122,6 +124,7 @@ Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検�
 ## Open questions
 
 - 依存確認(§78)は 2026-09-16 実施、結果は `docs/PHASE0.md`。未導入: gtk4-layer-shell(apt)、
-  PyWayfire(PyPI 名 `wayfire`)、ruamel.yaml(PyPI)。Wayfire は未起動で IPC socket は未確認。
-- Wayfire上で layer-shell `ON_DEMAND` が期待どおりfocusを得るか(§47)。実機確認まで未決。
-- Wayfire IPC でのfocus復帰(§48)が安全に可能か。
+  PyWayfire(PyPI 名 `wayfire`)、ruamel.yaml(PyPI)。2026-09-16 に pywayland を追加し labwc で
+  foreign-toplevel 経由の取得と activate を確認。Wayfire は未起動で IPC socket は未確認。
+- labwc / Wayfire 上で layer-shell `ON_DEMAND` が期待どおりfocusを得るか(§47)。実機確認まで未決。
+- foreign-toplevel `activate` / Wayfire IPC でのfocus復帰(§48)が UI 経由でも安全に働くか。

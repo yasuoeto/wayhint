@@ -198,7 +198,7 @@ class HintWindow(Gtk.Window):
         self._render_list()
         if refocus:
             try:
-                self._refocus(self._ctx.view_id if self._ctx else None)
+                self._refocus(self._ctx.view_ref if self._ctx else None)
             except Exception:
                 log.exception("refocus failed")
 

@@ -5,10 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wayhint"
 version = "0.1.0.dev0"
-description = "Context-aware hint overlay for Wayfire (layer-shell, Herdr nested context)"
+description = "Context-aware hint overlay for wlroots Wayland compositors (layer-shell, Herdr nested context)"
 requires-python = ">=3.11"
-dependencies = ["ruamel.yaml>=0.18", "wayfire>=0.6"]
+dependencies = ["ruamel.yaml>=0.18", "pywayland>=0.4"]
 # PyGObject / GTK4 / gtk4-layer-shell come from the distribution (see docs/PHASE0.md).
+
+[project.optional-dependencies]
+wayfire = ["wayfire>=0.6"]  # Wayfire IPC fallback backend (context.backend: wayfire)
 
 [project.scripts]
 wayhint = "wayhint.cli:main"

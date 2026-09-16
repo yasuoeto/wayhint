@@ -183,19 +183,20 @@ def _match_rule(ctx: _Ctx, root: Mapping) -> MatchRule:
     if not isinstance(node, Mapping):
         ctx.error("match must be a mapping", root, "match")
         return MatchRule()
-    unknown = set(map(str, node)) - {"wayfire", "process"}
+    unknown = set(map(str, node)) - {"wayland", "wayfire", "process"}
     if unknown:
         ctx.error(f"match: unknown key(s): {', '.join(sorted(unknown))}", root, "match")
-    wayfire = node.get("wayfire") or {}
+    desktop_key = "wayland" if "wayland" in node else "wayfire"  # wayfire: pre-0010 spelling
+    desktop = node.get(desktop_key) or {}
     process = node.get("process") or {}
-    if not isinstance(wayfire, Mapping):
-        ctx.error("match.wayfire must be a mapping", node, "wayfire")
-        wayfire = {}
+    if not isinstance(desktop, Mapping):
+        ctx.error(f"match.{desktop_key} must be a mapping", node, desktop_key)
+        desktop = {}
     if not isinstance(process, Mapping):
         ctx.error("match.process must be a mapping", node, "process")
         process = {}
     return MatchRule(
-        app_id_regex=_regex_list(ctx, wayfire, "app_id_regex", "match.wayfire.app_id_regex"),
+        app_id_regex=_regex_list(ctx, desktop, "app_id_regex", f"match.{desktop_key}.app_id_regex"),
         argv_regex=_regex_list(ctx, process, "argv_regex", "match.process.argv_regex"),
         cmdline_regex=_regex_list(ctx, process, "cmdline_regex", "match.process.cmdline_regex"),
     )

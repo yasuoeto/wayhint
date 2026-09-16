@@ -2,7 +2,7 @@ version: 1
 id: herdr
 title: Herdr
 match:
-  wayfire:
+  wayland:
     app_id_regex: ["^herdr$"]
 hints:
   - id: new-pane

@@ -1,7 +1,7 @@
 """Open a hint's YAML in the configured editor. The only place that spawns a user process.
 
 ``EditorConfig.argv`` does plain placeholder substitution; the result is passed to ``Popen`` as
-a list with ``shell=False``. Nothing from YAML/Herdr/Wayfire enters the argv except the sheet's
+a list with ``shell=False``. Nothing from YAML/Herdr/compositor enters the argv except the sheet's
 own path, the line number and the hint id (which validation restricted to ``[A-Za-z0-9._-]``).
 """
 

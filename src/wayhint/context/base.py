@@ -16,7 +16,7 @@ class ContextError(RuntimeError):
 class DesktopSnapshot:
     app_id: str | None
     title: str | None
-    view_id: int | None
+    view_ref: str | None
     output: OutputInfo | None
     focused_output: OutputInfo | None
 
@@ -26,7 +26,7 @@ class DesktopContextProvider(Protocol):
 
     def find_output(self, name: str) -> OutputInfo | None: ...
 
-    def focus_view(self, view_id: int) -> bool: ...
+    def focus_view(self, view_ref: str) -> bool: ...
 
 
 class NestedContextProvider(Protocol):
