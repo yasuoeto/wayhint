@@ -1,8 +1,9 @@
 # wayhint
 
-Wayland(wlroots 系 compositor: labwc / Wayfire など)上で hotkey 一発、いつも同じ場所(既定: 画面右上)に、現在使っているアプリ ── Herdr の中なら
-focused pane の foreground process(Claude Code / Codex …)── に応じた自分用チートシートを
-overlay 表示する。YAML で育てる context-aware personal cheatsheet。
+Wayland(wlroots 系 compositor: labwc / Wayfire など)上で hotkey 一発、いつも同じ場所
+(既定: 画面右上)に、いま使っているアプリに応じたチートシートを overlay 表示する。Herdr の中で
+使っているときは、focused pane の foreground process(Claude Code / Codex …)まで見て切り替える。
+中身は YAML で自分で書いて育てる。
 
 - 通常表示中は keyboard focus を奪わない(検索を明示的に開始したときだけ入力を受ける)
 - hint は `~/.config/wayhint/hints/*.yaml`。overlay の編集ボタンから外部 editor で該当行を開く
@@ -10,7 +11,7 @@ overlay 表示する。YAML で育てる context-aware personal cheatsheet。
 
 要件は `docs/PRODUCT.md`、構造は `docs/DESIGN.md`、経緯は `docs/DECISIONS.md`、進捗は `STATUS.md`。
 
-## Install
+## インストール
 
 依存: Python 3.11+、GTK4 + PyGObject、gtk4-layer-shell(typelib 込み)、`wlr-foreign-toplevel-management` と `wlr-layer-shell` を
 提供する Wayland compositor(labwc、Wayfire は `foreign-toplevel` plugin 有効時)、任意で Herdr と gvim。Debian/sid の場合:
@@ -21,16 +22,16 @@ sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layer
 
 ```sh
 git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
-./scripts/setup                 # .venv (system site-packages 共有) + ruamel.yaml + pywayland (+ PyWayfire)
+./scripts/setup                 # .venv(system site-packages 共有)+ ruamel.yaml + pywayland(+ PyWayfire)
 .venv/bin/pip install -e .      # wayhint / wayhintd コマンドを .venv/bin に置く
-./scripts/check                 # lint + unit tests
+./scripts/check                 # lint + 単体テスト
 ```
 
-## Config location
+## 設定ファイルの場所
 
 `$XDG_CONFIG_HOME/wayhint/`(既定 `~/.config/wayhint/`):
 
-| Path | Contents |
+| パス | 内容 |
 |---|---|
 | `config.yaml` | overlay 位置・サイズ、editor、parent tags 等。無ければ全て既定値 |
 | UI 言語 | ボタン等の文字はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)から自動選択。`appearance.language: en\|ja` で固定。日英以外は英語 |
@@ -40,7 +41,7 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる。schema は
 `docs/DESIGN.md` の Data model。書いたら `wayhint validate` で確認する(問題があれば exit 1)。
 
-## Compositor setup
+## compositor の設定
 
 active window と output は Wayland 標準の `wlr-foreign-toplevel-management` protocol で取る
 (`context.backend: auto`、既定)。labwc はそのまま動く。Wayfire は `[core] plugins` に
@@ -84,7 +85,7 @@ wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
 手動で試すときは `wayhintd -v`(前景、info ログ。選ばれた backend が `desktop backend:` で出る)。
 `wayhint ping` で応答を確認する。
 
-## Using the overlay
+## overlay の使い方
 
 hotkey で表示し、もう一度押すと閉じる。通常表示中は keyboard focus を奪わないので、overlay を
 出したまま元のアプリで作業を続けられる。その代わり通常表示中はキー入力が overlay に届かないので、
@@ -96,12 +97,12 @@ hotkey で表示し、もう一度押すと閉じる。通常表示中は keyboa
 
 | ボタン | 動作 |
 |---|---|
-| 検索 / Search | 検索欄を開く。押している間だけキー入力を受ける。もう一度押すか `Esc` で終了 |
-| 更新 / Refresh | context を取り直す。別のアプリに移ったあと、閉じずに sheet を切り替えたいとき |
-| コピー / Copy | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
-| ヒントを編集 / Edit hint | 選択中の hint の行を editor で開く |
-| シートを編集 / Edit sheet | 表示中の sheet を editor で開く |
-| 閉じる / Close | overlay を隠す |
+| 検索 | 検索欄を開く。検索中だけキー入力を受ける。もう一度押すか `Esc` で終了 |
+| 更新 | context を取り直す。別のアプリに移ったあと、閉じずに sheet を切り替えたいとき |
+| コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
+| ヒントを編集 | 選択中の hint の行を editor で開く |
+| シートを編集 | 表示中の sheet を editor で開く |
+| 閉じる | overlay を隠す |
 
 検索は空白区切りの語をすべて含む hint に絞る。大文字小文字は区別しない。対象は title、`key`、
 `command`、`category`、タグ、`remark`。件数の上限は `search.max_results`(既定 50)。
@@ -115,7 +116,7 @@ hotkey で表示し、もう一度押すと閉じる。通常表示中は keyboa
 `wayhint <command>` は daemon に Unix domain socket 経由で 1 行送るだけで、GUI を持たない。
 hotkey に割り当てるのは `toggle`。
 
-| Command | 動作 |
+| コマンド | 動作 |
 |---|---|
 | `toggle` | 表示、表示中なら非表示 |
 | `show` / `hide` | 明示的に表示 / 非表示 |
@@ -127,7 +128,7 @@ hotkey に割り当てるのは `toggle`。
 `validate` は `--config-dir`、それ以外は `--socket` で既定の場所を上書きできる。
 daemon 側は `wayhintd -v` で info ログを前景に出す。
 
-## Adding hints
+## hint を書く
 
 1. `hints/` に新しい YAML を置く(または既存の sheet に hint を足す)。
 2. daemon は保存を検知して自動 reload する(overlay を閉じる必要はない)。壊れた YAML のときは
@@ -160,7 +161,7 @@ pane 操作だけが並ぶ。
 
 `id` と `title` だけが必須。あとは書きたいものだけ書く。
 
-| Key | 用途 |
+| キー | 用途 |
 |---|---|
 | `kind` | `shortcut` / `command` / `tip` / `note`。詳細の先頭に出るだけで、絞り込みには使わない |
 | `key` | 一覧の左端に出るキー操作。例 `Ctrl-o` |
@@ -176,7 +177,7 @@ pane 操作だけが並ぶ。
 並び順は `favorite` が先頭、次に category が最初に現れた順、その中では YAML に書いた順。
 `favorite` は並び順だけを変え、表示される hint の数には影響しない。
 
-## Changing the editor
+## editor を変える
 
 `config.yaml` の `editor.command` は argv の list。placeholder は `{file}` `{line}` `{hint_id}`。
 shell を通らないので引用符やパイプは書けない。
@@ -186,9 +187,9 @@ editor:
   command: [code, --goto, "{file}:{line}"]
 ```
 
-## Troubleshooting
+## 困ったとき
 
-| 症状 | 確認 |
+| 症状 | 確認すること |
 |---|---|
 | `wayhint: wayhintd is not running` | `wayhintd -v` を前景で起動してログを見る。socket は `$XDG_RUNTIME_DIR/wayhint.sock` |
 | `⚠ compositor does not provide wlr-foreign-toplevel-management` | labwc なら出ない。Wayfire は `[core] plugins` に `foreign-toplevel`、または `ipc` を入れて IPC fallback に任せる |
@@ -213,23 +214,23 @@ labwc と Wayfire それぞれのセッションで実施し、結果は `STATUS
 - [ ] T10 表示中に YAML を編集 → 閉じずに更新
 - [ ] T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 
-## Layout
+## ファイル構成
 
-| Path | Contents |
+| パス | 内容 |
 |---|---|
-| `STATUS.md` | what is done, what is left, what the machine looks like |
-| `src/` | implementation |
-| `tests/` | tests |
-| `docs/PRODUCT.md` | requirements |
-| `docs/DESIGN.md` | design |
-| `docs/DECISIONS.md` | decision log |
+| `STATUS.md` | 何が終わっていて、何が残っていて、実機がどうなっているか |
+| `src/` | 実装 |
+| `tests/` | テスト |
+| `docs/PRODUCT.md` | 要件 |
+| `docs/DESIGN.md` | 設計 |
+| `docs/DECISIONS.md` | 決定の記録 |
 | `examples/` | config.yaml と sheet の雛形 |
-| `scripts/` | `setup`, `check`, and repository-specific agent hooks |
-| `.agents/skills/` | skills shared across agents |
-| `.claude/`, `.codex/` | per-vendor adapter settings (do not edit by hand) |
+| `scripts/` | `setup`、`check`、この repository 専用の agent hook |
+| `.agents/skills/` | agent 間で共有する skill |
+| `.claude/`、`.codex/` | vendor ごとの adapter 設定(手で編集しない) |
 
-## Working with agents
+## agent 向けの取り決め
 
-`AGENTS.md` holds the shared instructions. `CLAUDE.md` points at it. Vendor-specific
-configuration is confined to `.claude/` and `.codex/`; shared hooks are registered once at user
-scope, not in this repository.
+共通の指示は `AGENTS.md` にまとめてあり、`CLAUDE.md` はそこを指すだけ。vendor 固有の設定は
+`.claude/` と `.codex/` に閉じている。共通の hook は user scope に一度だけ登録してあり、この
+repository には置かない。
