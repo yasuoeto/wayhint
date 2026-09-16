@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Container, Mapping
 
 log = logging.getLogger(__name__)
 
@@ -47,19 +47,33 @@ def active_key(workspaces: Mapping[str, int]) -> str | None:
     return None
 
 
-def should_show_on_toggle(visible: bool, shown_on: str | None, current: str | None) -> bool:
-    """Whether ``toggle`` should show (True) or hide (False).
+def toggle_action(visible: bool, current: str | None, open_on: Container[str]) -> str:
+    """``"show"`` or ``"hide"`` for a ``toggle`` request.
 
-    Hiding on a workspace change is driven by an event, and the hotkey arrives over a separate
-    socket, so the two can race. Comparing the workspace the overlay was opened on with the
-    current one makes the outcome the same whichever arrives first: a toggle from a different
-    workspace always means "show it here".
+    With workspace scoping, whether the overlay is open is a property of the workspace, not of the
+    window: ``open_on`` holds every workspace the user has opened it on. The window itself only
+    shows the current workspace's one.
+
+    This also settles a race. The hotkey arrives over the socket and the workspace change over the
+    Wayland connection, so either can be seen first. Asking "is it open on *this* workspace"
+    gives the same answer both ways, where asking "is the window visible" does not.
+
+    Without a workspace backend ``current`` is None and this degrades to a plain toggle.
     """
-    if not visible:
-        return True
-    if shown_on is not None and current is not None and shown_on != current:
-        return True
-    return False
+    if current is None:
+        return "hide" if visible else "show"
+    return "hide" if current in open_on else "show"
+
+
+def workspace_action(current: str | None, open_on: Container[str]) -> str:
+    """``"restore"`` or ``"hide"`` after the active workspace changed.
+
+    Each workspace keeps whatever the user opened there until they close it, so arriving at a
+    workspace with an overlay puts it back rather than making the user press the hotkey again.
+    """
+    if current is not None and current in open_on:
+        return "restore"
+    return "hide"
 
 
 class WorkspaceWatcher:
@@ -82,6 +96,7 @@ class WorkspaceWatcher:
         self._state: dict[str, int] = {}
         self._keys: dict[int, str] = {}
         self._active: str | None = None
+        self._ready = False  # suppress the notification for the initial state
 
     # --- lifecycle -------------------------------------------------------------------------
 
@@ -113,6 +128,7 @@ class WorkspaceWatcher:
             self.stop()
             return False
         self._active = active_key(self._state)
+        self._ready = True
         return True
 
     def stop(self) -> None:
@@ -130,6 +146,7 @@ class WorkspaceWatcher:
         self._keys.clear()
         self._manager = None
         self._active = None
+        self._ready = False
         if self._display is not None:
             _quiet(self._display.disconnect)
             self._display = None
@@ -172,6 +189,10 @@ class WorkspaceWatcher:
 
     def active(self) -> str | None:
         return self._active
+
+    def known(self) -> set[str]:
+        """Every workspace the compositor currently reports."""
+        return set(self._state)
 
     # --- protocol --------------------------------------------------------------------------
 
@@ -220,8 +241,10 @@ class WorkspaceWatcher:
 
     def _on_done(self, manager) -> None:
         current = active_key(self._state)
-        if current != self._active:
-            self._active = current
+        if current == self._active:
+            return
+        self._active = current
+        if self._ready:  # the state read during start() is not a change
             self._on_change(current)
 
 

@@ -43,10 +43,14 @@ from wayhint.config import GlobalConfig, config_dir  # noqa: E402
 from wayhint.context.herdr import HerdrContextProvider  # noqa: E402
 from wayhint.context.resolver import ContextResolver  # noqa: E402
 from wayhint.context.select import select_desktop_provider  # noqa: E402
-from wayhint.context.workspace import WorkspaceWatcher, should_show_on_toggle  # noqa: E402
+from wayhint.context.workspace import (  # noqa: E402
+    WorkspaceWatcher,
+    toggle_action,
+    workspace_action,
+)
 from wayhint.editor import EditorError, open_in_editor  # noqa: E402
 from wayhint.i18n import translator  # noqa: E402
-from wayhint.models import Hint, HintSheet  # noqa: E402
+from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.ui import style  # noqa: E402
 from wayhint.ui.window import HintWindow  # noqa: E402
 from wayhint.yaml_store import Issue, SheetStore, load_config  # noqa: E402
@@ -68,7 +72,9 @@ class Daemon:
         self.window: HintWindow | None = None
         self._watcher: WorkspaceWatcher | None = None
         self._watch_source: int | None = None
-        self._shown_workspace: str | None = None
+        # Workspace key -> the context shown there. An overlay stays open on the workspace it was
+        # opened on until it is closed there, so this outlives switching away and back.
+        self._open: dict[str, ResolvedContext] = {}
         self._pending_reload: dict[Path, int] = {}
         self._monitors: list[Gio.FileMonitor] = []
         self._server: socket.socket | None = None
@@ -169,25 +175,37 @@ class Daemon:
 
     def show(self) -> dict:
         assert self.window is not None
-        ctx = self.resolver.resolve(self.store.sheets, self.config)
-        self.window.present_context(ctx, self.store.sheets, self.config)
-        self.window.show_issues(self.issues)
         self._start_workspace_watch()
+        ctx = self.resolver.resolve(self.store.sheets, self.config)
+        self._present(ctx)
+        workspace = self._current_workspace()
+        if workspace is not None:
+            self._open[workspace] = ctx
+            log.info("overlay open on workspace %s", workspace)
         return {"visible": True, "sheet": ctx.active_sheet, "error": ctx.error}
 
     def hide(self) -> dict:
         assert self.window is not None
+        workspace = self._current_workspace()
+        if workspace is not None:
+            self._open.pop(workspace, None)
+        else:
+            self._open.clear()
         self.window.hide_overlay()
-        self._stop_workspace_watch()
+        if not self._open:
+            self._stop_workspace_watch()
         return {"visible": False}
 
     def toggle(self) -> dict:
         assert self.window is not None
-        if should_show_on_toggle(
-            self.window.is_shown(), self._shown_workspace, self._current_workspace()
-        ):
-            return self.show()
-        return self.hide()
+        self._start_workspace_watch()
+        action = toggle_action(self.window.is_shown(), self._current_workspace(), self._open)
+        return self.show() if action == "show" else self.hide()
+
+    def _present(self, ctx: ResolvedContext) -> None:
+        assert self.window is not None
+        self.window.present_context(ctx, self.store.sheets, self.config)
+        self.window.show_issues(self.issues)
 
     def refresh(self) -> dict:
         assert self.window is not None
@@ -226,11 +244,11 @@ class Daemon:
     # --- workspace scoping -----------------------------------------------------------------
 
     def _start_workspace_watch(self) -> None:
-        """Watch the active workspace for as long as the overlay is visible.
+        """Watch the active workspace while any workspace has the overlay open.
 
-        A layer surface has no workspace of its own, so the overlay has to hide itself when the
-        compositor switches away from the workspace it was opened on. Compositors without
-        ``ext-workspace-v1`` keep the old behaviour of showing it everywhere.
+        A layer surface has no workspace of its own, so the overlay has to put itself away when
+        the compositor leaves the workspace it was opened on, and bring itself back on return.
+        Compositors without ``ext-workspace-v1`` keep the old behaviour of showing it everywhere.
         """
         if self.config.workspace_scope != "current":
             return
@@ -242,8 +260,6 @@ class Daemon:
             self._watch_source = GLibUnix.fd_add_full(
                 GLib.PRIORITY_DEFAULT, watcher.fileno(), GLib.IOCondition.IN, self._on_watch_fd
             )
-        self._shown_workspace = self._watcher.active()
-        log.info("overlay bound to workspace %s", self._shown_workspace)
 
     def _stop_workspace_watch(self) -> None:
         if self._watch_source is not None:
@@ -252,7 +268,7 @@ class Daemon:
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None
-        self._shown_workspace = None
+        self._open.clear()
 
     def _current_workspace(self) -> str | None:
         """The active workspace now, not as of the last event we happened to process.
@@ -274,20 +290,23 @@ class Daemon:
         return True
 
     def _on_workspace_changed(self, active: str | None) -> None:
-        # Called from inside the watcher's own event dispatch; tearing the connection down here
-        # would free it while it is still being read. Decide on the next main-loop turn instead.
-        GLib.idle_add(self._hide_if_workspace_changed)
+        # Called from inside the watcher's own event dispatch; touching the connection here would
+        # act on it while it is still being read. Decide on the next main-loop turn instead.
+        GLib.idle_add(self._apply_workspace)
 
-    def _hide_if_workspace_changed(self) -> bool:
-        if (
-            self.window is not None
-            and self.window.is_shown()
-            and self._watcher is not None
-            and self._shown_workspace is not None
-            and self._watcher.active() != self._shown_workspace
-        ):
-            log.info("workspace changed; hiding the overlay")
-            self.hide()
+    def _apply_workspace(self) -> bool:
+        if self.window is None or self._watcher is None:
+            return False
+        known = self._watcher.known()
+        for gone in set(self._open) - known:  # a workspace the compositor dropped
+            del self._open[gone]
+        active = self._watcher.active()
+        if workspace_action(active, self._open) == "restore":
+            log.info("workspace %s: restoring the overlay", active)
+            self._present(self._open[active])
+        elif self.window.is_shown():
+            log.info("workspace %s: hiding the overlay", active)
+            self.window.hide_overlay()
         return False
 
     def _refocus(self, view_ref: str | None) -> None:

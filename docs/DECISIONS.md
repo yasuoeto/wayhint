@@ -176,27 +176,33 @@ mistaken for one, and so the first real decision gets number 0001):
   自動復帰はせず、次のセッションまで hotkey は無反応になる。socket は SIGTERM で削除し、
   KILL された場合は次回起動時の stale socket 検出で回収する。
 
-## 0012 — overlay は呼び出した workspace でのみ表示し、監視は表示中だけ接続する
+## 0012 — overlay の表示状態は workspace ごとに持ち、監視は開いている間だけ接続する
 
 - **Date**: 2026-09-17
 - **Status**: accepted
 - **Context**: layer surface は output に属し workspace を持たないため、overlay は workspace を
-  切り替えても出たままになる。呼び出した workspace でだけ見たい、という要望。
-- **Decision**: `context/workspace.py` が `ext-workspace-v1` で active workspace を監視し、
-  開いたときの workspace から変わったら overlay を隠す。接続は overlay が見えている間だけ開き、
-  隠したら切る。既定は `context.workspace: current`、`all` で従来動作。
-  `toggle` は「見えているかどうか」だけでなく「開いた workspace と現在の workspace が同じか」も
-  見る。違えば隠さずに出し直す。
+  切り替えても出たままになる。呼び出した workspace でだけ見たい、という要望。最初は「切り替えたら
+  隠す」だけを実装したが、実機で試したところ元の workspace に戻っても消えたままで、開き直しが要り
+  使いにくかった。表示状態は window ではなく workspace の属性として持つのが正しい。
+- **Decision**: daemon が workspace key → `ResolvedContext` の dict を持つ。`show` は現在の
+  workspace に entry を足し、`hide` は現在の workspace の entry だけを消す。active workspace が
+  変わったら、その workspace に entry があれば同じ context で出し直し、無ければ window を隠す
+  (dict は触らない)。`toggle` は window の可視性ではなく「この workspace に entry があるか」で
+  判断する。context は開いた時点の snapshot をそのまま出し直す(requirement 6 の凍結と同じ扱い。
+  取り直したいときは更新)。監視は entry が 1 つでもある間だけ接続し、全て閉じたら切る。
+  既定は `context.workspace: current`、`all` で従来動作。
 - **Alternatives**:
-  - 常時接続して監視: 隠れている間も接続と event 処理が残る。表示中だけで足りる。
-  - `toggle` を見えているかどうかだけで判断: hotkey は socket、workspace 変更は Wayland 接続と
-    経路が違うため順序が保証されない。event が遅れると「押したのに出ない」になる。
-    現在の workspace と比べれば、どちらが先に届いても結果が同じになる。
-  - compositor 側で layer surface を workspace に閉じ込める: labwc に該当設定は無く、
-    protocol 上も layer surface は output 単位。
+  - 切り替えで隠すだけ(最初の実装): 戻っても消えたままで、workspace ごとに開いておけない。
+  - 戻ったときに context を取り直す: workspace を往復するたびに Wayland と Herdr へ問い合わせが
+    増え、見ていた内容が変わることがある。snapshot を出し直す方が既存方針と揃う。
+  - `toggle` を window の可視性で判断: hotkey は socket、workspace 変更は Wayland 接続と経路が
+    違い順序が保証されない。event が遅れると「押したのに出ない」になる。
+  - 常時接続して監視: 何も開いていない間も接続と event 処理が残る。
+  - compositor 側で layer surface を workspace に閉じ込める: labwc に該当設定は無く、protocol 上も
+    layer surface は output 単位。
 - **Consequences**: pywayland を import する module が 2 つになる(`wayland.py` と `workspace.py`)。
-  `ext-workspace-v1` を出さない compositor では設定に関わらず従来動作になる。Wayfire は未確認の
-  ため未対応扱い。workspace の識別子は protocol の `id`、無ければ `name` で、labwc 0.20.2 は
-  `name` のみ送る。`done` を受けてから判定するので、状態が途中の batch では動かない。
-  overlay を隠す処理は watcher の event dispatch 中に呼ばれるため、GLib の idle に逃がしてから
-  接続を破棄する。
+  `ext-workspace-v1` を出さない compositor では設定に関わらず従来動作。Wayfire は未確認のため
+  未対応扱い。workspace の識別子は protocol の `id`、無ければ `name` で、labwc 0.20.2 は `name`
+  のみ送る。compositor が workspace を消したら、その entry も落とす。overlay の開閉は watcher の
+  event dispatch 中に呼ばれるため GLib の idle に逃がす。fd からは `read` で socket を空にする必要が
+  あり、`dispatch` だけでは fd が readable のままになり watch が CPU を回し続ける。

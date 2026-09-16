@@ -111,11 +111,13 @@ hotkey で表示し、もう一度押すと閉じる。通常表示中は keyboa
 表示される context は **開いた瞬間に固定** される。別のアプリに移っても自動では追従しないので、
 **更新** を押すか、一度閉じて開き直す。
 
-overlay は **呼び出した workspace でだけ** 表示される。別の workspace に切り替えると自動的に隠れ、
-切り替えた先で hotkey を押せばそこの context で出し直す。全 workspace に出したままにするには
-`config.yaml` に `context: {workspace: all}` を書く。この切り替えは compositor が
-`ext-workspace-v1` を出す場合だけ働く。labwc は対応、Wayfire は未対応で、その場合は設定に
-関わらず全 workspace に表示される。
+overlay は **呼び出した workspace でだけ** 表示される。別の workspace に切り替えると隠れ、
+戻ってくると同じ内容で出直す。閉じるまでその workspace に居続けるので、workspace ごとに別の
+sheet を開いたままにできる。消えるのは **閉じる** か hotkey で明示的に閉じたときだけ。
+
+全 workspace に出したままにするには `config.yaml` に `context: {workspace: all}` を書く。
+この機能は compositor が `ext-workspace-v1` を出す場合だけ働く。labwc は対応、Wayfire は未対応で、
+その場合は設定に関わらず全 workspace に表示される。
 
 ## CLI
 

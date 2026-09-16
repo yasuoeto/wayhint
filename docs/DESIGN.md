@@ -54,7 +54,7 @@ src/wayhint/
   context/_wlr_foreign_toplevel.py  生成物(protocols/*.xml → scripts/gen-protocol)
   context/wayfire.py              PyWayfire 隔離(optional backend): focused view/output、set_focus
   context/select.py               `context.backend` auto|wayland|wayfire の選択と auto fallback
-  context/workspace.py            pywayland 隔離: ext-workspace-v1 で active workspace 監視(表示中のみ接続)
+  context/workspace.py            pywayland 隔離: ext-workspace-v1 で active workspace 監視、toggle/切替の判定
   context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
   context/process.py              ProcessInfo 正規化
   ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)
@@ -134,9 +134,12 @@ hints:
 - **Wayfire (fallback / 明示)**: PyWayfire(IPC plugin 必須)。取得: active view, その output,
   app-id, title。focus 復帰は `set_focus`。`context.backend: auto` では foreign-toplevel が無く
   `WAYFIRE_SOCKET` がある場合だけ使う。
-- **workspace**: `ext-workspace-v1`(pywayland)。overlay が見えている間だけ接続し、manager の
-  `done` ごとに active workspace を再計算する。接続の fd は daemon が GLib main loop に載せる。
-  polling は無い。
+- **workspace**: `ext-workspace-v1`(pywayland)。どこかの workspace で overlay が開いている間だけ
+  接続し、manager の `done` ごとに active workspace を再計算する。接続の fd は daemon が GLib main
+  loop に載せ、読めるようになったら `flush → read → dispatch` で socket を空にする
+  (`dispatch` だけでは socket を読まず fd が readable のままになり、watch が回り続ける)。
+  polling は無い。daemon は workspace key → `ResolvedContext` の dict を持ち、切り替え時に
+  その workspace の分だけ出し直す。
 - **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
   し、adapter 内部で吸収する。
 - **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。
@@ -190,7 +193,8 @@ hints:
 - V1 の限界は PRODUCT.md「Out of scope」のとおり。
 - **workspace をまたいだ表示**: layer surface は output に属し workspace を持たないため、overlay は
   何もしなければ workspace 切り替えをまたいで表示され続ける。`context.workspace: current`(既定)は
-  `ext_workspace_manager_v1` で active workspace を監視し、変わったら隠す(DECISIONS 0012)。
+  `ext_workspace_manager_v1` で active workspace を監視し、overlay を workspace 単位で開閉する
+  (DECISIONS 0012)。
   **Wayfire は未対応**。protocol を出すかどうかは実機が無く未確認で、確認できないものを対応とは
   書かない。protocol が無い compositor では監視せず、従来どおり全 workspace に表示する。
 - 拡張余地(§76、V1 には含めない): アプリ内部 mode(Vim/shell)、SSH remote、tmux pane、
