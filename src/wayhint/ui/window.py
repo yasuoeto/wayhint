@@ -111,7 +111,7 @@ class HintWindow(Gtk.Window):
         self._error = Gtk.Label(xalign=0, wrap=True, visible=False, selectable=True)
         self._error.add_css_class("wayhint-error")
         root.append(self._error)
-        self._search = Gtk.SearchEntry(visible=False, placeholder_text=tr("search hints…"))
+        self._search = Gtk.SearchEntry(visible=False, placeholder_text=self._tr("search hints…"))
         self._search.connect("search-changed", lambda *_: self._render_list())
         self._search.connect("stop-search", lambda *_: self.end_search())
         root.append(self._search)
@@ -126,12 +126,12 @@ class HintWindow(Gtk.Window):
 
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bar.add_css_class("wayhint-toolbar")
-        self._search_btn = self._button(bar, tr("Search"), self._toggle_search)
-        self._button(bar, tr("Refresh"), lambda: self._on_refresh())
-        self._copy_btn = self._button(bar, tr("Copy"), self._copy_selected)
-        self._edit_hint_btn = self._button(bar, tr("Edit hint"), self._edit_selected)
-        self._button(bar, tr("Edit sheet"), lambda: self._on_edit(self._active_sheet(), None))
-        self._button(bar, tr("Close"), self.hide_overlay)
+        self._search_btn = self._button(bar, self._tr("Search"), self._toggle_search)
+        self._button(bar, self._tr("Refresh"), lambda: self._on_refresh())
+        self._copy_btn = self._button(bar, self._tr("Copy"), self._copy_selected)
+        self._edit_hint_btn = self._button(bar, self._tr("Edit hint"), self._edit_selected)
+        self._button(bar, self._tr("Edit sheet"), lambda: self._on_edit(self._active_sheet(), None))
+        self._button(bar, self._tr("Close"), self.hide_overlay)
         root.append(bar)
 
     @staticmethod
