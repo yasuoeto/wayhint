@@ -92,3 +92,18 @@ mistaken for one, and so the first real decision gets number 0001):
   にする(sheet を跨いで同名 hint が自然に出るので不採用)。
 - **Consequences**: schema を広げるときは validation と本 entry の更新が必要。unknown key を
   error にしたため、将来 key を追加すると古い版では読めなくなる(version で区別する)。
+
+## 0007 — matcher の specificity は「一致した pattern 数」、category 順は初出順
+
+- **Date**: 2026-09-16
+- **Status**: accepted
+- **Context**: PRODUCT 要件 7 の「priority → matcher specificity → file order」と要件 11 の
+  「category order」は、何を specificity / category order とするか未定義だった。
+- **Decision**: specificity = その sheet の match rule のうち実際に一致した regex pattern の数
+  (argv_regex は name・argv 各要素・argv[0] の basename に対して、cmdline_regex は cmdline 全文に
+  対して評価)。同点は sheet の読み込み順(ファイル名順)。category order は表示対象 hint 列に
+  おける category の初出順(設定項目を増やさない)。
+- **Alternatives**: pattern 長で比較(regex の長さは特異性を表さない); category の順序を config
+  で指定(V1 では設定を増やさない方針)。
+- **Consequences**: 特定の sheet を優先させたい場合は `priority` を使う。category の並びを変え
+  たい場合は YAML 内の hint の順を変える。
