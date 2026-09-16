@@ -1,21 +1,127 @@
-# <name> — Product
+# wayhint — Product
+
+出典: 「Wayfire向けコンテキスト依存ヒントオーバーレイ 設計書」(2026-09-16、以下「設計書」)。
+設計書中の名称 `context-hint` / `context_hint` / `~/.config/context-hint/` は、本リポジトリでは
+`wayhint` / `wayhint` / `~/.config/wayhint/` に読み替える(DECISIONS 0002)。
 
 ## Problem
 
+Wayfire環境で操作方法を忘れたとき、Web検索やマニュアル検索を繰り返している。よく使う操作が
+一定位置に無いため視線が定まらず、過去に調べた操作・Tips・注意事項が蓄積されない。Herdrのような
+入れ子環境では、外側のterminalではなく内側で動いているアプリ(Claude Code, Codex…)のヒントが
+必要になる。
+
 ## Users and use cases
+
+- 利用者は自分1人。自分専用の **context-aware personal cheatsheet** であり、一般的な
+  ショートカット一覧ではない。
+- 使い方: 操作を忘れた瞬間にhotkey(既定 `Super+?`)を押す → いつも同じ場所(既定: 画面右上)に、
+  現在のcontextに応じた自分用の情報が出る → 見終わったら同じhotkeyで消す。
+- 調べた操作はYAMLに追記して育てる。overlayの「Edit sheet / Edit hint」から外部editor(gvim)で
+  該当ファイル・該当行を直接開ける。
+
+### 最重要原則(設計書 §1.1 / §81)
+
+> 「操作を忘れた瞬間、いつも同じ場所を見れば、そのcontextで必要な自分用情報があること」
+
+位置の安定、正確なcontext判定、情報量の制御、容易な更新、foreground applicationを邪魔しないこと
+を、機能追加より優先する。スコープ判断で迷ったらここに戻る。
 
 ## Scope
 
 ### In scope
 
-### Out of scope
+- 対応環境(V1正式対象): Linux / Wayland / Wayfire / Python 3 / GTK4 / PyGObject /
+  gtk4-layer-shell / PyWayfire / YAML。
+- context判定の階層: Wayfire active view → application → (Herdrなら) focused pane →
+  foreground process。V1はforeground processまで。
+- 入れ子表示: 子sheet(例 Claude Code)のhint + 親sheet(Herdr)のうち指定tag(既定
+  `nested-common`)を持つhintのみ。
+- 1 application/context につき1 YAMLファイル(`~/.config/wayhint/hints/*.yaml`)。
+- 検索(通常表示ではkeyboardを取らず、Search開始時のみinteractive)。
+- 詳細表示(remark / source / learned は詳細のみ)。clipboard copy。
+- 外部editorによる編集(Edit sheet / Edit hint行jump)、YAML保存時の自動reload、
+  invalid YAML時のlast-known-good保持。
+- daemon + CLI(`wayhint toggle|show|hide|refresh|validate`)、Unix domain socket IPC、
+  hotkeyはWayfire側keybindingに委譲。
+- 表示位置(9 anchor)、px/%サイズ、margin、multi-monitor(active output自動選択 + override)、
+  font指定、GTK CSS override。
+
+### Out of scope (V1で実装しないもの — 設計書 §75)
+
+- X11 / GNOME / KDE / Sway 対応保証(Wayfire依存はadapterに隔離するが、移植は要件外)
+- AIによるhint自動生成、Webからのhint自動取得、クラウド同期、hint usage analytics
+- **command自動実行**(YAML内の `command` は表示・copyのみ)
+- terminal screen scraping による context 推測
+- Vim mode / Claude Code内部mode / Codex内部mode / アプリ内部dialog状態の判定
+- dynamic plugin system(loader, entry points, marketplace)
+- GUI上でのYAML直接編集(編集は外部editorのみ)
+- idle時のlive polling(context取得はtoggle/show/refresh時のみ)
 
 ## Requirements
 
 ### Functional
 
+設計書の §3–§60 が要件本体。要点:
+
+1. **toggle**: hotkey → context取得 → 表示、表示中に同hotkey → 非表示(§3)。
+2. **focus**: 通常表示時 `keyboard_mode = none`。元アプリへの入力を止めない(§3.2)。検索開始時
+   のみ interactive(ON_DEMAND、必要ならEXCLUSIVE)、終了時は必ず none に戻し前のviewへfocus
+   復帰を試みる(§4, §47, §48)。
+3. **layer-shell**: `layer: overlay`, `exclusive_zone: 0`, 既定 anchor top-right。画面領域を
+   予約しない(§6)。位置は anchor + margin + size、絶対座標は主方式にしない(§7, §9)。
+4. **size**: px と % の混在可。% は対象outputのlogical sizeに対する割合(§8)。
+5. **multi-monitor**: 表示先の優先順位 = sheet output override → active viewのoutput →
+   Wayfire focused output → global fallback(§10)。
+6. **context snapshot**: 開いた瞬間のcontextを表示中固定(`context.live_update: false`)。
+   再判定は閉じて開く / Refresh / 明示reload(§11)。
+7. **matcher**: `match.wayfire.app_id_regex` / `match.process.{argv_regex,cmdline_regex}`。
+   複数一致は priority → matcher specificity → file order(§16, §59)。
+8. **Herdr adapter**: `herdr pane current` / `herdr pane process-info --pane <id>` から
+   foreground process (name/argv/cmdline/pid/cwd) を取得。name だけに依存せず argv basename
+   も照合(`node /path/to/codex`)。取得失敗時はHerdr hintsのみ(§14, §15)。
+9. **parent tag filtering**: 表示対象は tag の交差のみで決め、favorite で決めない。
+   子sheet `inherit.parent_tags` が global `nested.parent_tags` を上書き(§17–§19, §29)。
+10. **hint schema**: 必須 `id`,`title`。任意 `kind(shortcut|command|tip|note)`, `key`,
+    `command`, `category`, `tags`, `favorite`, `copy`, `remark`, `source`, `learned`(§21–§26)。
+11. **sort**: favorite → category order → YAML記述順(§29)。
+12. **search**: 対象 title/key/command/category/tags/remark、case-insensitive substring +
+    token AND。結果一覧は title/key/command のみ(§30, §31)。
+13. **copy**: 優先 `copy` → `command` → `key`。GTK/GDK clipboard(§32)。
+14. **editor**: 設定済argvの placeholder `{file}` `{line}` `{hint_id}` を置換し
+    `subprocess.Popen(argv, shell=False)`(§34–§38)。
+15. **reload**: Gio.FileMonitor 等の event-driven 監視 → debounce → parse → validation → UI
+    更新。parse失敗時はlast-known-goodを保持し `⚠ YAML error` を表示、修正で自動復帰(§39, §40)。
+16. **validate CLI**: YAML syntax / duplicate sheet id / duplicate hint id / invalid regex /
+    invalid size / invalid anchor / invalid editor placeholder / unknown required field。
+    エラー時 exit code ≠ 0(§60)。
+17. **failure policy**: Wayfire IPC不可 → error表示・crashしない。Herdr不可 → desktop context
+    へfallback。editor不在 → GUIでerror(§63)。
+
 ### Non-functional
+
+- **セキュリティ**(§33, §62): `os.system` / `shell=True` 禁止。YAML・`/proc`・Herdr由来の
+  文字列は data であり command として実行しない。editor は設定済argvのみ実行。
+- **性能**(§64, §65): idle polling なし。context取得は表示時のみ。file監視は event-driven。
+- **ログ**(§61): 標準 logging、既定 warning。個人情報・terminal buffer を記録しない。
+- **構造**(§77): Wayfire依存は `context/wayfire`、Herdr依存は `context/herdr` に隔離。
+  UIは `ResolvedContext` のみを受け取り、Wayfire/Herdr CLI を直接呼ばない。YAML schema を
+  理由なく変更しない。外部APIが想定と異なる場合はadapter内部を変え、上位仕様は変えない。
 
 ## Success criteria
 
+- 設計書 §74 Acceptance Criteria 全項目。
+- Wayfire実機テスト §69 (Test 1–11): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
+  output override、px/%サイズ、Search時のみ入力可、Search後にgrabが残らない、gvim Edit sheet、
+  gvim Edit hint行jump。
+- Herdr実機テスト §70: bash → Herdr hints、Claude Code / Codex → 各hints + Herdr指定tag、
+  unknown foreground → Herdr hints。
+- §71 editor行jump、§72 閉じずにreload、§73 broken YAMLで crashせず last-known-good 維持
+  → 修正で復帰。
+
 ## Open questions
+
+- 依存確認(§78)は 2026-09-16 実施、結果は `docs/PHASE0.md`。未導入: gtk4-layer-shell(apt)、
+  PyWayfire(PyPI 名 `wayfire`)、ruamel.yaml(PyPI)。Wayfire は未起動で IPC socket は未確認。
+- Wayfire上で layer-shell `ON_DEMAND` が期待どおりfocusを得るか(§47)。実機確認まで未決。
+- Wayfire IPC でのfocus復帰(§48)が安全に可能か。
