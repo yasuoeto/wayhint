@@ -183,6 +183,12 @@ hints:
 ## Known limits and future work
 
 - V1 の限界は PRODUCT.md「Out of scope」のとおり。
+- **workspace をまたいだ表示**: layer surface は output に属し workspace を持たないため、overlay は
+  compositor の workspace 切り替えをまたいで表示され続ける。呼び出した workspace だけに出す場合は
+  `ext_workspace_manager_v1` で active workspace を監視して隠すしかない。labwc 0.20.2 は同 protocol を
+  advertise し、workspace 一覧と active 状態を取得できることを 2026-09-17 に実機で確認した。
+  **Wayfire は未対応とする**。protocol を出すかどうかは実機が無く未確認で、確認できないものを
+  対応とは書かない。protocol が無い compositor では監視を諦め、従来どおり全 workspace に表示する。
 - 拡張余地(§76、V1 には含めない): アプリ内部 mode(Vim/shell)、SSH remote、tmux pane、
   terminal title detector、AI agent lifecycle state、context 別 styling、usage frequency、
   recently learned、explicit executable flag 付き command 実行。
