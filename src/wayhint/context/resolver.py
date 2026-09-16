@@ -2,7 +2,8 @@
 
 Flow (DESIGN §56):
 
-1. Desktop provider gives app_id / title / toplevel ref / output. Failure → ``ResolvedContext.error``.
+1. Desktop provider gives app_id / title / toplevel ref / output.
+   Failure → ``ResolvedContext.error``.
 2. ``match_app`` picks the desktop sheet.
 3. If a nested provider applies to that app_id, ask it for the foreground process and
    ``match_process`` for a child sheet. Any failure falls back to the desktop sheet alone.

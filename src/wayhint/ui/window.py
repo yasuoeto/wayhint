@@ -21,7 +21,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from wayhint import clipboard  # noqa: E402
 from wayhint.config import GlobalConfig  # noqa: E402
-from wayhint.i18n import Translator, translator
+from wayhint.i18n import Translator, translator  # noqa: E402
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.selection import search_hints, sort_hints, visible_hints  # noqa: E402
 from wayhint.ui.geometry import Placement, placement  # noqa: E402
@@ -71,14 +71,14 @@ class HintWindow(Gtk.Window):
         on_refresh: Callable[[], None],
         on_edit: Callable[[HintSheet | None, Hint | None], None],
         refocus: Callable[[str | None], None],
-        tr: Translator = translator(),
+        tr: Translator | None = None,
     ) -> None:
         super().__init__(application=app, title="wayhint", decorated=False)
         self.add_css_class("wayhint")
         self._on_refresh = on_refresh
         self._on_edit = on_edit
         self._refocus = refocus
-        self._tr = tr
+        self._tr = tr or translator()
         self._ctx: ResolvedContext | None = None
         self._sheets: dict[str, HintSheet] = {}
         self._config = GlobalConfig()
