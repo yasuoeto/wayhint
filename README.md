@@ -13,6 +13,7 @@ One sentence on what `wayhint` does.
 
 | Path | Contents |
 |---|---|
+| `STATUS.md` | what is done, what is left, what the machine looks like |
 | `src/` | implementation |
 | `tests/` | tests |
 | `docs/PRODUCT.md` | requirements |
