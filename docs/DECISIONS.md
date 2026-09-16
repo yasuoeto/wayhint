@@ -156,3 +156,22 @@ mistaken for one, and so the first real decision gets number 0001):
   失敗し得る。focused output は protocol に無く、複数 output で active toplevel が無い時は
   global fallback に落ちる。pywayland の proxy は display 切断前に destroy しないと GC 時に
   segfault するため、`_Session.close()` で明示破棄する。
+
+## 0011 — daemon の起動・停止は compositor の autostart に任せ、service manager に登録しない
+
+- **Date**: 2026-09-16
+- **Status**: accepted
+- **Context**: `wayhintd` をセッションと同時に起動し、compositor 終了時に確実に止めたい。
+  systemd の user unit として `graphical-session.target` に紐づける案を検討した。
+- **Decision**: compositor の autostart から通常のプロセスとして起動し、停止は compositor 側の
+  shutdown 処理に任せる。wayhint は service unit を同梱せず、インストール手順にも含めない。
+- **Alternatives**:
+  - 永続 user unit + `WantedBy=graphical-session.target`: labwc は `labwc-session.target` を
+    同梱せず、target を起動しないセッション構成が普通にあり、その場合 unit は起動しない。
+    起動するかどうかが compositor の外の設定に依存するのは、hotkey が無反応になる形で失敗する。
+  - transient unit(`systemd-run --user -p Restart=on-failure`): 自動再起動だけが上積みになる。
+    overlay が落ちても他の作業は止まらないので、監視の価値がクラッシュの隠蔽と釣り合わない。
+    実使用でクラッシュを観測したら再検討する(その時点では autostart 側の数行で済む)。
+- **Consequences**: 起動・停止の作法は compositor ごとの autostart 規約に従う。異常終了しても
+  自動復帰はせず、次のセッションまで hotkey は無反応になる。socket は SIGTERM で削除し、
+  KILL された場合は次回起動時の stale socket 検出で回収する。

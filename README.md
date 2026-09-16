@@ -65,6 +65,9 @@ autostart は `~/.config/labwc/autostart` に 1 行(実行属性を付ける):
 /home/USER/work/tools/wayhint/.venv/bin/wayhintd &
 ```
 
+autostart が起動した helper の PID を記録して終了時に落とす仕組みを持っているなら、その作法に
+従う(例: `spawn wayhintd`)。systemd の user unit は用意しない。理由は `docs/DECISIONS.md` 0011。
+
 反映は `labwc --reconfigure`。
 
 ### Wayfire(`~/.config/wayfire.ini`)
