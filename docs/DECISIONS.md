@@ -119,3 +119,18 @@ mistaken for one, and so the first real decision gets number 0001):
 - **Alternatives**: 1行テキスト(`toggle\n`)。将来 `show --sheet X` のような引数を足す時に再設計
   になるので JSON にした。長寿命接続 + event push は V1 に不要。
 - **Consequences**: CLI 1 回 = 接続 1 回。daemon 側は GLib の IO watch で accept し、非同期に読む。
+
+## 0009 — gtk4-layer-shell は ctypes で GTK より先に読み込む
+
+- **Date**: 2026-09-16
+- **Status**: accepted
+- **Context**: labwc セッションでの smoke test で、`Gtk4LayerShell` typelib を Gtk より先に import
+  しても `is_supported()` が False になり "GtkWindow is not a layer surface" 警告が出た。
+  gtk4-layer-shell は libwayland-client をフックするため、プロセス内で先に load されている必要が
+  あるが、PyGObject の typelib import 順では保証されない。
+- **Decision**: `daemon.py` の先頭で `ctypes.CDLL("libgtk4-layer-shell.so.0", RTLD_GLOBAL)` を
+  実行してから gi を import する。`LD_PRELOAD` を利用者に要求しない。
+- **Alternatives**: `LD_PRELOAD` を wrapper script や systemd unit で設定(利用者側の設定が増え、
+  `wayhintd` を直接叩くと再現しない)。
+- **Consequences**: ライブラリのファイル名(soname)に依存する。見つからない場合は
+  `Daemon.start` が `is_supported()` で検出して終了する。

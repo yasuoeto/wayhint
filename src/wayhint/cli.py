@@ -1,4 +1,4 @@
-"""``wayhint`` command line. Phase 1 provides ``validate`` only; daemon commands come later."""
+"""``wayhint`` command line: ``validate`` runs locally, everything else talks to ``wayhintd``."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from wayhint import __version__
+from wayhint import __version__, ipc
 from wayhint.config import config_dir
 from wayhint.yaml_store import load_all
 
@@ -25,6 +25,21 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_send(args: argparse.Namespace) -> int:
+    try:
+        reply = ipc.send_command(args.command, Path(args.socket) if args.socket else None)
+    except ipc.DaemonUnavailable as e:
+        print(f"wayhint: {e}", file=sys.stderr)
+        return 2
+    if not reply.get("ok"):
+        print(f"wayhint: {reply.get('error', 'unknown error')}", file=sys.stderr)
+        return 1
+    extras = {k: v for k, v in reply.items() if k != "ok" and v not in (None, [], {})}
+    if extras:
+        print(" ".join(f"{k}={v}" for k, v in extras.items()))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wayhint")
     parser.add_argument("--version", action="version", version=f"wayhint {__version__}")
@@ -32,6 +47,18 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("validate", help="check config.yaml and hints/*.yaml; exit 1 on problems")
     v.add_argument("--config-dir", help="directory holding config.yaml and hints/ (default: XDG)")
     v.set_defaults(func=cmd_validate)
+    help_ = {
+        "toggle": "show the overlay, or hide it if it is visible",
+        "show": "resolve the context and show the overlay",
+        "hide": "hide the overlay",
+        "refresh": "re-resolve the context if the overlay is visible",
+        "reload": "re-read config.yaml and hints/*.yaml",
+        "ping": "check that wayhintd is running",
+    }
+    for name in ipc.COMMANDS:
+        c = sub.add_parser(name, help=help_[name])
+        c.add_argument("--socket", help="override the Unix socket path")
+        c.set_defaults(func=cmd_send)
     return parser
 
 
