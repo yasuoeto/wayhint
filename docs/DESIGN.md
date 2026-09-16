@@ -63,8 +63,9 @@ src/wayhint/
 - `HintSheet`: `version`, `id`, `title`, `priority`, `match: MatchRule`, `display: DisplayConfig`
   (部分指定、global から継承), `inherit.parent_tags`, `hints: list[Hint]`, `path`。
 - `MatchRule`: `wayfire.app_id_regex[]`, `process.argv_regex[]`, `process.cmdline_regex[]`。
-- `ResolvedContext`: `desktop_app`, `desktop_title`, `output`, `parent_context`(親sheet id),
-  `foreground_process: ProcessInfo | None`, `active_sheet`。
+- `ResolvedContext`: `desktop_app`, `desktop_title`, `output: OutputInfo(name, width, height)`,
+  `view_id`(検索後の focus 復帰先), `parent_context`(親sheet id),
+  `foreground_process: ProcessInfo | None`, `active_sheet`, `error`(Wayfire IPC 不可時の表示文)。
 - `ProcessInfo`: `pid`, `name`, `argv`, `cmdline`, `cwd`。
 - 設定ファイル: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/*.yaml`(`.yml` も可、
   ファイル名順に読む)。schema は設計書 §21, §43 を元に Phase 1 で確定(DECISIONS 0006)。

@@ -44,9 +44,8 @@ def app_specificity(sheet: HintSheet, app_id: str | None) -> int:
 def process_specificity(sheet: HintSheet, proc: ProcessInfo | None) -> int:
     if proc is None:
         return 0
-    argv_candidates = [proc.name, *proc.argv]
-    if proc.argv:
-        argv_candidates.append(proc.argv[0].rsplit("/", 1)[-1])  # basename of argv[0]
+    # name, every argv element, and each element's basename (``node /path/to/codex`` → codex)
+    argv_candidates = [proc.name, *proc.argv, *(a.rsplit("/", 1)[-1] for a in proc.argv)]
     return _count_matches(sheet.match.argv_regex, argv_candidates) + _count_matches(
         sheet.match.cmdline_regex, (proc.cmdline,)
     )

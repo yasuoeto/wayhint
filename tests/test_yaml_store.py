@@ -1,3 +1,5 @@
+import contextlib
+import io
 import tempfile
 import textwrap
 import unittest
@@ -80,7 +82,8 @@ class GoodFixtureTest(unittest.TestCase):
 
     def test_load_all_and_cli(self) -> None:
         self.assertTrue(load_all(GOOD).ok)
-        self.assertEqual(main(["validate", "--config-dir", str(GOOD)]), 0)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["validate", "--config-dir", str(GOOD)]), 0)
 
 
 class SheetValidationTest(unittest.TestCase):
@@ -215,7 +218,7 @@ class SheetStoreTest(unittest.TestCase):
             self.assertEqual(store.sheets, [])
 
     def test_cli_exit_code_on_problems(self) -> None:
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stderr(io.StringIO()):
             root = Path(d)
             (root / "hints").mkdir()
             (root / "hints" / "bad.yaml").write_text("title: no id\n", encoding="utf-8")

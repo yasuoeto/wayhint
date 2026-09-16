@@ -146,10 +146,21 @@ class ProcessInfo:
 
 
 @dataclass(frozen=True)
+class OutputInfo:
+    name: str
+    width: int  # logical size
+    height: int
+
+
+@dataclass(frozen=True)
 class ResolvedContext:
+    """Snapshot taken on show/refresh. The UI receives this and the sheets, nothing else."""
+
     desktop_app: str | None = None
     desktop_title: str | None = None
-    output: str | None = None
-    parent_context: str | None = None
+    output: OutputInfo | None = None
+    view_id: int | None = None  # Wayfire view to hand focus back to after search
+    parent_context: str | None = None  # parent sheet id when a nested context applies
     foreground_process: ProcessInfo | None = None
     active_sheet: str | None = None
+    error: str | None = None  # e.g. Wayfire IPC unavailable; shown in the overlay
