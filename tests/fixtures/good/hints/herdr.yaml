@@ -1,0 +1,18 @@
+version: 1
+id: herdr
+title: Herdr
+match:
+  wayfire:
+    app_id_regex: ["^herdr$"]
+hints:
+  - id: new-pane
+    title: New pane
+    key: Ctrl+Shift+N
+    category: panes
+    tags: [terminal]
+    favorite: true
+  - id: kill-pane
+    title: Kill pane
+    key: Ctrl+Shift+W
+    category: panes
+    tags: [terminal, danger]

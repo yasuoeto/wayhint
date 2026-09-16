@@ -1,0 +1,23 @@
+id: claude
+title: Claude Code
+priority: 10
+match:
+  process:
+    argv_regex: ["(^|/)claude$"]
+    cmdline_regex: ["node .*/codex"]
+display:
+  anchor: bottom-right
+  width: 50%
+inherit:
+  parent_tags: [terminal, ai]
+hints:
+  - id: compact
+    title: Compact context
+    kind: command
+    command: /compact
+    remark: Summarises the conversation
+  - id: model
+    title: Switch model
+    command: /model
+    copy: "/model opus"
+    learned: 2026-09-16

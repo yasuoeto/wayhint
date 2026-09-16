@@ -66,8 +66,48 @@ src/wayhint/
 - `ResolvedContext`: `desktop_app`, `desktop_title`, `output`, `parent_context`(親sheet id),
   `foreground_process: ProcessInfo | None`, `active_sheet`。
 - `ProcessInfo`: `pid`, `name`, `argv`, `cmdline`, `cwd`。
-- 設定ファイル: `~/.config/wayhint/config.yaml`, `style.css`, `hints/*.yaml`。schema は設計書
-  §21, §43 のとおり(変更は DECISIONS に記録)。
+- 設定ファイル: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/*.yaml`(`.yml` も可、
+  ファイル名順に読む)。schema は設計書 §21, §43 を元に Phase 1 で確定(DECISIONS 0006)。
+
+### config.yaml(実装: `config.py`)
+
+```yaml
+overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, right: 24}, output: null}
+appearance: {style: style.css, show_category: true}
+editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"]}
+nested:     {parent_tags: []}
+context:    {live_update: false}
+search:     {max_results: 50}
+logging:    {level: warning}
+```
+
+- 全項目任意、ファイル自体も無くてよい(上記が既定値)。未知の section / key は error。
+- size: 整数(px)、`"420px"`、`"30%"`(0–100)。margin: 整数(全辺)か `{top,right,bottom,left}`。
+- `editor.command` は argv list。placeholder は `{file}` `{line}` `{hint_id}` のみ、`{file}` 必須。
+  未知の `{...}` は error。展開は文字列置換のみで shell を通らない。
+
+### hints/*.yaml(実装: `yaml_store.py`)
+
+```yaml
+version: 1              # 任意、1 のみ
+id: claude              # 必須 ^[A-Za-z0-9][A-Za-z0-9._-]*$、全 sheet で一意
+title: Claude Code      # 必須
+priority: 10            # 任意 int、既定 0
+match:
+  wayfire: {app_id_regex: [...]}
+  process: {argv_regex: [...], cmdline_regex: [...]}   # Python re でコンパイルできること
+display: {anchor, width, height, margin, output}       # 部分指定、global overlay から継承
+inherit: {parent_tags: [terminal, ai]}                 # 省略時は global nested.parent_tags
+hints:
+  - {id, title,            # 必須。id は sheet 内で一意
+     kind: shortcut|command|tip|note, key, command, category, tags: [], favorite: false,
+     copy, remark, source, learned}
+```
+
+- 各 hint の `location` は list 要素の開始行(1-based)。`learned` の日付は ISO 文字列に正規化。
+- validation は 1 ファイル内の問題を全部集めて `Issue(file, line, message)` で返す。1 つでも
+  あれば sheet は採用しない。`SheetStore` は採用済みの sheet を保持し(last-known-good)、次に
+  clean に parse できた時だけ置き換える。
 
 ## Interfaces
 

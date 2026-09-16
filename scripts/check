@@ -5,6 +5,11 @@ CDPATH=''
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 status=0
+# Prefer the working copy's venv (created by ./scripts/setup) so runtime deps resolve.
+if [ -x .venv/bin/python ]; then
+    PATH="$root/.venv/bin:$PATH"
+    export PATH
+fi
 
 run() {
     printf 'check: %s\n' "$*"
@@ -28,6 +33,6 @@ else
 fi
 
 run python3 -m compileall -q src tests
-run python3 -m unittest discover -s tests -t .
+PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}" run python3 -m unittest discover -s tests -t .
 
 exit "$status"

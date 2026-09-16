@@ -76,3 +76,19 @@ mistaken for one, and so the first real decision gets number 0001):
 - **Alternatives**: `executable: true` flag 付きで実行を許す(将来拡張候補として保留)。
 - **Consequences**: 「hint から直接コマンドを走らせる」便利さを V1 で捨てる。security boundary は
   editor argv の1点に絞られる。
+
+## 0006 — YAML schema の細部を Phase 1 で確定
+
+- **Date**: 2026-09-16
+- **Status**: accepted
+- **Context**: 設計書 §21/§43 は項目名までで、型・既定値・エラー条件・一意性の範囲は決めていない。
+  validate CLI(PRODUCT 要件 16)を実装するには確定が必要だった。
+- **Decision**: `docs/DESIGN.md` Data model のとおり。要点: (a) size は int=px / `Npx` / `N%`
+  (0–100)の 3 形のみ。(b) margin は int か 4 辺 mapping。(c) hint id の一意性は **sheet 内**、
+  sheet id は全体で一意(editor jump は file+line で行うため hint id の全体一意性は不要)。
+  (d) 未知 key は warning ではなく error(typo をすぐ気付かせる)。(e) `editor.command` は
+  `{file}` 必須。(f) `version` は任意で 1 固定。(g) YAML の日付スカラーは ISO 文字列に正規化。
+- **Alternatives**: 未知 key を無視する(将来の拡張に寛容だが typo を隠す); hint id を全体一意
+  にする(sheet を跨いで同名 hint が自然に出るので不採用)。
+- **Consequences**: schema を広げるときは validation と本 entry の更新が必要。unknown key を
+  error にしたため、将来 key を追加すると古い版では読めなくなる(version で区別する)。
