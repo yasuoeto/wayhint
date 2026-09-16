@@ -113,7 +113,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 ## Success criteria
 
 - 設計書 §74 Acceptance Criteria 全項目。
-- 実機テスト §69 (Test 1–11、labwc と Wayfire の双方): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
+- 実機テスト §69 (Test 1–11、labwc と Wayfire の双方。手順は `docs/DESIGN.md` の実機
+  チェックリスト): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
   output override、px/%サイズ、Search時のみ入力可、Search後にgrabが残らない、gvim Edit sheet、
   gvim Edit hint行jump。
 - Herdr実機テスト §70: bash → Herdr hints、Claude Code / Codex → 各hints + Herdr指定tag、

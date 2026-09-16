@@ -198,22 +198,6 @@ editor:
 | Herdr の中で親 sheet しか出ない | `herdr pane process-info --current` の `foreground_processes` と `argv_regex` を照合 |
 | 検索後にキー入力が元アプリに戻らない | 検索を終える(完了 / Esc)と keyboard_mode は必ず none に戻る。focus 復帰は foreign-toplevel `activate`(wayfire backend では IPC `set_focus`)。同じ app_id の window が複数あり title が変わっていると復帰先を決められない。`wayhintd -v` に `could not return focus` が出るか |
 
-## 実機チェックリスト(設計書 §69–§73、手動)
-
-labwc と Wayfire それぞれのセッションで実施し、結果は `STATUS.md` に日付付きで記録する。
-
-- [ ] T1 hotkey で右上に表示、元アプリへの入力が続く(keyboard grab なし)
-- [ ] T2 同じ hotkey で非表示(toggle)
-- [ ] T3 別 output 上のアプリから起動 → そのアプリの output に出る
-- [ ] T4 sheet の `display.output` override が効く
-- [ ] T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
-- [ ] T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る
-- [ ] T7 シートを編集で gvim が sheet を開く、ヒントを編集で該当行に jump
-- [ ] T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
-- [ ] T9 Herdr で unknown process → Herdr hints のみ
-- [ ] T10 表示中に YAML を編集 → 閉じずに更新
-- [ ] T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
-
 ## ファイル構成
 
 | パス | 内容 |

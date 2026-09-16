@@ -157,9 +157,28 @@ hints:
 - **context tests**(§67, §68): mock desktop provider(Inkscape/Chromium/Herdr)、mock Herdr process-info
   (bash/claude/codex/`node /path/to/codex`)。nested: Herdr+Claude → Claude sheet + tag 交差の
   Herdr hints。favorite は影響しない。
-- **実機**(§69–§73): 自動化しない。README のチェックリストとして残し、Phase 9 で手動確認。
+- **実機**(§69–§73): 自動化しない。下の手動チェックリストで確認する。
 - `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
   テストから分離し、ヘッドレスでも通るようにする。
+
+### 実機チェックリスト(§69–§73、手動)
+
+`./scripts/check` の対象外。GTK と compositor が要るため自動化しない。labwc と Wayfire の
+それぞれのセッションで実施し、**結果は `STATUS.md` に日付付きで記録する**。この一覧は項目の
+定義だけを持ち、合否は持たない。同じ項目でも compositor ごとに結果が変わるため、記録先を
+1 か所に寄せる。
+
+- T1 hotkey で右上に表示、元アプリへの入力が続く(keyboard grab なし)
+- T2 同じ hotkey で非表示(toggle)
+- T3 別 output 上のアプリから起動 → そのアプリの output に出る
+- T4 sheet の `display.output` override が効く
+- T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
+- T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る
+- T7 シートを編集で editor が sheet を開く、ヒントを編集で該当行に jump
+- T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
+- T9 Herdr で unknown process → Herdr hints のみ
+- T10 表示中に YAML を編集 → 閉じずに更新
+- T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 
 ## Known limits and future work
 
