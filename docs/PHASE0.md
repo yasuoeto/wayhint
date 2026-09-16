@@ -8,7 +8,7 @@
 | Python | 3.14.7 (`/usr/bin/python3`) | venv も 3.14.7 |
 | GTK4 | 4.22.4 (`gir1.2-gtk-4.0`, `libgtk-4-1`) | `gi.require_version("Gtk","4.0")` OK |
 | PyGObject | 3.57.1 (`python3-gi`) | system site-packages。venv からは `--system-site-packages` か `PyGObject` wheel が必要 |
-| gtk4-layer-shell | **未インストール** | apt: `libgtk4-layer-shell0` + `gir1.2-gtk4layershell-1.0`(typelib) |
+| gtk4-layer-shell | 1.3.0(2026-09-16 導入) | apt: `libgtk4-layer-shell0` + `gir1.2-gtk4layershell-1.0`。`gi.require_version("Gtk4LayerShell","1.0")` OK |
 | PyWayfire | **未インストール** | PyPI 名は `wayfire`(4.0, `Requires-Python>=3.8`, 依存なし)。`pywayfire` という名前では取れない |
 | ruamel.yaml | **未インストール** | PyPI 0.19.1 は取得可。apt には無し(`python3-ruyaml` は別 fork) |
 | Herdr | 0.8.2 (`~/.local/bin/herdr`) | 下記 |
