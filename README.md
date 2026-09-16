@@ -111,6 +111,12 @@ hotkey で表示し、もう一度押すと閉じる。通常表示中は keyboa
 表示される context は **開いた瞬間に固定** される。別のアプリに移っても自動では追従しないので、
 **更新** を押すか、一度閉じて開き直す。
 
+overlay は **呼び出した workspace でだけ** 表示される。別の workspace に切り替えると自動的に隠れ、
+切り替えた先で hotkey を押せばそこの context で出し直す。全 workspace に出したままにするには
+`config.yaml` に `context: {workspace: all}` を書く。この切り替えは compositor が
+`ext-workspace-v1` を出す場合だけ働く。labwc は対応、Wayfire は未対応で、その場合は設定に
+関わらず全 workspace に表示される。
+
 ## CLI
 
 `wayhint <command>` は daemon に Unix domain socket 経由で 1 行送るだけで、GUI を持たない。

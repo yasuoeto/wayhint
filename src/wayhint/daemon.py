@@ -35,13 +35,15 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gio", "2.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402
+gi.require_version("GLibUnix", "2.0")
+from gi.repository import Gio, GLib, GLibUnix, Gtk  # noqa: E402
 
 from wayhint import ipc  # noqa: E402
 from wayhint.config import GlobalConfig, config_dir  # noqa: E402
 from wayhint.context.herdr import HerdrContextProvider  # noqa: E402
 from wayhint.context.resolver import ContextResolver  # noqa: E402
 from wayhint.context.select import select_desktop_provider  # noqa: E402
+from wayhint.context.workspace import WorkspaceWatcher, should_show_on_toggle  # noqa: E402
 from wayhint.editor import EditorError, open_in_editor  # noqa: E402
 from wayhint.i18n import translator  # noqa: E402
 from wayhint.models import Hint, HintSheet  # noqa: E402
@@ -64,6 +66,9 @@ class Daemon:
         self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
         self._backend = self.config.context_backend
         self.window: HintWindow | None = None
+        self._watcher: WorkspaceWatcher | None = None
+        self._watch_source: int | None = None
+        self._shown_workspace: str | None = None
         self._pending_reload: dict[Path, int] = {}
         self._monitors: list[Gio.FileMonitor] = []
         self._server: socket.socket | None = None
@@ -167,16 +172,22 @@ class Daemon:
         ctx = self.resolver.resolve(self.store.sheets, self.config)
         self.window.present_context(ctx, self.store.sheets, self.config)
         self.window.show_issues(self.issues)
+        self._start_workspace_watch()
         return {"visible": True, "sheet": ctx.active_sheet, "error": ctx.error}
 
     def hide(self) -> dict:
         assert self.window is not None
         self.window.hide_overlay()
+        self._stop_workspace_watch()
         return {"visible": False}
 
     def toggle(self) -> dict:
         assert self.window is not None
-        return self.hide() if self.window.is_shown() else self.show()
+        if should_show_on_toggle(
+            self.window.is_shown(), self._shown_workspace, self._current_workspace()
+        ):
+            return self.show()
+        return self.hide()
 
     def refresh(self) -> dict:
         assert self.window is not None
@@ -211,6 +222,73 @@ class Daemon:
             open_in_editor(self.config.editor, sheet.path, line, hint.id if hint else sheet.id)
         except EditorError as e:
             self.window.show_message(f"⚠ {e}")
+
+    # --- workspace scoping -----------------------------------------------------------------
+
+    def _start_workspace_watch(self) -> None:
+        """Watch the active workspace for as long as the overlay is visible.
+
+        A layer surface has no workspace of its own, so the overlay has to hide itself when the
+        compositor switches away from the workspace it was opened on. Compositors without
+        ``ext-workspace-v1`` keep the old behaviour of showing it everywhere.
+        """
+        if self.config.workspace_scope != "current":
+            return
+        if self._watcher is None:
+            watcher = WorkspaceWatcher(self._on_workspace_changed)
+            if not watcher.start():
+                return
+            self._watcher = watcher
+            self._watch_source = GLibUnix.fd_add_full(
+                GLib.PRIORITY_DEFAULT, watcher.fileno(), GLib.IOCondition.IN, self._on_watch_fd
+            )
+        self._shown_workspace = self._watcher.active()
+        log.info("overlay bound to workspace %s", self._shown_workspace)
+
+    def _stop_workspace_watch(self) -> None:
+        if self._watch_source is not None:
+            GLib.source_remove(self._watch_source)
+            self._watch_source = None
+        if self._watcher is not None:
+            self._watcher.stop()
+            self._watcher = None
+        self._shown_workspace = None
+
+    def _current_workspace(self) -> str | None:
+        """The active workspace now, not as of the last event we happened to process.
+
+        ``toggle`` arrives over the socket while the workspace change arrives over the Wayland
+        connection, so the two race. A round trip settles every pending event first and makes the
+        decision the same whichever order they arrive in.
+        """
+        if self._watcher is None:
+            return None
+        self._watcher.roundtrip()
+        return self._watcher.active()
+
+    def _on_watch_fd(self, _fd, _condition) -> bool:
+        if self._watcher is None or not self._watcher.dispatch():
+            self._watch_source = None
+            self._stop_workspace_watch()
+            return False
+        return True
+
+    def _on_workspace_changed(self, active: str | None) -> None:
+        # Called from inside the watcher's own event dispatch; tearing the connection down here
+        # would free it while it is still being read. Decide on the next main-loop turn instead.
+        GLib.idle_add(self._hide_if_workspace_changed)
+
+    def _hide_if_workspace_changed(self) -> bool:
+        if (
+            self.window is not None
+            and self.window.is_shown()
+            and self._watcher is not None
+            and self._shown_workspace is not None
+            and self._watcher.active() != self._shown_workspace
+        ):
+            log.info("workspace changed; hiding the overlay")
+            self.hide()
+        return False
 
     def _refocus(self, view_ref: str | None) -> None:
         if view_ref is not None and not self.desktop.focus_view(view_ref):

@@ -23,7 +23,7 @@ compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
 
 ## Architecture
 
-- **adapter隔離**: pywayland を呼ぶのは `context/wayland.py` だけ、PyWayfire を呼ぶのは
+- **adapter隔離**: pywayland を呼ぶのは `context/wayland.py` と `context/workspace.py` だけ、PyWayfire を呼ぶのは
   `context/wayfire.py` だけ、`herdr` CLI を呼ぶのは `context/herdr.py` だけ。他モジュールからの直接呼び出しは禁止。
 - **一方向依存**: `ui/` は `ResolvedContext` と sheet データのみを受け取る。UI から
   compositor/Herdr へ問い合わせない。
@@ -54,6 +54,7 @@ src/wayhint/
   context/_wlr_foreign_toplevel.py  生成物(protocols/*.xml → scripts/gen-protocol)
   context/wayfire.py              PyWayfire 隔離(optional backend): focused view/output、set_focus
   context/select.py               `context.backend` auto|wayland|wayfire の選択と auto fallback
+  context/workspace.py            pywayland 隔離: ext-workspace-v1 で active workspace 監視(表示中のみ接続)
   context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
   context/process.py              ProcessInfo 正規化
   ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)
@@ -87,7 +88,8 @@ overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, rig
 appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
 editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"]}
 nested:     {parent_tags: []}
-context:    {live_update: false}
+context:    {live_update: false, backend: auto, workspace: current}  # backend: auto|wayland|wayfire
+                                                                     # workspace: current|all
 search:     {max_results: 50}
 logging:    {level: warning}
 ```
@@ -132,6 +134,9 @@ hints:
 - **Wayfire (fallback / 明示)**: PyWayfire(IPC plugin 必須)。取得: active view, その output,
   app-id, title。focus 復帰は `set_focus`。`context.backend: auto` では foreign-toplevel が無く
   `WAYFIRE_SOCKET` がある場合だけ使う。
+- **workspace**: `ext-workspace-v1`(pywayland)。overlay が見えている間だけ接続し、manager の
+  `done` ごとに active workspace を再計算する。接続の fd は daemon が GLib main loop に載せる。
+  polling は無い。
 - **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
   し、adapter 内部で吸収する。
 - **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。
@@ -184,11 +189,10 @@ hints:
 
 - V1 の限界は PRODUCT.md「Out of scope」のとおり。
 - **workspace をまたいだ表示**: layer surface は output に属し workspace を持たないため、overlay は
-  compositor の workspace 切り替えをまたいで表示され続ける。呼び出した workspace だけに出す場合は
-  `ext_workspace_manager_v1` で active workspace を監視して隠すしかない。labwc 0.20.2 は同 protocol を
-  advertise し、workspace 一覧と active 状態を取得できることを 2026-09-17 に実機で確認した。
-  **Wayfire は未対応とする**。protocol を出すかどうかは実機が無く未確認で、確認できないものを
-  対応とは書かない。protocol が無い compositor では監視を諦め、従来どおり全 workspace に表示する。
+  何もしなければ workspace 切り替えをまたいで表示され続ける。`context.workspace: current`(既定)は
+  `ext_workspace_manager_v1` で active workspace を監視し、変わったら隠す(DECISIONS 0012)。
+  **Wayfire は未対応**。protocol を出すかどうかは実機が無く未確認で、確認できないものを対応とは
+  書かない。protocol が無い compositor では監視せず、従来どおり全 workspace に表示する。
 - 拡張余地(§76、V1 には含めない): アプリ内部 mode(Vim/shell)、SSH remote、tmux pane、
   terminal title detector、AI agent lifecycle state、context 別 styling、usage frequency、
   recently learned、explicit executable flag 付き command 実行。
