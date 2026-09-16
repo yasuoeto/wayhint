@@ -43,6 +43,7 @@ from wayhint.context.herdr import HerdrContextProvider  # noqa: E402
 from wayhint.context.resolver import ContextResolver  # noqa: E402
 from wayhint.context.select import select_desktop_provider  # noqa: E402
 from wayhint.editor import EditorError, open_in_editor  # noqa: E402
+from wayhint.i18n import translator  # noqa: E402
 from wayhint.models import Hint, HintSheet  # noqa: E402
 from wayhint.ui import style  # noqa: E402
 from wayhint.ui.window import HintWindow  # noqa: E402
@@ -75,7 +76,11 @@ class Daemon:
         self.reload_all()
         style.install(self.root / self.config.style)
         self.window = HintWindow(
-            app, on_refresh=self.refresh, on_edit=self.edit, refocus=self._refocus
+            app,
+            on_refresh=self.refresh,
+            on_edit=self.edit,
+            refocus=self._refocus,
+            tr=translator(self.config.language),
         )
         self._watch_files()
         self._listen()
@@ -199,7 +204,7 @@ class Daemon:
     def edit(self, sheet: HintSheet | None, hint: Hint | None) -> None:
         assert self.window is not None
         if sheet is None:
-            self.window.show_message("⚠ no sheet to edit")
+            self.window.show_message(f"⚠ {translator(self.config.language)('no sheet to edit')}")
             return
         line = hint.location.line if hint is not None else 1
         try:

@@ -21,6 +21,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from wayhint import clipboard  # noqa: E402
 from wayhint.config import GlobalConfig  # noqa: E402
+from wayhint.i18n import Translator, translator
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.selection import search_hints, sort_hints, visible_hints  # noqa: E402
 from wayhint.ui.geometry import Placement, placement  # noqa: E402
@@ -69,13 +70,15 @@ class HintWindow(Gtk.Window):
         app: Gtk.Application,
         on_refresh: Callable[[], None],
         on_edit: Callable[[HintSheet | None, Hint | None], None],
-        refocus: Callable[[int | None], None],
+        refocus: Callable[[str | None], None],
+        tr: Translator = translator(),
     ) -> None:
         super().__init__(application=app, title="wayhint", decorated=False)
         self.add_css_class("wayhint")
         self._on_refresh = on_refresh
         self._on_edit = on_edit
         self._refocus = refocus
+        self._tr = tr
         self._ctx: ResolvedContext | None = None
         self._sheets: dict[str, HintSheet] = {}
         self._config = GlobalConfig()
@@ -108,7 +111,7 @@ class HintWindow(Gtk.Window):
         self._error = Gtk.Label(xalign=0, wrap=True, visible=False, selectable=True)
         self._error.add_css_class("wayhint-error")
         root.append(self._error)
-        self._search = Gtk.SearchEntry(visible=False, placeholder_text="search hints…")
+        self._search = Gtk.SearchEntry(visible=False, placeholder_text=tr("search hints…"))
         self._search.connect("search-changed", lambda *_: self._render_list())
         self._search.connect("stop-search", lambda *_: self.end_search())
         root.append(self._search)
@@ -123,12 +126,12 @@ class HintWindow(Gtk.Window):
 
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bar.add_css_class("wayhint-toolbar")
-        self._search_btn = self._button(bar, "Search", self._toggle_search)
-        self._button(bar, "Refresh", lambda: self._on_refresh())
-        self._copy_btn = self._button(bar, "Copy", self._copy_selected)
-        self._edit_hint_btn = self._button(bar, "Edit hint", self._edit_selected)
-        self._button(bar, "Edit sheet", lambda: self._on_edit(self._active_sheet(), None))
-        self._button(bar, "Close", self.hide_overlay)
+        self._search_btn = self._button(bar, tr("Search"), self._toggle_search)
+        self._button(bar, tr("Refresh"), lambda: self._on_refresh())
+        self._copy_btn = self._button(bar, tr("Copy"), self._copy_selected)
+        self._edit_hint_btn = self._button(bar, tr("Edit hint"), self._edit_selected)
+        self._button(bar, tr("Edit sheet"), lambda: self._on_edit(self._active_sheet(), None))
+        self._button(bar, tr("Close"), self.hide_overlay)
         root.append(bar)
 
     @staticmethod
@@ -159,9 +162,9 @@ class HintWindow(Gtk.Window):
     def show_issues(self, issues: Sequence[Issue]) -> None:
         """YAML errors from the store; shown above the list, hints stay (last-known-good)."""
         if issues:
-            lines = [f"⚠ YAML error: {i}" for i in issues[:3]]
+            lines = [f"⚠ {self._tr('YAML error')}: {i}" for i in issues[:3]]
             if len(issues) > 3:
-                lines.append(f"… and {len(issues) - 3} more")
+                lines.append(self._tr("… and {n} more").format(n=len(issues) - 3))
             self._error.set_label("\n".join(lines))
             self._error.set_visible(True)
         elif not (self._ctx and self._ctx.error):
@@ -185,7 +188,7 @@ class HintWindow(Gtk.Window):
         self._searching = True
         LayerShell.set_keyboard_mode(self, LayerShell.KeyboardMode.ON_DEMAND)
         self._search.set_visible(True)
-        self._search_btn.set_label("Done")
+        self._search_btn.set_label(self._tr("Done"))
         self._search.grab_focus()
 
     def end_search(self, refocus: bool = True) -> None:
@@ -194,7 +197,7 @@ class HintWindow(Gtk.Window):
         self._searching = False
         self._search.set_text("")
         self._search.set_visible(False)
-        self._search_btn.set_label("Search")
+        self._search_btn.set_label(self._tr("Search"))
         self._render_list()
         if refocus:
             try:
@@ -275,7 +278,7 @@ class HintWindow(Gtk.Window):
         if ctx and ctx.output:
             parts.append(ctx.output.name)
         if ctx and active is None and not ctx.error:
-            parts.append("no matching sheet")
+            parts.append(self._tr("no matching sheet"))
         self._context_label.set_label("  ·  ".join(parts))
         if ctx and ctx.error:
             self.show_message(f"⚠ {ctx.error}")
@@ -311,11 +314,11 @@ class HintWindow(Gtk.Window):
         if hint.remark:
             lines.append(hint.remark)
         if hint.tags:
-            lines.append("tags: " + ", ".join(hint.tags))
+            lines.append(f"{self._tr('tags')}: " + ", ".join(hint.tags))
         if hint.source:
-            lines.append(f"source: {hint.source}")
+            lines.append(f"{self._tr('source')}: {hint.source}")
         if hint.learned:
-            lines.append(f"learned: {hint.learned}")
+            lines.append(f"{self._tr('learned')}: {hint.learned}")
         self._detail.set_label("\n".join(lines))
         self._detail.set_visible(True)
         self._copy_btn.set_sensitive(hint.copy_text() is not None)

@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from wayhint.i18n import LANGUAGES
 from wayhint.models import ANCHORS, EDITOR_PLACEHOLDERS, DisplayConfig, Margin, Size
 
 _PLACEHOLDER_RE = re.compile(r"\{([^{}]*)\}")
@@ -46,6 +47,7 @@ class GlobalConfig:
         )
     )
     style: str = "style.css"
+    language: str = "auto"  # auto (locale) | en | ja
     show_category: bool = True
     editor: EditorConfig = field(default_factory=EditorConfig)
     parent_tags: tuple[str, ...] = ()
@@ -185,6 +187,9 @@ def parse_global_config(data: object) -> GlobalConfig:
     style = appearance.get("style", defaults.style)
     if not isinstance(style, str) or not style:
         raise ConfigError("appearance.style", "must be a non-empty string")
+    language = appearance.get("language", defaults.language)
+    if not isinstance(language, str) or language not in LANGUAGES:
+        raise ConfigError("appearance.language", f"must be one of {', '.join(LANGUAGES)}")
 
     editor_node = _mapping(root.get("editor"), "editor")
     if "command" in editor_node:
@@ -206,6 +211,7 @@ def parse_global_config(data: object) -> GlobalConfig:
     return GlobalConfig(
         display=display,
         style=style,
+        language=language,
         show_category=_bool(appearance.get("show_category"), "appearance.show_category", True),
         editor=editor,
         parent_tags=_str_list(nested.get("parent_tags"), "nested.parent_tags"),

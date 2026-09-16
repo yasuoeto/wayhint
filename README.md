@@ -33,6 +33,7 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 | Path | Contents |
 |---|---|
 | `config.yaml` | overlay 位置・サイズ、editor、parent tags 等。無ければ全て既定値 |
+| UI 言語 | ボタン等の文字はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)から自動選択。`appearance.language: en\|ja` で固定。日英以外は英語 |
 | `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`) |
 | `hints/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む |
 

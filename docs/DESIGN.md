@@ -57,6 +57,7 @@ src/wayhint/
   context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
   context/process.py              ProcessInfo 正規化
   ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)
+  i18n.py                         UI 文字列カタログ(en/ja)、locale 検出(純粋、テスト対象)
   ui/window.py, ui/style.py       HintWindow(list/detail/search/toolbar)、CSS
   editor.py                       placeholder 置換 + Popen(shell=False)
   clipboard.py                    GDK clipboard
@@ -83,7 +84,7 @@ src/wayhint/
 
 ```yaml
 overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, right: 24}, output: null}
-appearance: {style: style.css, show_category: true}
+appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
 editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"]}
 nested:     {parent_tags: []}
 context:    {live_update: false}

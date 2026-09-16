@@ -5,6 +5,7 @@ overlay:
   margin: {top: 24, right: 24}
 appearance:
   style: style.css
+  language: auto        # auto = マシンの locale(LC_ALL → LC_MESSAGES → LANG)。en | ja で固定可
 editor:
   command: [gvim, --remote-silent, "+{line}", "{file}"]
 nested:
