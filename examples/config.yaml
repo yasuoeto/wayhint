@@ -1,0 +1,15 @@
+overlay:
+  anchor: top-right
+  width: 420px
+  height: 60%
+  margin: {top: 24, right: 24}
+appearance:
+  style: style.css
+editor:
+  command: [gvim, --remote-silent, "+{line}", "{file}"]
+nested:
+  parent_tags: [terminal]
+search:
+  max_results: 30
+logging:
+  level: info

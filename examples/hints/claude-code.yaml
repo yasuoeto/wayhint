@@ -1,0 +1,25 @@
+# Claude Code running inside Herdr. Matched on the foreground process, not on the window.
+id: claude-code
+title: Claude Code
+priority: 10
+match:
+  process:
+    argv_regex: ["^claude$"]
+hints:
+  - id: compact
+    title: Compact the conversation
+    kind: command
+    command: /compact
+    category: session
+    remark: Keeps the summary, drops raw tool output.
+  - id: model
+    title: Switch model
+    kind: command
+    command: /model
+    category: session
+  - id: shell-escape
+    title: Run a shell command in the session
+    kind: tip
+    key: "! <command>"
+    category: input
+    copy: "! "

@@ -39,22 +39,27 @@ Wayfire keybinding ─→ wayhint toggle ─(unix socket)─→ wayhintd
 
 ```text
 src/wayhint/
-  app.py / daemon.py / cli.py     GTK app 起動、socket server、CLI entry
+  cli.py                          `wayhint validate|toggle|show|hide|refresh|reload|ping`
+  daemon.py                       `wayhintd`: Gtk.Application、UDS server、Gio.FileMonitor(debounce)
   config.py                       global config(overlay/appearance/editor/nested/context/search/logging)
-  models.py                       Hint, HintSheet, MatchRule, DisplayConfig, EditorConfig,
-                                  ResolvedContext, ProcessInfo, SourceLocation
-  yaml_store.py                   ruamel.yaml による load、行番号保持、validation、last-known-good
-  context/base.py                 NestedContextProvider interface
-  context/resolver.py             ContextResolver(§56 の流れ)
-  context/wayfire.py              PyWayfire 隔離: active view/output, app-id, title, output名
-  context/herdr.py                herdr CLI 隔離: focused pane → process-info → ProcessInfo
-  context/process.py              ProcessInfo 正規化(name/argv/cmdline/basename)
-  matcher/app.py, matcher/process.py   app_id / argv / cmdline regex matching と優先順位
-  ui/window.py, hint_list.py, hint_row.py, detail.py, search.py, style.py
+  models.py                       Hint, HintSheet, MatchRule, DisplayConfig, Size, Margin,
+                                  ResolvedContext, ProcessInfo, OutputInfo, SourceLocation
+  yaml_store.py                   ruamel.yaml load、行番号、validation(Issue)、SheetStore(last-known-good)
+  matcher.py                      app_id / argv / cmdline regex matching、priority → specificity → file order
+  selection.py                    parent tag filter、favorite/category sort、search
+  context/base.py                 DesktopContextProvider / NestedContextProvider(Protocol)
+  context/resolver.py             ContextResolver(§56 の流れ、output 優先順位)
+  context/wayfire.py              PyWayfire 隔離: focused view/output、set_focus
+  context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
+  context/process.py              ProcessInfo 正規化
+  ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)
+  ui/window.py, ui/style.py       HintWindow(list/detail/search/toolbar)、CSS
   editor.py                       placeholder 置換 + Popen(shell=False)
   clipboard.py                    GDK clipboard
-  ipc.py                          $XDG_RUNTIME_DIR/wayhint.sock
+  ipc.py                          socket path、JSON encode/decode、client、handle_request
 ```
+
+設計書 §53 の `matcher/` `ui/hint_list.py` 等は実装量が少ないため上記に統合した。
 
 ## Data model
 

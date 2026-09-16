@@ -8,16 +8,105 @@ overlay 表示する。YAML で育てる context-aware personal cheatsheet。
 - hint は `~/.config/wayhint/hints/*.yaml`。overlay の Edit ボタンから外部 editor で該当行を開く
 - YAML 内の command は表示・copy のみ。実行はしない
 
-要件は `docs/PRODUCT.md`、構造は `docs/DESIGN.md`、経緯は `docs/DECISIONS.md`。
-以下の節は実装が進んだ時点で埋める: install / Wayfire IPC setup / Wayfire hotkey setup /
-autostart / config location / hint 追加方法 / editor 変更方法 / troubleshooting。
+要件は `docs/PRODUCT.md`、構造は `docs/DESIGN.md`、経緯は `docs/DECISIONS.md`、進捗は `STATUS.md`。
 
-## Quick start
+## Install
+
+依存: Python 3.11+、GTK4 + PyGObject、gtk4-layer-shell(typelib 込み)、Wayfire 0.10 以上(IPC plugin)、
+任意で Herdr と gvim。Debian/sid の場合:
 
 ```sh
-./scripts/setup    # prepare a working copy
-./scripts/check    # the only validation entry point
+sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
 ```
+
+```sh
+git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
+./scripts/setup                 # .venv (system site-packages 共有) + ruamel.yaml + PyWayfire
+.venv/bin/pip install -e .      # wayhint / wayhintd コマンドを .venv/bin に置く
+./scripts/check                 # lint + unit tests
+```
+
+## Config location
+
+`$XDG_CONFIG_HOME/wayhint/`(既定 `~/.config/wayhint/`):
+
+| Path | Contents |
+|---|---|
+| `config.yaml` | overlay 位置・サイズ、editor、parent tags 等。無ければ全て既定値 |
+| `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`) |
+| `hints/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む |
+
+雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる。schema は
+`docs/DESIGN.md` の Data model。書いたら `wayhint validate` で確認する(問題があれば exit 1)。
+
+## Wayfire IPC setup
+
+`~/.config/wayfire.ini` の `[core] plugins` に `ipc` と `ipc-rules` を含める。Wayfire 起動後に
+`$WAYFIRE_SOCKET` が設定されていれば OK(`wayhintd` は同じ環境変数を見る)。
+
+## Wayfire hotkey setup
+
+daemon は Wayfire セッション内で 1 つ起動し、hotkey は Wayfire の `[command]` から CLI を叩く:
+
+```ini
+[command]
+binding_wayhint = <super> KEY_SLASH
+command_wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhint toggle
+```
+
+## Autostart
+
+`[autostart]` に daemon を足す(絶対パスで):
+
+```ini
+[autostart]
+wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
+```
+
+手動で試すときは `wayhintd -v`(前景、info ログ)。`wayhint ping` で応答を確認する。
+
+## Adding hints
+
+1. `hints/` に新しい YAML を置く(または既存の sheet に hint を足す)。
+2. daemon は保存を検知して自動 reload する(overlay を閉じる必要はない)。壊れた YAML のときは
+   直前の正常版を表示し続け、overlay 上部に `⚠ YAML error file:line: message` が出る。
+3. overlay の **Edit sheet** / **Edit hint** で editor が該当ファイル・該当行を開く。
+
+## Changing the editor
+
+`config.yaml` の `editor.command` は argv の list。placeholder は `{file}` `{line}` `{hint_id}`。
+shell を通らないので引用符やパイプは書けない。
+
+```yaml
+editor:
+  command: [code, --goto, "{file}:{line}"]
+```
+
+## Troubleshooting
+
+| 症状 | 確認 |
+|---|---|
+| `wayhint: wayhintd is not running` | `wayhintd -v` を前景で起動してログを見る。socket は `$XDG_RUNTIME_DIR/wayhint.sock` |
+| `⚠ Wayfire IPC unavailable` | `echo $WAYFIRE_SOCKET`、`[core] plugins` に `ipc`。Wayfire 以外の compositor では出る |
+| `this Wayland session has no layer-shell support` | `gir1.2-gtk4layershell-1.0` が入っているか。X11/Xwayland では動かない |
+| Herdr の中で親 sheet しか出ない | `herdr pane process-info --current` の `foreground_processes` と `argv_regex` を照合 |
+| 検索後にキー入力が元アプリに戻らない | Search を終える(Done / Esc)と keyboard_mode は必ず none に戻る。focus 復帰は Wayfire IPC `set_focus` 依存。`wayhintd -v` に `could not return focus` が出るか |
+
+## 実機チェックリスト(設計書 §69–§73、手動)
+
+Wayfire セッションで実施し、結果は `STATUS.md` に日付付きで記録する。
+
+- [ ] T1 hotkey で右上に表示、元アプリへの入力が続く(keyboard grab なし)
+- [ ] T2 同じ hotkey で非表示(toggle)
+- [ ] T3 別 output 上のアプリから起動 → そのアプリの output に出る
+- [ ] T4 sheet の `display.output` override が効く
+- [ ] T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
+- [ ] T6 Search 中だけ入力を受け、Done/Esc 後に grab が残らず前の view に focus が戻る
+- [ ] T7 Edit sheet で gvim が sheet を開く、Edit hint で該当行に jump
+- [ ] T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
+- [ ] T9 Herdr で unknown process → Herdr hints のみ
+- [ ] T10 表示中に YAML を編集 → 閉じずに更新
+- [ ] T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 
 ## Layout
 
@@ -29,6 +118,7 @@ autostart / config location / hint 追加方法 / editor 変更方法 / troubles
 | `docs/PRODUCT.md` | requirements |
 | `docs/DESIGN.md` | design |
 | `docs/DECISIONS.md` | decision log |
+| `examples/` | config.yaml と sheet の雛形 |
 | `scripts/` | `setup`, `check`, and repository-specific agent hooks |
 | `.agents/skills/` | skills shared across agents |
 | `.claude/`, `.codex/` | per-vendor adapter settings (do not edit by hand) |
