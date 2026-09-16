@@ -206,3 +206,24 @@ mistaken for one, and so the first real decision gets number 0001):
   のみ送る。compositor が workspace を消したら、その entry も落とす。overlay の開閉は watcher の
   event dispatch 中に呼ばれるため GLib の idle に逃がす。fd からは `read` で socket を空にする必要が
   あり、`dispatch` だけでは fd が readable のままになり watch が CPU を回し続ける。
+
+## 0013 — hotkey は別 window から押されたら閉じずに差し替える
+
+- **Date**: 2026-09-17
+- **Status**: accepted
+- **Context**: window1 の hint を出したまま window2 に focus を移して hotkey を押すと、hint が
+  閉じるだけで、window2 の hint を見るにはもう一度押す必要があった。hotkey の意味は「いま見て
+  いるものの hint」であり、閉じたいのは既に同じものが出ているときだけ。
+- **Decision**: `toggle` は押された時点の context を解決し、いま出ているものと比べる。同じなら
+  閉じ、違えば差し替える。何も出ていなければ出す。比較は `ResolvedContext.target_key()` =
+  (active_sheet, parent_context, desktop_app, foreground process 名)。
+- **Alternatives**:
+  - window を識別子で覚える: 使えるのは `view_ref` だが、中身は app_id と title で、terminal は
+    実行中のコマンドで title を書き換える。数秒ごとに「別 window」と誤判定する。
+  - `ext-foreign-toplevel-list-v1` の安定 identifier を使う: labwc は出すが、この protocol には
+    focus 状態が無い。focus は `wlr-foreign-toplevel` 側にあり、両者を突き合わせる手段が
+    app_id と title しかないため同じ問題に戻る。
+  - 常に差し替える(閉じない): hotkey で閉じられなくなる。
+- **Consequences**: `toggle` は閉じる場合も context を 1 回解決する(Wayland 往復と、Herdr 使用時は
+  `herdr` 1 回)。同じ sheet に解決される 2 つの window の間では差し替えではなく通常の閉じるに
+  なる。出る内容は同じなので見た目の破綻は無いが、window 単位の挙動ではない。

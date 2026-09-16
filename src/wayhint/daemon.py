@@ -177,20 +177,11 @@ class Daemon:
         assert self.window is not None
         self._start_workspace_watch()
         ctx = self.resolver.resolve(self.store.sheets, self.config)
-        self._present(ctx)
-        workspace = self._current_workspace()
-        if workspace is not None:
-            self._open[workspace] = ctx
-            log.info("overlay open on workspace %s", workspace)
-        return {"visible": True, "sheet": ctx.active_sheet, "error": ctx.error}
+        return self._open_here(ctx)
 
     def hide(self) -> dict:
         assert self.window is not None
-        workspace = self._current_workspace()
-        if workspace is not None:
-            self._open.pop(workspace, None)
-        else:
-            self._open.clear()
+        self._open.pop(self._workspace_key(), None)
         self.window.hide_overlay()
         if not self._open:
             self._stop_workspace_watch()
@@ -199,8 +190,29 @@ class Daemon:
     def toggle(self) -> dict:
         assert self.window is not None
         self._start_workspace_watch()
-        action = toggle_action(self.window.is_shown(), self._current_workspace(), self._open)
-        return self.show() if action == "show" else self.hide()
+        key = self._workspace_key()
+        shown = self._open.get(key)
+        ctx = self.resolver.resolve(self.store.sheets, self.config)
+        action = toggle_action(
+            shown is not None, shown is not None and shown.target_key() == ctx.target_key()
+        )
+        if action == "hide":
+            return self.hide()
+        if action == "replace":
+            log.info(
+                "hotkey from another window: replacing %s with %s",
+                shown.active_sheet,
+                ctx.active_sheet,
+            )
+        return self._open_here(ctx)
+
+    def _open_here(self, ctx: ResolvedContext) -> dict:
+        """Present a context and record it as what is open on the current workspace."""
+        key = self._workspace_key()
+        self._present(ctx)
+        self._open[key] = ctx
+        log.info("overlay open on workspace %s: sheet %s", key or "-", ctx.active_sheet)
+        return {"visible": True, "sheet": ctx.active_sheet, "error": ctx.error}
 
     def _present(self, ctx: ResolvedContext) -> None:
         assert self.window is not None
@@ -270,17 +282,20 @@ class Daemon:
             self._watcher = None
         self._open.clear()
 
-    def _current_workspace(self) -> str | None:
-        """The active workspace now, not as of the last event we happened to process.
+    def _workspace_key(self) -> str:
+        """Key for the current workspace, or ``""`` when there is no workspace backend.
+
+        The empty key gives compositors without ``ext-workspace-v1`` a single slot, so the rest of
+        the daemon works the same way with and without workspace scoping.
 
         ``toggle`` arrives over the socket while the workspace change arrives over the Wayland
         connection, so the two race. A round trip settles every pending event first and makes the
         decision the same whichever order they arrive in.
         """
         if self._watcher is None:
-            return None
+            return ""
         self._watcher.roundtrip()
-        return self._watcher.active()
+        return self._watcher.active() or ""
 
     def _on_watch_fd(self, _fd, _condition) -> bool:
         if self._watcher is None or not self._watcher.dispatch():

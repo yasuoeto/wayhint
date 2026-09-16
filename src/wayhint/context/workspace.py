@@ -47,22 +47,21 @@ def active_key(workspaces: Mapping[str, int]) -> str | None:
     return None
 
 
-def toggle_action(visible: bool, current: str | None, open_on: Container[str]) -> str:
-    """``"show"`` or ``"hide"`` for a ``toggle`` request.
+def toggle_action(open_here: bool, shows_the_same: bool) -> str:
+    """``"show"``, ``"replace"`` or ``"hide"`` for a ``toggle`` request.
 
-    With workspace scoping, whether the overlay is open is a property of the workspace, not of the
-    window: ``open_on`` holds every workspace the user has opened it on. The window itself only
-    shows the current workspace's one.
+    The hotkey means "hints for what I am looking at now". Pressing it while the hints for another
+    window are up should swap them, not put them away: closing is only what the user wants when
+    the hints already on screen are the ones the key would bring up.
 
-    This also settles a race. The hotkey arrives over the socket and the workspace change over the
-    Wayland connection, so either can be seen first. Asking "is it open on *this* workspace"
-    gives the same answer both ways, where asking "is the window visible" does not.
-
-    Without a workspace backend ``current`` is None and this degrades to a plain toggle.
+    ``open_here`` is a property of the workspace, not of the window, and is what settles the race
+    between the hotkey on the socket and the workspace change on the Wayland connection. Asking
+    "is it open on this workspace" gives the same answer whichever arrives first, where asking
+    "is the window visible" does not.
     """
-    if current is None:
-        return "hide" if visible else "show"
-    return "hide" if current in open_on else "show"
+    if not open_here:
+        return "show"
+    return "hide" if shows_the_same else "replace"
 
 
 def workspace_action(current: str | None, open_on: Container[str]) -> str:

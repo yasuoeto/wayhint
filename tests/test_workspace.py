@@ -9,6 +9,7 @@ from wayhint.context.workspace import (
     workspace_action,
     workspace_key,
 )
+from wayhint.models import ProcessInfo, ResolvedContext
 
 
 class FakeHandle:
@@ -39,21 +40,52 @@ class KeyTest(unittest.TestCase):
 
 
 class ToggleRuleTest(unittest.TestCase):
-    def test_open_on_this_workspace_hides(self) -> None:
-        self.assertEqual(toggle_action(True, "one", {"one"}), "hide")
+    def test_nothing_open_here_shows(self) -> None:
+        self.assertEqual(toggle_action(False, False), "show")
+        self.assertEqual(toggle_action(False, True), "show")
 
-    def test_not_open_here_shows(self) -> None:
-        self.assertEqual(toggle_action(False, "one", set()), "show")
-        self.assertEqual(toggle_action(False, "two", {"one"}), "show")
+    def test_the_same_hints_already_up_hides(self) -> None:
+        self.assertEqual(toggle_action(True, True), "hide")
 
-    def test_visible_but_open_elsewhere_shows_here(self) -> None:
-        # The hotkey can beat the workspace-change event: the window is still on screen from the
-        # workspace we just left. Asking about this workspace gives the same answer either way.
-        self.assertEqual(toggle_action(True, "two", {"one"}), "show")
+    def test_another_windows_hints_are_replaced(self) -> None:
+        self.assertEqual(toggle_action(True, False), "replace")
 
-    def test_without_a_workspace_backend_it_is_a_plain_toggle(self) -> None:
-        self.assertEqual(toggle_action(True, None, set()), "hide")
-        self.assertEqual(toggle_action(False, None, set()), "show")
+
+class TargetKeyTest(unittest.TestCase):
+    def ctx(self, **kw):
+        return ResolvedContext(**kw)
+
+    def test_same_window_keeps_the_same_key(self) -> None:
+        a = self.ctx(desktop_app="foot", active_sheet="herdr", desktop_title="one")
+        b = self.ctx(desktop_app="foot", active_sheet="herdr", desktop_title="two")
+        # A terminal rewrites its title as commands run; that must not look like another window.
+        self.assertEqual(a.target_key(), b.target_key())
+
+    def test_view_ref_is_ignored(self) -> None:
+        a = self.ctx(desktop_app="foot", active_sheet="herdr", view_ref="foot\tone")
+        b = self.ctx(desktop_app="foot", active_sheet="herdr", view_ref="foot\ttwo")
+        self.assertEqual(a.target_key(), b.target_key())
+
+    def test_different_sheet_or_app_or_process_differs(self) -> None:
+        base = self.ctx(desktop_app="foot", active_sheet="herdr")
+        self.assertNotEqual(base.target_key(), self.ctx(desktop_app="foot").target_key())
+        self.assertNotEqual(
+            base.target_key(), self.ctx(desktop_app="firefox", active_sheet="herdr").target_key()
+        )
+        nested = self.ctx(
+            desktop_app="foot",
+            active_sheet="claude",
+            parent_context="herdr",
+            foreground_process=ProcessInfo(
+                pid=1, name="claude", argv=("claude",), cmdline="claude"
+            ),
+        )
+        self.assertNotEqual(base.target_key(), nested.target_key())
+
+    def test_unmatched_apps_still_differ_by_app(self) -> None:
+        a = self.ctx(desktop_app="firefox")
+        b = self.ctx(desktop_app="chromium")
+        self.assertNotEqual(a.target_key(), b.target_key())
 
 
 class WorkspaceSwitchRuleTest(unittest.TestCase):

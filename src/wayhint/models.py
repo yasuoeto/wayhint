@@ -164,3 +164,14 @@ class ResolvedContext:
     foreground_process: ProcessInfo | None = None
     active_sheet: str | None = None
     error: str | None = None  # e.g. desktop context unavailable; shown in the overlay
+
+    def target_key(self) -> tuple:
+        """What the overlay ends up showing, for deciding whether a new context replaces it.
+
+        Deliberately excludes ``desktop_title`` and ``view_ref``: both carry the window title,
+        which many applications rewrite as they work (a terminal follows the running command), so
+        comparing them would report a different window every few seconds. The sheet, the parent
+        sheet, the application and the foreground process are what the overlay actually shows.
+        """
+        process = self.foreground_process.name if self.foreground_process else None
+        return (self.active_sheet, self.parent_context, self.desktop_app, process)

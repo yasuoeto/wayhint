@@ -55,6 +55,7 @@ src/wayhint/
   context/wayfire.py              PyWayfire 隔離(optional backend): focused view/output、set_focus
   context/select.py               `context.backend` auto|wayland|wayfire の選択と auto fallback
   context/workspace.py            pywayland 隔離: ext-workspace-v1 で active workspace 監視、toggle/切替の判定
+  models.py の ResolvedContext.target_key()  overlay が何を出しているかの比較キー(title は含めない)
   context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
   context/process.py              ProcessInfo 正規化
   ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)

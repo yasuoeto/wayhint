@@ -87,8 +87,9 @@ wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
 
 ## overlay の使い方
 
-hotkey で表示し、もう一度押すと閉じる。通常表示中は keyboard focus を奪わないので、overlay を
-出したまま元のアプリで作業を続けられる。その代わり通常表示中はキー入力が overlay に届かないので、
+hotkey は「いま見ているものの hint」を意味する。押すと表示し、同じ hint が出ている状態でもう一度
+押すと閉じる。別の window に移ってから押した場合は閉じずに、その window の hint に差し替わる。
+通常表示中は keyboard focus を奪わないので、overlay を出したまま元のアプリで作業を続けられる。その代わり通常表示中はキー入力が overlay に届かないので、
 閉じるのは hotkey か **閉じる** ボタン。`Esc` が効くのは検索中だけ。
 
 一覧は 1 行が 1 hint で、左に `key`、中央に title と `command`、右に `category` が出る。
