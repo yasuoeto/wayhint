@@ -137,6 +137,31 @@ hotkey に割り当てるのは `toggle`。
 `validate` は `--config-dir`、それ以外は `--socket` で既定の場所を上書きできる。
 daemon 側は `wayhintd -v` で info ログを前景に出す。
 
+### daemon を再起動する
+
+`reload` が読み直すのは `config.yaml` と `hints/*.yaml` だけで、Python 側を変えたときは daemon を
+入れ替える。頻度は低いので専用の script や panel 項目は用意しない。次の 1 行で止めて起動し直す:
+
+```sh
+cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p'); \
+  [ -n "$p" ] && kill "$p" && while kill -0 "$p" 2>/dev/null; do sleep 0.1; done; \
+  nohup .venv/bin/wayhintd -v >>"${XDG_RUNTIME_DIR:-/tmp}/wayhint.log" 2>&1 & disown
+```
+
+よく使うなら `~/.bashrc` に `alias wayhint-restart='…'` として置く。中身の意味:
+
+- pid は `wayhint ping` から取る。`pkill -f wayhintd` は **この 1 行を実行しているシェル自身にも
+  当たる**ので使わない。
+- daemon が動いていないときは `wayhint: wayhintd is not running …` が 1 行出るが、そのまま起動する。
+- 前の daemon が socket を片付けるのを待ってから起動する。生きている daemon がいる間に起動すると
+  `wayhintd already running on …` で終了する(死んだあとの socket は新しい daemon が自分で消す)。
+- ログは `$XDG_RUNTIME_DIR/wayhint.log` に追記する。ログアウトで消える。前景で見たいだけなら
+  `.venv/bin/wayhintd -v` をそのまま端末で動かす。
+- daemon は SIGTERM / SIGINT で socket を消して終了する。`kill -9` は socket を残すが、次の起動が
+  stale として消すので実害は無い。
+
+編集した hint を反映するだけなら再起動は要らない(保存で自動 reload、`wayhint reload` でも可)。
+
 ## hint を書く
 
 1. `hints/` に新しい YAML を置く(または既存の sheet に hint を足す)。
