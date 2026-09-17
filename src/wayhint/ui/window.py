@@ -70,6 +70,7 @@ class HintWindow(Gtk.Window):
         app: Gtk.Application,
         on_refresh: Callable[[], None],
         on_edit: Callable[[HintSheet | None, Hint | None], None],
+        on_close: Callable[[], None],
         refocus: Callable[[str | None], None],
         tr: Translator | None = None,
     ) -> None:
@@ -77,6 +78,7 @@ class HintWindow(Gtk.Window):
         self.add_css_class("wayhint")
         self._on_refresh = on_refresh
         self._on_edit = on_edit
+        self._on_close = on_close
         self._refocus = refocus
         self._tr = tr or translator()
         self._ctx: ResolvedContext | None = None
@@ -131,7 +133,7 @@ class HintWindow(Gtk.Window):
         self._copy_btn = self._button(bar, self._tr("Copy"), self._copy_selected)
         self._edit_hint_btn = self._button(bar, self._tr("Edit hint"), self._edit_selected)
         self._button(bar, self._tr("Edit sheet"), lambda: self._on_edit(self._active_sheet(), None))
-        self._button(bar, self._tr("Close"), self.hide_overlay)
+        self._button(bar, self._tr("Close"), lambda: self._on_close())
         root.append(bar)
 
     @staticmethod
@@ -175,6 +177,11 @@ class HintWindow(Gtk.Window):
         self._error.set_visible(True)
 
     def hide_overlay(self) -> None:
+        """Put the surface away without deciding anything: the daemon owns "is it open here?".
+
+        Closing on the user's behalf goes through the ``on_close`` callback instead, so the
+        workspace stops counting the overlay as open on it.
+        """
         if self._searching:
             self.end_search(refocus=False)
         self.set_visible(False)
@@ -218,7 +225,7 @@ class HintWindow(Gtk.Window):
         return False
 
     def _on_close_request(self, *_):
-        self.hide_overlay()
+        self._on_close()
         return True  # keep the window object alive
 
     # --- rendering -------------------------------------------------------------------------

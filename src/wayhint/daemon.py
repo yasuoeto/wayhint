@@ -90,6 +90,7 @@ class Daemon:
             app,
             on_refresh=self.refresh,
             on_edit=self.edit,
+            on_close=self.hide,
             refocus=self._refocus,
             tr=translator(self.config.language),
         )

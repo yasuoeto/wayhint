@@ -140,7 +140,9 @@ hints:
   loop に載せ、読めるようになったら `flush → read → dispatch` で socket を空にする
   (`dispatch` だけでは socket を読まず fd が readable のままになり、watch が回り続ける)。
   polling は無い。daemon は workspace key → `ResolvedContext` の dict を持ち、切り替え時に
-  その workspace の分だけ出し直す。
+  その workspace の分だけ出し直す。overlay の「閉じる」と close-request は daemon の `hide` を
+  呼び、その workspace の entry を落とす。`HintWindow.hide_overlay` は surface を隠すだけで、
+  workspace 切り替えで隠すときに使う。
 - **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
   し、adapter 内部で吸収する。
 - **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。
@@ -188,6 +190,7 @@ hints:
 - T9 Herdr で unknown process → Herdr hints のみ
 - T10 表示中に YAML を編集 → 閉じずに更新
 - T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
+- T12 「閉じる」で閉じたあと workspace を往復しても再表示されない
 
 ## Known limits and future work
 
