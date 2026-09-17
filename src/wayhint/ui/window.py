@@ -317,7 +317,9 @@ class HintWindow(Gtk.Window):
             self._copy_btn.set_sensitive(False)
             self._edit_hint_btn.set_sensitive(False)
             return
-        lines = [f"{hint.kind}  ·  {hint.id}"]
+        # Only what the row cannot show. `kind` and `id` are for whoever edits the YAML (id is
+        # the duplicate check and the `{hint_id}` placeholder), not for whoever reads the hint.
+        lines: list[str] = []
         if hint.remark:
             lines.append(hint.remark)
         if hint.tags:
@@ -327,7 +329,7 @@ class HintWindow(Gtk.Window):
         if hint.learned:
             lines.append(f"{self._tr('learned')}: {hint.learned}")
         self._detail.set_label("\n".join(lines))
-        self._detail.set_visible(True)
+        self._detail.set_visible(bool(lines))
         self._copy_btn.set_sensitive(hint.copy_text() is not None)
         self._edit_hint_btn.set_sensitive(True)
 

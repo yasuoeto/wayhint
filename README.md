@@ -93,8 +93,9 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 閉じるのは hotkey か **閉じる** ボタン。`Esc` が効くのは検索中だけ。
 
 一覧は 1 行が 1 hint で、左に `key`、中央に title と `command`、右に `category` が出る。
-`favorite: true` の hint は `★` 付きで先頭に集まる。行を選ぶと下に詳細が開き、`kind` と id、
-`remark`、タグ、出典、習得日が出る。
+`favorite: true` の hint は `★` 付きで先頭に集まる。行を選ぶと下に詳細が開き、`remark`、タグ、
+出典、習得日が出る(行に出ているものは繰り返さない。どれも書いていない hint では詳細は開かない)。
+`id` と `kind` は YAML を書く側のもので、overlay には出ない。
 
 | ボタン | 動作 |
 |---|---|
@@ -197,7 +198,7 @@ pane 操作だけが並ぶ。
 
 | キー | 用途 |
 |---|---|
-| `kind` | `shortcut` / `command` / `tip` / `note`。詳細の先頭に出るだけで、絞り込みには使わない |
+| `kind` | `shortcut` / `command` / `tip` / `note`。**overlay には出ない**。YAML 上の分類で、絞り込みにも使わない |
 | `key` | 一覧の左端に出るキー操作。例 `Ctrl-o` |
 | `command` | 一覧の title の下に出るコマンド文字列。**実行はしない**。表示とコピーのみ |
 | `category` | 一覧の右端に出る見出し。同じ category の hint は隣り合って並ぶ |

@@ -40,7 +40,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
   `nested-common`)を持つhintのみ。
 - 1 application/context につき1 YAMLファイル(`~/.config/wayhint/hints/*.yaml`)。
 - 検索(通常表示ではkeyboardを取らず、Search開始時のみinteractive)。
-- 詳細表示(remark / source / learned は詳細のみ)。clipboard copy。
+- 詳細表示(remark / source / learned / tags は詳細のみ。id / kind は表示しない)。clipboard copy。
 - 外部editorによる編集(Edit sheet / Edit hint行jump)、YAML保存時の自動reload、
   invalid YAML時のlast-known-good保持。
 - daemon + CLI(`wayhint toggle|show|hide|refresh|validate`)、Unix domain socket IPC、
