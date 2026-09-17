@@ -228,8 +228,14 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
 | `delete_hint(doc, id) -> removed` | 直前ブロックコメントも削除。除いた node を返す（undo 用） |
 | `swap_hints(doc, id_a, id_b)` | 位置 swap。`ca.items` の直前コメントを付け替える |
 | `set_favorite(doc, id, value)` | |
-| `create_sheet(ctx, first_hint, config) -> (path, doc)` | §7 |
-| `normalize_sheet(doc, modeline)` | format: 全 hint を canonical 順・12 項目化。sheet メタは触らない |
+| `ensure_modeline(doc, schema_path)` | 先頭にモードライン。既にあれば何もしない |
+| `match_rule_for_context(ctx) -> (match, warning)` | §7。警告は呼び出し側（UI / CLI）が表示する |
+| `create_sheet(ctx, first_hint, config, hints_dir=None, existing_ids=(), now=None)` | §7。戻り値 `(path, doc)`。`hints_dir` / `now` は注入用で、既定は `config_dir()/hints` と現在時刻 |
+| `normalize_sheet(doc, modeline_path=None)` | format: 全 hint を canonical 順・12 項目化。sheet メタは触らない |
+| `slug(text, existing=(), now=None)` | id / ファイル名。衝突は `-2`、生成できなければ `q-YYYYMMDD-HHMMSS` |
+
+例外は `SheetWriteError`（書き込み不能・validation 失敗。`.issues` を持つ）と、その subclass の
+`HintNotFoundError`。定数は `CANONICAL_HINT_KEYS` / `DUMP_WIDTH` / `MODELINE_PREFIX`。
 
 読み書きは既存の `read_document` を使い、`_yaml()` に `indent(mapping=2, sequence=4, offset=2)` と
 折り返しの起きない `width` を追加する。load / dump で同じ設定を共有する。
@@ -257,7 +263,9 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 - `match` の生成:
   - `parent_context is None` → app_id 一致
   - `parent_context` あり、`active_sheet` が親と異なる状況で process により子を作る → `process.argv_regex: ["^<name>$"]`
-  - `name` が汎用名（定数 `GENERIC_PROCESS_NAMES`。`matcher.py` に置く）→ `argv[1:]` の basename を候補にする（候補生成は matcher の既存関数を再利用）。非汎用の候補が無ければフォームに警告
+  - `name` が汎用名（定数 `GENERIC_PROCESS_NAMES`。`matcher.py` に置く）→ `argv[1:]` の basename を候補にする（候補生成は matcher の `process_candidates` / `argv_basenames` と同じ規則）。`-` で始まる引数（オプション）は候補から除く。非汎用の候補が無ければフォームに警告
+  - app_id 一致の regex は `re.escape` した完全一致（例 `^org\.inkscape\.Inkscape$`）
+  - 警告は `match_rule_for_context` の戻り値で返し、UI / CLI がそれを表示する
 - 生成直後の FileMonitor reload で新 sheet が有効になる。
 
 ### 8. 同時編集と reload

@@ -12,6 +12,7 @@ dependencies = ["ruamel.yaml>=0.18", "pywayland>=0.4"]
 
 [project.optional-dependencies]
 wayfire = ["wayfire>=0.6"]  # Wayfire IPC fallback backend (context.backend: wayfire)
+dev = ["jsonschema>=4"]     # tests only: checks `wayhint schema` output against real sheets
 
 [project.scripts]
 wayhint = "wayhint.cli:main"

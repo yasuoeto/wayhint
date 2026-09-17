@@ -320,6 +320,8 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - ファイルは `~/.config/wayhint/hints/<slug>.yaml`。`id` / `title` は context の app 名または process 名から生成し、sheet id 衝突時は `-2`。`priority` は既定値、`version` は省略。
 - `match` は `ResolvedContext` から生成する。`parent_context` が None なら app_id 一致、`parent_context` があり process で解決していれば `process.argv_regex: ["^<name>$"]`。
 - process 名が汎用名（`python3` `python` `node` `sh` `bash` 等。一覧は 1 箇所の定数で持つ）の場合は matcher と同じ規則で `argv[1:]` の basename を候補とする。非汎用の候補が 1 つも無いときだけ警告を出す。
+- app_id から作る regex は `re.escape` した完全一致とする（`.` を含む app_id で必要）。
+- 汎用名の候補生成では `-` で始まる引数（オプション）を候補から除く（`bash -l` から `^-l$` を作らない）。
 - 生成ファイルの先頭に、生成日時・判定に使った context 情報・採用した regex をコメントで残す。
 - config `editor.schema_modeline: bool`（既定 false）が true なら、先頭に `# yaml-language-server: $schema=...` を付ける。`$schema=` に書く path は config `editor.schema_path`（既定 `~/.config/wayhint/schema.json`）。`wayhint format` も同じ設定を見る。
 

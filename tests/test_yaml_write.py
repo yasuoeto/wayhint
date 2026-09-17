@@ -11,6 +11,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import jsonschema
+import jsonschema.validators
+
 from wayhint.config import EditorConfig, GlobalConfig
 from wayhint.models import ProcessInfo, ResolvedContext
 from wayhint.schema import json_schema
@@ -359,48 +362,6 @@ class SlugTest(unittest.TestCase):
                 self.assertRegex(slug(title, (), NOW), self.ID_RE)
 
 
-def check_schema(case: unittest.TestCase, value, schema: dict, where: str = "$") -> None:
-    """The subset of JSON Schema that json_schema() emits, so the test needs no new dependency."""
-    if "const" in schema:
-        case.assertEqual(value, schema["const"], where)
-        return
-    if "enum" in schema:
-        case.assertIn(value, schema["enum"], where)
-        return
-    types = schema.get("type")
-    types = [types] if isinstance(types, str) else types
-    if types is not None:
-        names = {
-            "object": dict,
-            "array": list,
-            "string": str,
-            "integer": int,
-            "boolean": bool,
-            "null": type(None),
-        }
-        ok = any(
-            isinstance(value, names[t]) and not (t == "integer" and isinstance(value, bool))
-            for t in types
-        )
-        case.assertTrue(ok, f"{where}: {value!r} is not {types}")
-    if isinstance(value, str) and "pattern" in schema:
-        case.assertRegex(value, schema["pattern"], where)
-    if isinstance(value, str) and "minLength" in schema:
-        case.assertGreaterEqual(len(value), schema["minLength"], where)
-    if isinstance(value, dict):
-        properties = schema.get("properties", {})
-        for key in schema.get("required", []):
-            case.assertIn(key, value, where)
-        for key, item in value.items():
-            if key in properties:
-                check_schema(case, item, properties[key], f"{where}.{key}")
-            elif schema.get("additionalProperties") is False:
-                case.fail(f"{where}: unexpected key {key!r}")
-    if isinstance(value, list) and "items" in schema:
-        for i, item in enumerate(value):
-            check_schema(case, item, schema["items"], f"{where}[{i}]")
-
-
 class SchemaTest(unittest.TestCase):
     """One direction only: what validation accepts, the schema accepts (docs/DESIGN.md §13)."""
 
@@ -413,15 +374,21 @@ class SchemaTest(unittest.TestCase):
             return value.isoformat()
         return value
 
-    def test_valid_sheets_pass_the_schema(self) -> None:
+    def validator(self):
         schema = json_schema()
+        cls = jsonschema.validators.validator_for(schema)
+        cls.check_schema(schema)  # the schema itself must be a valid draft 2020-12 document
+        return cls(schema, format_checker=cls.FORMAT_CHECKER)
+
+    def test_valid_sheets_pass_the_schema(self) -> None:
+        validator = self.validator()
         for path in sheet_paths():
             with self.subTest(sheet=path.name):
                 data, issues = read_document(path)
                 self.assertEqual(issues, [])
                 _sheet, issues = parse_sheet(data, path)
                 self.assertEqual(issues, [], "fixture must be valid for this test to mean anything")
-                check_schema(self, self.plain(data), schema)
+                validator.validate(self.plain(data))
 
     def test_generated_sheet_passes_the_schema(self) -> None:
         _path, doc = create_sheet(
@@ -431,4 +398,4 @@ class SchemaTest(unittest.TestCase):
             hints_dir=Path("/tmp"),
             now=NOW,
         )
-        check_schema(self, self.plain(doc), json_schema())
+        self.validator().validate(self.plain(doc))
