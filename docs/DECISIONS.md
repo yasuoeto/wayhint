@@ -3,20 +3,6 @@
 Lightweight ADRs. Newest last. One entry per decision that took discussion; a decision that was
 obvious does not need one.
 
-Entry format (this block is an example, not an entry -- it is fenced so that it cannot be
-mistaken for one, and so the first real decision gets number 0001):
-
-```markdown
-## 0001 — Title of the decision
-
-- **Date**: YYYY-MM-DD
-- **Status**: accepted | superseded by 000N | rejected
-- **Context**: what forced a choice, and what constrained it.
-- **Decision**: what was chosen, in one or two sentences.
-- **Alternatives**: what else was considered, and why it lost.
-- **Consequences**: what this now costs or forecloses.
-```
-
 ## 0001 — 実装言語は Python 3 + GTK4 / PyGObject / gtk4-layer-shell / PyWayfire
 
 - **Date**: 2026-09-16
@@ -52,6 +38,7 @@ mistaken for one, and so the first real decision gets number 0001):
   に保持する。GUI からの書き戻しは行わない。
 - **Alternatives**: PyYAML(行番号を取るには Loader を拡張する必要があり、コメント保持もできない)。
 - **Consequences**: 依存が1つ増える。将来 GUI 編集を足すときも構造保持で有利。
+- **Amended**: 0014 により「GUI からの書き戻しは行わない」の部分は superseded。ruamel 採用は維持。
 
 ## 0004 — hotkey は compositor に委譲し、CLI ↔ daemon は Unix domain socket
 
@@ -206,6 +193,7 @@ mistaken for one, and so the first real decision gets number 0001):
   のみ送る。compositor が workspace を消したら、その entry も落とす。overlay の開閉は watcher の
   event dispatch 中に呼ばれるため GLib の idle に逃がす。fd からは `read` で socket を空にする必要が
   あり、`dispatch` だけでは fd が readable のままになり watch が CPU を回し続ける。
+- **Amended**: 0014 で amend(編集モード中の挙動)。
 
 ## 0013 — hotkey は別 window から押されたら閉じずに差し替える
 
@@ -227,3 +215,161 @@ mistaken for one, and so the first real decision gets number 0001):
 - **Consequences**: `toggle` は閉じる場合も context を 1 回解決する(Wayland 往復と、Herdr 使用時は
   `herdr` 1 回)。同じ sheet に解決される 2 つの window の間では差し替えではなく通常の閉じるに
   なる。出る内容は同じなので見た目の破綻は無いが、window 単位の挙動ではない。
+- **Amended**: 0014 で amend(編集モード中の挙動)。
+
+## 0014 — hint 単位の構造化編集を GUI（編集モード）と CLI から行う
+
+- **Date**: 2026-09-18
+- **Status**: accepted
+- **Supersedes**: 0003 のうち「GUI からの書き戻しは行わない」の部分、および PRODUCT.md Out of scope の「GUI 上での YAML 直接編集」
+- **Amends**: 0012（workspace ごとの表示状態）、0013（hotkey は差し替え）
+- **Alternatives**:
+  - append-only の quick add のみ(編集・削除は editor): 誤入力の修正と不要 hint の削除で editor を
+    開く負荷が残る。
+  - 詳細 pane のインライン編集: 420px 幅で 12 項目のフォームは収まらず、既存 hint の編集は頻度が
+    低い。
+  - layer-shell ではない通常 window での編集: 「いつも同じ場所」の原則から外れ、editor との差が
+    無くなる。
+  - 作らず gvim 側を強化(snippet / template): capture の切り替えコストと match 規則の推測は
+    editor では解けない。ただし CLI ルートはこの思想を引き継いで採用した。
+
+### Context
+
+0003 で ruamel.yaml を採用した時点では、書き戻しの動機が「既存 hint の修正」しかなく、それは外部 editor の方が優れていた。
+そのため「GUI からの書き戻しは行わない」とし、PRODUCT.md でも GUI 編集を V1 の Out of scope に置いた。
+
+その後 context 判定が compositor → application → Herdr pane → foreground process と階層化した結果、
+hint を追加するコストの重心が「YAML を打つこと」から次の 2 つに移った。
+
+1. **捕まえる瞬間の切り替えコスト。** 操作を調べた直後に hint を残したいのに、editor を開き、
+   `hints:` の末尾を探し、YAML の構造を思い出して書く、という作業が「脳のコンテキストスイッチ」として重い。
+   editor の snippet / template で削れるのは「型を思い出す」部分だけで、切り替え自体は editor である限り残る。
+2. **sheet が無い context に最初の hint を書くコスト。** 重いのは YAML の形ではなく `match` 規則で、
+   「この context は app_id で判定されたのか、Herdr 内の process で判定されたのか、regex は何を書けば当たるのか」を
+   人間が他の sheet を見て推測している。この答えは daemon が `ResolvedContext` として既に持っており、
+   editor 側の template では原理的に埋められない。
+
+したがって書き戻しを「daemon が持っている情報で埋められる、hint 単位の操作」に限定して daemon 側に置く。
+これは「GUI で YAML を直接編集する」ことではなく、YAML を意識させない構造化編集である。
+
+原則との照合: 容易な更新（capture の数秒化、sheet 新規作成の自動化）と位置の安定（overlay の中で完結）を満たす。
+foreground application を邪魔しないことに対しては、keyboard を握る範囲を編集モード中に限定し、
+編集する瞬間は元アプリを触っていない瞬間である、という整理で許容する。
+
+### Decision
+
+#### D1. 操作の範囲
+
+GUI（編集モード）と CLI の両方から、hint 単位の次の操作を行う。両者は同じ純粋関数を使う。
+
+| 操作 | GUI | CLI |
+|---|---|---|
+| 追加（quick add） | `a` | `wayhint add` |
+| 編集（5 項目） | `Enter` | `wayhint edit ID ...` |
+| 削除 | `d` `d` | `wayhint remove ID` |
+| favorite toggle | `f` | `wayhint favorite ID [--off]` |
+| 並び替え（隣と swap） | `J` `K` | `wayhint move ID up\|down` |
+
+GUI / CLI で扱う項目は **title / kind / key または command / category / remark** の 5 つと favorite。
+それ以外（`id` `tags` `copy` `source` `learned`、sheet メタ、`match`、category の並び順）は外部 editor でのみ変更する。
+
+補助コマンドとして `wayhint format`（正規化）と `wayhint schema`（JSON Schema 出力）を追加する。
+
+#### D2. 書き戻し規則
+
+- ruamel.yaml round-trip。`typ="rt"`、`preserve_quotes=True`、`indent(mapping=2, sequence=4, offset=2)`、`width` は折り返しが起きない大きさ。
+- **書き込む際は 12 項目すべてを canonical 順（`id` `title` `kind` `key` `command` `category` `tags` `favorite` `copy` `remark` `source` `learned`）で出力し、未設定は null（`key:` のみ）とする。** 読み込む際は key の順序と省略を問わない。
+- 正規化するのは操作対象の hint のみ。他の hint、sheet メタ、コメント、空行、quote style、flow style は触らない。
+- 新規 hint の `tags` は flow style（`tags: [a]`）で出力する。
+- 書き込みは同一ディレクトリの tmp ファイル（拡張子は `.yaml` / `.yml` 以外、例 `<name>.yaml.tmp`）に出力し、
+  **既存の validation（未知 key / 重複 id / 不正 regex 等）を通した上で** `os.replace` する。validation 失敗時は書かずにエラーを表示する。
+- 既存 sheet は元ファイルの `st_mode` をコピーする。新規 sheet は umask に任せる。
+- 同時編集は後勝ち。mtime 比較は行わない。保存時に対象 hint の `id` が見つからなければ「外部で変更された」としてエラー表示し、reload に任せる。
+- 自分の書き込みによる FileMonitor の再 parse は抑止しない。reload 後、選択位置とスクロール位置は hint `id` で復元する。`id` が消えていれば index で fallback する。
+- コメントの扱い: hint の移動では、その hint の直前ブロックコメント（`ca.items`）を移動先へ付け替える。削除では直前ブロックコメントも一緒に消す（「hint の直前コメントはその hint の説明」という慣習に従う）。行末コメントは hint に属し追随する。
+- 壊れた YAML を last-known-good で表示している間（`⚠ YAML error` 状態）は、round-trip できないため編集モードへの入場を拒み、理由を表示する。
+
+#### D3. keyboard grab と状態遷移
+
+- overlay の状態を `normal` / `search` / `edit` の 3 つとし、`keyboard_mode` は **状態から導出する 1 つの関数**（`_sync_keyboard_mode()` 相当）でのみ設定する。`normal` = NONE、`search` / `edit` = ON_DEMAND。
+  hide、workspace 離脱、Esc、hotkey の全経路がこの関数を通る。「grab の残留禁止」の不変条件はここで守る。
+- 編集・検索モードの key handler は CAPTURE フェーズの `EventControllerKey` で受け、GTK 組み込み（Entry の activate / stop-search、ListBox の行操作、Tab の focus 移動）より先に処理する。
+- 編集モードへの入口は **compositor keybinding → `wayhint edit-mode`（IPC コマンド新設）を主、toolbar ボタンを併設**。
+  通常表示は NONE のため overlay 上の key では入れない。
+- 編集モード中は下部に key 割当の一覧を表示する。
+- 保存後も編集モードに留まる。`Esc` で抜ける。
+
+#### D4. 0012 / 0013 との関係（amend）
+
+- **workspace 切り替え（0012 の延長）**: 編集状態と未保存の下書きは workspace ごとに保持する。離れると overlay は隠れ `NONE` に戻り、戻ると `ON_DEMAND` を張り直して編集中の内容のまま復帰する。
+  下書きはメモリのみで、ファイルには持たない。
+- **hotkey（0013 の例外）**: 編集モード中の hotkey は「差し替え」ではなく overlay の **hide / show** とする。
+  hotkey の意味は「いま見ているものの hint」だが、書き込み中は「いま書いているもの」に置き換わっていると解釈する。
+  入力を破棄する経路は `Esc` のみ。
+
+#### D5. quick add
+
+- 入力項目: title（必須）/ kind（選択、既定 `shortcut`）/ key または command（kind で排他: `shortcut` `tip` → `key`、`command` → `command`、`note` → 欄なし）/ category（任意）/ remark（任意）。
+- 自動設定: `id` は title から slug 生成（`^[A-Za-z0-9][A-Za-z0-9._-]*$` に合わせ、衝突時 `-2` `-3`、slug が空なら `q-YYYYMMDD-HHMMSS`）。以後 GUI では変更しない。`learned` は当日、以後 GUI では変更しない。`favorite: false`、他は null。
+- category 未入力（null）は「未 curate」の印として扱い、表示側で i18n ラベル（en `inbox` / ja `未定義`）の擬似 category として末尾にまとめる。**YAML に書く値は locale に依存させない。**
+- 追加先は現在 context の active sheet。`Ctrl+P` toggle で親 sheet に切り替え、その場合 `effective_parent_tags` の tag を `tags` に付与する。
+- active sheet が無い context では sheet を新規作成する（D6）。
+
+#### D6. sheet の自動生成
+
+- ファイルは `~/.config/wayhint/hints/<slug>.yaml`。`id` / `title` は context の app 名または process 名から生成し、sheet id 衝突時は `-2`。`priority` は既定値、`version` は省略。
+- `match` は `ResolvedContext` から生成する。`parent_context` が None なら app_id 一致、`parent_context` があり process で解決していれば `process.argv_regex: ["^<name>$"]`。
+- process 名が汎用名（`python3` `python` `node` `sh` `bash` 等。一覧は 1 箇所の定数で持つ）の場合は matcher と同じ規則で `argv[1:]` の basename を候補とする。非汎用の候補が 1 つも無いときだけ警告を出す。
+- 生成ファイルの先頭に、生成日時・判定に使った context 情報・採用した regex をコメントで残す。
+- config `editor.schema_modeline: bool`（既定 false）が true なら、先頭に `# yaml-language-server: $schema=...` を付ける。`$schema=` に書く path は config `editor.schema_path`（既定 `~/.config/wayhint/schema.json`）。`wayhint format` も同じ設定を見る。
+
+#### D7. 表示順の変更
+
+従来: favorite → category 初出順 → YAML 記述順。
+変更後: **favorite 区画は category を無視して YAML 記述順**、非 favorite 区画は従来どおり category 初出順 → YAML 記述順。
+これにより favorite 同士を category を跨いで並び替えられる。並び替えは YAML 上の位置 swap で実装し、swap は他 hint の相対順を変えない。
+副作用として、swap した hint がある category の初出だった場合、非 favorite 区画の category 順が動くことを許容する。
+
+#### D8. 並び替えの制約
+
+- `J` `K` は画面上の隣と swap する。隣が別グループ（favorite / 非 favorite、または非 favorite 区画で別 category）なら動かさない。category を変えたい場合は編集で category を書き換える。
+- 隣が別 sheet（親 sheet から混入した hint）なら動かさない。ファイルを跨ぐ移動はしない。
+- 検索・category フィルタ中も `J` `K` は可。swap 意味論のため、フィルタで隠れている hint を飛び越える形になるが他の順序は保たれる。
+
+#### D9. 親 sheet から混入した hint
+
+編集・削除・favorite は所属 sheet のファイルに書く。hint は所属 sheet を保持する。並び替えは D8 のとおり sheet を跨がない。
+
+#### D10. category フィルタ
+
+検索モード内で `#category` 構文（先頭トークンのみ）と `Tab` / `Shift+Tab` 巡回の両方を提供する。
+両者は同じ 1 つのフィルタ状態を書く。`#` 入力途中の `Tab` は補完。巡回順は全表示 → category 初出順（擬似 category を含む）→ 全表示。
+フィルタ状態は表示セッション限りで揮発する。
+
+#### D11. IPC / CLI
+
+- IPC に `context`（`ResolvedContext` の必要フィールドのみを返す）と `edit-mode`（編集モードに入る）を追加する。
+- CLI は `context` の結果で sheet を決め、**daemon を経由せず自分でファイルに書く**。adapter は daemon 側に留まり、書き込み関数は GUI と共有する。FileMonitor が変更を拾い overlay が更新される。
+
+### Consequences
+
+- docs の更新: PRODUCT.md Out of scope、DESIGN.md（schema 表・表示順・実機チェックリスト・編集モード仕様）、README のフィールド表と compositor 設定例、AGENTS.md §4 の「ui/ は ResolvedContext だけを受け取る」を実態に合わせる、STATUS.md。
+- 「あとは書きたいものだけ書く」は「省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで出力する」に改める。既存の手書き sheet は `wayhint format` で手動一括正規化する。
+- yaml_store.py に dump 経路と hint 操作の純粋関数を追加し、golden test（round-trip byte 一致、コメント付き hint の移動・削除、null 表記、flow style 保持）を追加する。GUI 部分は実機チェックリストへ。
+- 0003 の「GUI からの書き戻しは行わない」は superseded。ruamel 採用の判断自体は維持。
+- Wayfire は未確認のまま `ON_DEMAND` を握る面積が増える。実機チェック項目で確認する。
+- 後日の改修候補: 親 sheet 混入 hint の並び替え、Tab の focus 移動との競合、filter の永続化。
+
+<!--
+Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
+be mistaken for one, and so the first real decision gets number 0001):
+
+## NNNN — Title of the decision
+
+- **Date**: YYYY-MM-DD
+- **Status**: accepted | superseded by 000N | rejected
+- **Context**: what forced a choice, and what constrained it.
+- **Decision**: what was chosen, in one or two sentences.
+- **Alternatives**: what else was considered, and why it lost.
+- **Consequences**: what this now costs or forecloses.
+-->

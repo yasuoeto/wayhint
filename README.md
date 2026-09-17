@@ -57,6 +57,9 @@ daemon はセッションに 1 つ起動し、hotkey は compositor の keybindi
   <keybind key="W-slash">
     <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint toggle"/>
   </keybind>
+  <keybind key="W-S-slash">
+    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode"/>
+  </keybind>
 </keyboard>
 ```
 
@@ -77,6 +80,8 @@ autostart が起動した helper の PID を記録して終了時に落とす仕
 [command]
 binding_wayhint = <super> KEY_SLASH
 command_wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhint toggle
+binding_wayhint_edit = <super> <shift> KEY_SLASH
+command_wayhint_edit = /home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode
 
 [autostart]
 wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
@@ -134,9 +139,30 @@ hotkey に割り当てるのは `toggle`。
 | `reload` | `config.yaml` と `hints/*.yaml` を読み直す |
 | `ping` | daemon の生死確認。pid と読み込み済み sheet 数を返す |
 | `validate` | YAML を検証する。daemon を必要としない唯一の command。問題があれば exit 1 |
+| `edit-mode` | 編集モードに入る(表示中でなければ表示してから) |
+| `add TITLE` | hint の追加 |
+| `edit ID` | hint の編集 |
+| `remove ID` | hint の削除 |
+| `favorite ID [--off]` | hint の favorite |
+| `move ID up\|down` | hint の並び替え |
+| `format [PATH...]` | sheet を canonical 順・12 項目に正規化する。`--modeline` の path は `editor.schema_path` |
+| `schema [--write PATH]` | hint sheet の JSON Schema を出力する。PATH 省略時は `editor.schema_path`、`--write` 無しは標準出力 |
 
 `validate` は `--config-dir`、それ以外は `--socket` で既定の場所を上書きできる。
 daemon 側は `wayhintd -v` で info ログを前景に出す。
+
+hint を書き換える command は daemon を経由せず自分でファイルに書く。`--sheet ID` を省略すると
+現在の context の sheet が対象になる。
+
+```
+wayhint add TITLE [--kind K] [--key S | --command S] [--category S] [--remark S] [--parent] [--sheet ID]
+wayhint edit ID [--title S] [--kind K] [--key S | --command S] [--category S] [--remark S] [--sheet ID]
+wayhint remove ID [--sheet ID]
+wayhint favorite ID [--off] [--sheet ID]
+wayhint move ID up|down [--sheet ID]
+wayhint format [--modeline] [PATH...]        # PATH 省略時は hints/*.yaml 全部
+wayhint schema [--write PATH]
+```
 
 ### daemon を再起動する
 
@@ -194,7 +220,8 @@ pane 操作だけが並ぶ。
 
 ### hint のフィールド
 
-`id` と `title` だけが必須。あとは書きたいものだけ書く。
+`id` と `title` 以外は省略可。GUI / CLI / format が書く 12 項目と canonical 順は
+`docs/DESIGN.md` の Data model「hints/*.yaml」を参照。
 
 | キー | 用途 |
 |---|---|
@@ -209,8 +236,28 @@ pane 操作だけが並ぶ。
 | `source` | 出典。公式ドキュメントの URL など |
 | `learned` | 覚えた日。ISO 形式の日付に正規化される |
 
-並び順は `favorite` が先頭、次に category が最初に現れた順、その中では YAML に書いた順。
-`favorite` は並び順だけを変え、表示される hint の数には影響しない。
+並び順は `docs/DESIGN.md` の Data model「hints/*.yaml」を参照。category を書かなかった hint には
+擬似 category(`inbox` / `未定義`)のラベルが付く。`favorite` は並び順だけを変え、表示される
+hint の数には影響しない。
+
+### editor の補完を効かせる(任意)
+
+`wayhint schema` が hint sheet の JSON Schema を出力する。editor の
+yaml-language-server に読ませると、key の補完と検証が効く。
+
+```sh
+wayhint schema --write        # 出力先は editor.schema_path(既定 ~/.config/wayhint/schema.json)
+```
+
+各 sheet の先頭行にモードラインを置くと、その sheet に schema が結び付く。path は絶対で書く。
+
+```yaml
+# yaml-language-server: $schema=/home/USER/.config/wayhint/schema.json
+```
+
+`config.yaml` の `editor.schema_modeline` を true にすると、新規に作られる sheet と
+`wayhint format` がこの 1 行を自動で付ける(既定値と意味は `docs/DESIGN.md` の Data model
+「config.yaml」が正)。
 
 ## editor を変える
 

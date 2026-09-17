@@ -57,7 +57,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 - terminal screen scraping による context 推測
 - Vim mode / Claude Code内部mode / Codex内部mode / アプリ内部dialog状態の判定
 - dynamic plugin system(loader, entry points, marketplace)
-- GUI上でのYAML直接編集(編集は外部editorのみ)
+- GUI 上での YAML 直接編集(テキストとしての編集)。hint 単位の構造化編集は 0014 で
+  スコープ内。sheet メタ・match・並び順の変更は外部 editor のみ
 - idle時のlive polling(context取得はtoggle/show/refresh時のみ)
 
 ## Requirements
@@ -86,7 +87,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
    子sheet `inherit.parent_tags` が global `nested.parent_tags` を上書き(§17–§19, §29)。
 10. **hint schema**: 必須 `id`,`title`。任意 `kind(shortcut|command|tip|note)`, `key`,
     `command`, `category`, `tags`, `favorite`, `copy`, `remark`, `source`, `learned`(§21–§26)。
-11. **sort**: favorite → category order → YAML記述順(§29)。
+    `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで出力する。
+11. **sort**: favorite 区画は YAML 記述順、非 favorite 区画は category 初出順 → YAML 記述順(§29)。
 12. **search**: 対象 title/key/command/category/tags/remark、case-insensitive substring +
     token AND。結果一覧は title/key/command のみ(§30, §31)。
 13. **copy**: 優先 `copy` → `command` → `key`。GTK/GDK clipboard(§32)。

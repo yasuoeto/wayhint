@@ -87,7 +87,8 @@ src/wayhint/
 ```yaml
 overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, right: 24}, output: null}
 appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
-editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"]}
+editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"], schema_modeline: false,
+             schema_path: ~/.config/wayhint/schema.json}
 nested:     {parent_tags: []}
 context:    {live_update: false, backend: auto, workspace: current}  # backend: auto|wayland|wayfire
                                                                      # workspace: current|all
@@ -99,6 +100,10 @@ logging:    {level: warning}
 - size: 整数(px)、`"420px"`、`"30%"`(0–100)。margin: 整数(全辺)か `{top,right,bottom,left}`。
 - `editor.command` は argv list。placeholder は `{file}` `{line}` `{hint_id}` のみ、`{file}` 必須。
   未知の `{...}` は error。展開は文字列置換のみで shell を通らない。
+- `editor.schema_modeline`: true なら新規 sheet と format が先頭に
+  `# yaml-language-server: $schema=` を付ける(DECISIONS 0014 D6)。
+- `editor.schema_path`: モードラインの `$schema=` に書く path。`wayhint schema --write` の
+  既定出力先。
 
 ### hints/*.yaml(実装: `yaml_store.py`)
 
@@ -118,6 +123,12 @@ hints:
      copy, remark, source, learned}
 ```
 
+- `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで canonical 順
+  (`id` `title` `kind` `key` `command` `category` `tags` `favorite` `copy` `remark` `source`
+  `learned`)に出力する。読み込む際は key の順序と省略を問わない(DECISIONS 0014 D2)。
+- 表示順: favorite 区画(YAML 記述順、category 無視)→ 非 favorite 区画(category 初出順 →
+  YAML 記述順)。category null は 1 グループとして初出順に入り、ラベルは擬似 category
+  (DECISIONS 0014 D7)。
 - 各 hint の `location` は list 要素の開始行(1-based)。`learned` の日付は ISO 文字列に正規化。
 - validation は 1 ファイル内の問題を全部集めて `Issue(file, line, message)` で返す。1 つでも
   あれば sheet は採用しない。`SheetStore` は採用済みの sheet を保持し(last-known-good)、次に
@@ -149,8 +160,155 @@ hints:
   `edit_target(sheet, hint)`(純粋、テスト対象)が決める。**hint を選んでいるときは hint の
   `location` が sheet より優先する**: nested 表示では親 sheet の hint が一覧に混ざるため、active
   sheet の file を使うと別ファイルの行番号で開いてしまう。hint が無いときだけ sheet の file:1。
-- **layer-shell**: layer overlay, exclusive_zone 0, keyboard_mode none(検索中のみ
-  on_demand/exclusive)。anchor 名(9種)→ layer-shell anchor + margin へ変換。
+- **layer-shell**: layer overlay, exclusive_zone 0。keyboard_mode は状態から導出する。
+  normal = none、search / edit = on_demand。設定箇所は `_sync_keyboard_mode()` の 1 つ。
+  anchor 名(9種)→ layer-shell anchor + margin へ変換。
+
+## 編集モード（Phase 7）
+
+DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
+
+### 1. 状態と keyboard_mode
+
+| 状態 | keyboard_mode | 入口 | 出口 |
+|---|---|---|---|
+| `normal` | NONE | show / toggle | hide、workspace 離脱 |
+| `search` | ON_DEMAND | 検索ボタン、既存の begin_search | Esc、hide、workspace 離脱 |
+| `edit` | ON_DEMAND | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、hide、workspace 離脱 |
+
+- `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
+  hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
+- `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
+- `edit` 中の hotkey は hide / show（0013 の例外）。`Esc` が唯一の破棄経路。
+- 編集状態（モード、開いているフォーム、フォームの入力値、対象 hint id、追加先 sheet）は workspace ごとの context dict と同じ粒度で保持する。メモリのみ。
+- 保存後も `edit` に留まる。
+
+### 2. key 割当（edit 中、CAPTURE フェーズで処理）
+
+| key | 動作 |
+|---|---|
+| `a` | quick add フォームを開く |
+| `Enter` | 選択 hint の編集フォームを開く |
+| `d` `d` | 選択 hint を削除（1 回目で確認表示、2 回目で確定。他の key で取り消し） |
+| `u` | 直前に削除した 1 件を元の sheet 末尾に戻す（メモリ保持は 1 件、セッション限り） |
+| `f` | favorite toggle |
+| `J` / `K` | 画面上の下 / 上の hint と swap（§5 の制約） |
+| `↑` `↓` | 選択移動（GTK 既定を使う） |
+| `Esc` | フォームが開いていればフォームを閉じる（入力破棄）、開いていなければ `edit` を抜ける |
+
+edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/ja）。
+
+フォーム内: `Enter` で保存、`Esc` で破棄、`Tab` / `Shift+Tab` で欄移動、`Ctrl+P` で追加先を親 sheet に toggle（quick add のみ）。
+
+### 3. フォーム（quick add / 編集は同じフォーム）
+
+| 欄 | 必須 | 備考 |
+|---|---|---|
+| title | ✓ | |
+| kind | ✓ | `shortcut` / `command` / `tip` / `note`。quick add の既定は `shortcut` |
+| key または command | – | kind で排他。`shortcut` `tip` → `key`、`command` → `command`、`note` → 欄なし |
+| category | – | 空なら null（表示上は擬似 category inbox / 未定義） |
+| remark | – | |
+
+- 編集フォームは既存値を prefill。`id` は表示のみ。
+- 保存時の自動設定（quick add のみ）: `id`（title の slug、衝突 `-2`…、空なら `q-YYYYMMDD-HHMMSS`）、`learned`（当日）、`favorite: false`、他は null。親 sheet 指定時は `effective_parent_tags` を `tags` に付与。
+- 保存前に validation。失敗時はフォーム内にエラーを出し書かない。
+- 追加先: active sheet。無ければ §7 で新規作成。混入 hint の編集は所属 sheet に書く。
+
+### 4. 書き戻し（yaml_store）
+
+純粋関数として実装し、GTK / pywayland を import しない。
+
+| 関数 | 内容 |
+|---|---|
+| `write_document(path, doc)` | tmp（`.yaml` / `.yml` 以外の拡張子、同一ディレクトリ）→ validate → `st_mode` コピー → `os.replace` |
+| `build_hint(fields) -> CommentedMap` | 12 項目 canonical 順、未設定 null、`tags` は flow style |
+| `append_hint(doc, hint)` | `hints` 末尾に追加 |
+| `update_hint(doc, id, fields)` | 該当 hint を canonical 順で再構築。見つからなければ `HintNotFoundError` |
+| `delete_hint(doc, id) -> removed` | 直前ブロックコメントも削除。除いた node を返す（undo 用） |
+| `swap_hints(doc, id_a, id_b)` | 位置 swap。`ca.items` の直前コメントを付け替える |
+| `set_favorite(doc, id, value)` | |
+| `create_sheet(ctx, first_hint, config) -> (path, doc)` | §7 |
+| `normalize_sheet(doc, modeline)` | format: 全 hint を canonical 順・12 項目化。sheet メタは触らない |
+
+読み書きは既存の `read_document` を使い、`_yaml()` に `indent(mapping=2, sequence=4, offset=2)` と
+折り返しの起きない `width` を追加する。load / dump で同じ設定を共有する。
+canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
+`json_schema() -> dict`(validation の定義から生成)は新設 module `schema.py` に置く。
+
+### 5. 表示順と並び替え
+
+表示順は Data model「hints/*.yaml」を参照。ラベルは擬似 category。
+
+`J` / `K` の制約:
+- 隣が同グループ（favorite 区画内、または非 favorite 区画で同 category）かつ同 sheet のときだけ swap。
+- それ以外は何もしない（音や表示は出さない）。
+- フィルタ中も可。
+
+### 6. 削除と undo
+
+- `d` `d` で確定。確定前に他の key を押したら取り消し。
+- 削除した node を 1 件だけメモリに保持。`u` で元の sheet の末尾に append。sheet が消えていればエラー表示。
+
+### 7. sheet の新規作成
+
+- path: `~/.config/wayhint/hints/<slug>.yaml`。slug は app 名 / process 名から。sheet id 衝突時 `-2`。
+- 内容: 先頭コメント（生成日時、`desktop_app`、`parent_context`、`foreground_process.name`、採用した regex）、`editor.schema_modeline` が true なら、先頭に `# yaml-language-server: $schema=<editor.schema_path を展開した絶対 path>` を付ける、`id` `title` `priority`（既定）`match` `hints: [first_hint]`。
+- `match` の生成:
+  - `parent_context is None` → app_id 一致
+  - `parent_context` あり、`active_sheet` が親と異なる状況で process により子を作る → `process.argv_regex: ["^<name>$"]`
+  - `name` が汎用名（定数 `GENERIC_PROCESS_NAMES`。`matcher.py` に置く）→ `argv[1:]` の basename を候補にする（候補生成は matcher の既存関数を再利用）。非汎用の候補が無ければフォームに警告
+- 生成直後の FileMonitor reload で新 sheet が有効になる。
+
+### 8. 同時編集と reload
+
+- 後勝ち。mtime 比較なし。
+- 保存時に対象 id が無ければエラー表示、reload に任せる。
+- 自己書き込みの reload は抑止しない。`_after_reload` で選択・スクロールを hint id で復元、無ければ index。
+- gvim の古い buffer は editor 側（W11）に任せる。
+
+### 9. category フィルタ（search 状態）
+
+- 検索文字列の先頭トークンが `#` 始まりなら category フィルタ。残りはテキスト検索。両者は AND。
+- `Tab` / `Shift+Tab` で巡回: 全表示 → category 初出順（擬似 category を含む）→ 全表示。`#` 入力途中なら補完。
+- フィルタ状態は入力欄横に chip 表示。表示セッション限り。
+- 実装: SearchEntry の CAPTURE フェーズ controller で Tab を横取りし `EVENT_STOP`。
+
+### 10. IPC / CLI
+
+追加コマンド（`ipc.COMMANDS` に追加）:
+
+| cmd | 応答 |
+|---|---|
+| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}}`。argv 全体は載せない |
+| `edit-mode` | 編集モードに入る（表示中でなければ show してから）。`{visible, sheet, error}` |
+
+CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
+引数一覧は README「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、
+`--write` 無しは標準出力。`wayhint format --modeline` の path は `editor.schema_path`。
+
+### 11. config 追加
+
+`editor.schema_modeline` を追加する。既定値と意味は Data model「config.yaml」を参照。
+
+### 12. i18n
+
+新規ラベルは EN（キー兼値）と JA の両方に追加。対象: フォームの欄名と kind の表示、key 割当ヘルプ、擬似 category（`inbox` / `未定義`）、エラー（validation 失敗、id 不在、YAML error 中は編集不可、sheet 不在）、削除確認、汎用 process 名の警告。
+
+### 13. テスト
+
+純粋関数（`./scripts/check`）:
+- golden: リポジトリ内の sheet 全部（`examples/hints/*.yaml`、`tests/fixtures/good/*.yaml`）+ 汚い fixture（key 順バラバラ、hint 直前 / 直後コメント、行末コメント、hint 間空行、quote 混在、flow style の tags と match、値なし `remark:`）で load → dump byte 一致。加えて、環境変数 `WAYHINT_GOLDEN_EXTRA_DIR` が指すディレクトリの `*.yaml` も対象にする任意テスト（未設定なら skip、CI では未設定）
+- `swap_hints`: コメント付き hint の移動でコメントが追随する
+- `delete_hint`: 直前コメントが消え、直後コメントが残る
+- `build_hint` / `update_hint`: canonical 順、null 表記、flow style tags
+- `create_sheet`: app_id 解決 / process 解決 / 汎用名の 3 ケース
+- slug 生成: 衝突、日本語 fallback、regex 適合
+- `normalize_sheet`: format 済み sheet は再 format で byte 一致、format 前後で parse 結果が等しい
+- sort: favorite 区画が category を無視すること、null category の位置
+- `json_schema`: validation で通る sheet が schema でも通る
+
+実機チェックリストは下の「実機チェックリスト」に T13–T24 として記載。
 
 ## Failure modes
 
@@ -194,6 +352,18 @@ hints:
 - T10 表示中に YAML を編集 → 閉じずに更新
 - T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 - T12 「閉じる」で閉じたあと workspace を往復しても再表示されない
+- T13 `wayhint edit-mode` で ON_DEMAND、Esc で NONE に戻り前の view に focus が返る
+- T14 edit 中に workspace を離れる → NONE、戻ると ON_DEMAND が張り直され入力が残っている
+- T15 edit 中の hotkey → hide / show、入力が残る
+- T16 sheet が無い context で quick add → 新規 sheet が生成され、次の hotkey でその sheet が表示される
+- T17 保存 → reload で overlay が閉じず、選択位置が保たれる
+- T18 gvim で開いたまま GUI 保存 → gvim に W11
+- T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない
+- T20 `#` 途中入力 + Tab → 補完
+- T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
+- T22 `d` `d` → 削除、`u` → 復帰
+- T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
+- T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
 
 ## Known limits and future work
 
