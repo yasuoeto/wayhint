@@ -2,7 +2,9 @@
 
 One request per connection: the client sends a single JSON object terminated by ``\\n``, the
 daemon answers with one JSON object and closes. Requests: ``{"cmd": "toggle"|"show"|"hide"|
-"refresh"|"reload"|"ping"}``. Replies: ``{"ok": true, ...}`` or ``{"ok": false, "error": "..."}``.
+"refresh"|"reload"|"ping"|"context"|"edit-mode"}``. Replies: ``{"ok": true, ...}`` or
+``{"ok": false, "error": "..."}``. ``context`` answers with the part of the resolved context the
+CLI needs to pick a sheet; it stays small on purpose (the reply limit is 4096 bytes).
 
 This module holds the path, the encoding and the blocking client. The server side lives in the
 daemon because it needs the GLib main loop.
@@ -16,7 +18,7 @@ import socket
 from pathlib import Path
 from typing import Any
 
-COMMANDS = ("toggle", "show", "hide", "refresh", "reload", "ping")
+COMMANDS = ("toggle", "show", "hide", "refresh", "reload", "ping", "context", "edit-mode")
 MAX_MESSAGE = 4096
 
 

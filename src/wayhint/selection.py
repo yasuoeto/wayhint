@@ -3,8 +3,8 @@
 - :func:`visible_hints`: active sheet's hints plus the parent sheet's hints whose tags intersect
   the effective ``parent_tags`` (child ``inherit.parent_tags`` overrides global
   ``nested.parent_tags``). ``favorite`` never affects visibility (PRODUCT requirement 9).
-- :func:`sort_hints`: favorite first, then category in order of first appearance, then YAML order
-  (requirement 11).
+- :func:`sort_hints`: favorites first in YAML order, then the rest by category in order of first
+  appearance, then YAML order (requirement 11 as amended by DECISIONS 0014 D7).
 - :func:`search_hints`: case-insensitive substring, whitespace-separated tokens ANDed, over
   title/key/command/category/tags/remark (requirement 12).
 """
@@ -53,12 +53,31 @@ def visible_hints(
 
 
 def sort_hints(hints: Sequence[Hint]) -> list[Hint]:
+    """Favorites first, in YAML order; then the rest grouped by category (DECISIONS 0014 D7).
+
+    The favorite block ignores ``category`` so that two favorites from different categories can
+    be put next to each other by reordering the YAML, which is what ``J`` / ``K`` does.
+    """
     category_rank: dict[str | None, int] = {}
     for h in hints:
-        category_rank.setdefault(h.category, len(category_rank))
+        if not h.favorite:
+            category_rank.setdefault(h.category, len(category_rank))
     indexed = list(enumerate(hints))
-    indexed.sort(key=lambda ih: (not ih[1].favorite, category_rank[ih[1].category], ih[0]))
+    indexed.sort(
+        key=lambda ih: (
+            not ih[1].favorite,
+            0 if ih[1].favorite else category_rank[ih[1].category],
+            ih[0],
+        )
+    )
     return [h for _, h in indexed]
+
+
+def same_group(a: Hint, b: Hint) -> bool:
+    """May ``J`` / ``K`` swap these two? (DECISIONS 0014 D8; the caller checks the sheet.)"""
+    if a.favorite != b.favorite:
+        return False
+    return a.favorite or a.category == b.category
 
 
 def _haystack(hint: Hint) -> str:

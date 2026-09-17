@@ -50,6 +50,7 @@ from wayhint.context.workspace import (  # noqa: E402
 )
 from wayhint.editor import EditorError, edit_target, open_in_editor  # noqa: E402
 from wayhint.i18n import translator  # noqa: E402
+from wayhint.matcher import argv_basenames  # noqa: E402
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.ui import style  # noqa: E402
 from wayhint.ui.window import HintWindow  # noqa: E402
@@ -220,6 +221,27 @@ class Daemon:
         self.window.present_context(ctx, self.store.sheets, self.config)
         self.window.show_issues(self.issues)
 
+    def context_reply(self) -> dict:
+        """What the CLI needs to pick a sheet (DECISIONS 0014 D11).
+
+        Deliberately small: no full argv, no cmdline. The reply has to fit in one 4096-byte
+        message, and a command line can carry anything.
+        """
+        ctx = self.resolver.resolve(self.store.sheets, self.config)
+        proc = ctx.foreground_process
+        return {
+            "active_sheet": ctx.active_sheet,
+            "parent_context": ctx.parent_context,
+            "desktop_app": ctx.desktop_app,
+            "process": (
+                {"name": proc.name, "argv_basenames": argv_basenames(proc.argv)} if proc else None
+            ),
+        }
+
+    def enter_edit_mode(self) -> dict:
+        # Wired to the overlay in Phase 7c; the command exists now so the keybinding can be set up.
+        raise NotImplementedError("edit mode is not implemented yet")
+
     def refresh(self) -> dict:
         assert self.window is not None
         if self.window.is_shown():
@@ -241,6 +263,8 @@ class Daemon:
             "show": self.show,
             "hide": self.hide,
             "refresh": self.refresh,
+            "context": self.context_reply,
+            "edit-mode": self.enter_edit_mode,
         }[cmd]()
 
     def edit(self, sheet: HintSheet | None, hint: Hint | None) -> None:

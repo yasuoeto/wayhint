@@ -196,10 +196,24 @@ def parse_global_config(data: object) -> GlobalConfig:
         raise ConfigError("appearance.language", f"must be one of {', '.join(LANGUAGES)}")
 
     editor_node = _mapping(root.get("editor"), "editor")
-    if "command" in editor_node:
-        editor = EditorConfig(parse_editor_command(editor_node["command"], "editor.command"))
-    else:
-        editor = defaults.editor
+    command = (
+        parse_editor_command(editor_node["command"], "editor.command")
+        if "command" in editor_node
+        else defaults.editor.command
+    )
+    modeline = editor_node.get("schema_modeline", defaults.editor.schema_modeline)
+    if not isinstance(modeline, bool):
+        raise ConfigError("editor.schema_modeline", "must be true or false")
+    schema_path = editor_node.get("schema_path")
+    if schema_path is not None and (not isinstance(schema_path, str) or not schema_path.strip()):
+        raise ConfigError("editor.schema_path", "must be a non-empty path")
+    editor = EditorConfig(
+        command=command,
+        schema_modeline=modeline,
+        schema_path=(
+            Path(schema_path).expanduser() if schema_path else defaults.editor.schema_path
+        ),
+    )
 
     nested = _mapping(root.get("nested"), "nested")
     context = _mapping(root.get("context"), "context")
