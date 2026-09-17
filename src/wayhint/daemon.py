@@ -48,7 +48,7 @@ from wayhint.context.workspace import (  # noqa: E402
     toggle_action,
     workspace_action,
 )
-from wayhint.editor import EditorError, open_in_editor  # noqa: E402
+from wayhint.editor import EditorError, edit_target, open_in_editor  # noqa: E402
 from wayhint.i18n import translator  # noqa: E402
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.ui import style  # noqa: E402
@@ -245,12 +245,12 @@ class Daemon:
 
     def edit(self, sheet: HintSheet | None, hint: Hint | None) -> None:
         assert self.window is not None
-        if sheet is None:
+        target = edit_target(sheet, hint)
+        if target is None:
             self.window.show_message(f"⚠ {translator(self.config.language)('no sheet to edit')}")
             return
-        line = hint.location.line if hint is not None else 1
         try:
-            open_in_editor(self.config.editor, sheet.path, line, hint.id if hint else sheet.id)
+            open_in_editor(self.config.editor, target.file, target.line, target.hint_id)
         except EditorError as e:
             self.window.show_message(f"⚠ {e}")
 

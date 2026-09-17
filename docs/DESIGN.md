@@ -61,7 +61,7 @@ src/wayhint/
   ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)
   i18n.py                         UI 文字列カタログ(en/ja)、locale 検出(純粋、テスト対象)
   ui/window.py, ui/style.py       HintWindow(list/detail/search/toolbar)、CSS
-  editor.py                       placeholder 置換 + Popen(shell=False)
+  editor.py                       edit_target(開く file/line の決定、純粋)、placeholder 置換 + Popen(shell=False)
   clipboard.py                    GDK clipboard
   ipc.py                          socket path、JSON encode/decode、client、handle_request
 ```
@@ -145,7 +145,10 @@ hints:
   workspace 切り替えで隠すときに使う。
 - **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
   し、adapter 内部で吸収する。
-- **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。
+- **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。開く場所は
+  `edit_target(sheet, hint)`(純粋、テスト対象)が決める。**hint を選んでいるときは hint の
+  `location` が sheet より優先する**: nested 表示では親 sheet の hint が一覧に混ざるため、active
+  sheet の file を使うと別ファイルの行番号で開いてしまう。hint が無いときだけ sheet の file:1。
 - **layer-shell**: layer overlay, exclusive_zone 0, keyboard_mode none(検索中のみ
   on_demand/exclusive)。anchor 名(9種)→ layer-shell anchor + margin へ変換。
 

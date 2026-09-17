@@ -9,8 +9,16 @@ from unittest import mock
 
 from wayhint import ipc
 from wayhint.config import EditorConfig
-from wayhint.editor import EditorError, open_in_editor
-from wayhint.models import DisplayConfig, Margin, OutputInfo, Size
+from wayhint.editor import EditorError, edit_target, open_in_editor
+from wayhint.models import (
+    DisplayConfig,
+    Hint,
+    HintSheet,
+    Margin,
+    OutputInfo,
+    Size,
+    SourceLocation,
+)
 from wayhint.ui.geometry import placement, resolve_size
 
 
@@ -31,6 +39,41 @@ class EditorTest(unittest.TestCase):
         with mock.patch("wayhint.editor.shutil.which", return_value=None):
             with self.assertRaises(EditorError):
                 open_in_editor(EditorConfig(("nope-editor", "{file}")), Path("/f"), 1, "x")
+
+
+class EditTargetTest(unittest.TestCase):
+    """Which file/line the editor opens. See DESIGN "Interfaces" → editor."""
+
+    def sheet(self, id_: str, hints=()) -> HintSheet:
+        return HintSheet(id=id_, title=id_, path=Path(f"/c/hints/{id_}.yaml"), hints=tuple(hints))
+
+    def hint(self, id_: str, file: str, line: int) -> Hint:
+        return Hint(id=id_, title=id_, location=SourceLocation(Path(file), line))
+
+    def test_hint_from_a_parent_sheet_opens_its_own_file(self) -> None:
+        # nested view: active sheet is claude-code, the selected hint comes from the herdr sheet.
+        active = self.sheet("claude-code")
+        parent_hint = self.hint("new-pane", "/c/hints/herdr.yaml", 9)
+        target = edit_target(active, parent_hint)
+        assert target is not None
+        self.assertEqual(target.file, Path("/c/hints/herdr.yaml"))
+        self.assertEqual(target.line, 9)
+        self.assertEqual(target.hint_id, "new-pane")
+
+    def test_hint_without_a_sheet_is_still_editable(self) -> None:
+        target = edit_target(None, self.hint("h", "/c/hints/herdr.yaml", 4))
+        assert target is not None
+        self.assertEqual((target.file, target.line), (Path("/c/hints/herdr.yaml"), 4))
+
+    def test_sheet_alone_opens_its_first_line(self) -> None:
+        target = edit_target(self.sheet("herdr"), None)
+        assert target is not None
+        self.assertEqual(
+            (target.file, target.line, target.hint_id), (Path("/c/hints/herdr.yaml"), 1, "herdr")
+        )
+
+    def test_nothing_to_open(self) -> None:
+        self.assertIsNone(edit_target(None, None))
 
 
 class IpcTest(unittest.TestCase):
