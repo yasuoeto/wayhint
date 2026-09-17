@@ -41,12 +41,28 @@ def app_specificity(sheet: HintSheet, app_id: str | None) -> int:
     return _count_matches(sheet.match.app_id_regex, (app_id,))
 
 
+GENERIC_PROCESS_NAMES = frozenset({"python", "python3", "node", "sh", "bash", "zsh"})
+"""Interpreter and shell names that say nothing about what is running (DECISIONS 0014 D6)."""
+
+
+def argv_basenames(argv: Sequence[str]) -> list[str]:
+    """``/path/to/codex`` → ``codex``. The rule sheet generation must agree with."""
+    return [a.rsplit("/", 1)[-1] for a in argv]
+
+
+def process_candidates(proc: ProcessInfo) -> list[str]:
+    """What ``argv_regex`` is matched against: the name, every argv element, and each basename.
+
+    ``node /path/to/codex`` therefore matches ``^codex$``. Sheet generation reuses this so the
+    regex it writes is matched the same way it was chosen.
+    """
+    return [proc.name, *proc.argv, *argv_basenames(proc.argv)]
+
+
 def process_specificity(sheet: HintSheet, proc: ProcessInfo | None) -> int:
     if proc is None:
         return 0
-    # name, every argv element, and each element's basename (``node /path/to/codex`` → codex)
-    argv_candidates = [proc.name, *proc.argv, *(a.rsplit("/", 1)[-1] for a in proc.argv)]
-    return _count_matches(sheet.match.argv_regex, argv_candidates) + _count_matches(
+    return _count_matches(sheet.match.argv_regex, process_candidates(proc)) + _count_matches(
         sheet.match.cmdline_regex, (proc.cmdline,)
     )
 

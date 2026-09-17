@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=/home/USER/.config/wayhint/schema.json
+# 汚い fixture: key 順、コメント位置、空行、quote、flow style を混在させてある。
+# round-trip でここが 1 バイトも動かないことが golden test の中身。
+title: "Messy sheet"
+id: messy
+priority: 2
+match:
+  wayland: {app_id_regex: ["^messy$"]}
+  process: {argv_regex: ['^messy$']}
+
+hints:
+  # first の直前コメント
+  - id: first
+    title: First
+    key: Ctrl-a   # 行末コメント
+    tags: [a, b]
+
+  # second の直前コメント
+  - title: 'Second'
+    id: second
+    kind: command
+    command: /second
+    category: session
+  - id: third
+    title: Third
+    remark:
+    learned: 2026-09-18
+    tags: [terminal]
+  # ファイル末尾のコメント

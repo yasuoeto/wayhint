@@ -29,6 +29,8 @@ def config_dir() -> Path:
 @dataclass(frozen=True)
 class EditorConfig:
     command: tuple[str, ...] = ("gvim", "--remote-silent", "+{line}", "{file}")
+    schema_modeline: bool = False
+    schema_path: Path = field(default_factory=lambda: config_dir() / "schema.json")
 
     def argv(self, file: Path, line: int, hint_id: str) -> list[str]:
         """Expand placeholders. Pure string substitution; never goes through a shell."""
