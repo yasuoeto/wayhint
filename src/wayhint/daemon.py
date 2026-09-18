@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import datetime as _dt
 import logging
 import os
 import signal
@@ -52,9 +53,32 @@ from wayhint.editor import EditorError, edit_target, open_in_editor  # noqa: E40
 from wayhint.i18n import translator  # noqa: E402
 from wayhint.matcher import argv_basenames  # noqa: E402
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
-from wayhint.ui import style  # noqa: E402
+from wayhint.selection import (  # noqa: E402
+    effective_parent_tags,
+    same_group,
+    sort_hints,
+    visible_hints,
+)
+from wayhint.ui import editmode, style  # noqa: E402
+from wayhint.ui.editmode import FormDraft, WorkspaceView  # noqa: E402
 from wayhint.ui.window import HintWindow  # noqa: E402
-from wayhint.yaml_store import Issue, SheetStore, load_config  # noqa: E402
+from wayhint.yaml_store import (  # noqa: E402
+    Issue,
+    SheetStore,
+    SheetWriteError,
+    append_hint,
+    build_hint,
+    create_sheet,
+    delete_hint,
+    load_config,
+    match_rule_for_context,
+    read_document,
+    set_favorite,
+    slug,
+    swap_hints,
+    update_hint,
+    write_document,
+)
 
 log = logging.getLogger("wayhintd")
 DEBOUNCE_MS = 200
@@ -73,9 +97,13 @@ class Daemon:
         self.window: HintWindow | None = None
         self._watcher: WorkspaceWatcher | None = None
         self._watch_source: int | None = None
-        # Workspace key -> the context shown there. An overlay stays open on the workspace it was
-        # opened on until it is closed there, so this outlives switching away and back.
-        self._open: dict[str, ResolvedContext] = {}
+        # Workspace key -> what is shown there (context, mode and any unsaved draft). An overlay
+        # stays open on the workspace it was opened on until it is closed there, so this outlives
+        # switching away and back (DECISIONS 0012, extended by 0014 D4).
+        self._open: dict[str, WorkspaceView] = {}
+        # One slot for the whole daemon: the last deleted hint, for ``u`` (DESIGN 編集モード §6).
+        self._undo: tuple[Path, object] | None = None
+        self._shown_key: str | None = None  # which workspace's view the window is showing
         self._pending_reload: dict[Path, int] = {}
         self._monitors: list[Gio.FileMonitor] = []
         self._server: socket.socket | None = None
@@ -92,6 +120,7 @@ class Daemon:
             on_refresh=self.refresh,
             on_edit=self.edit,
             on_close=self.hide,
+            on_action=self.on_edit_action,
             refocus=self._refocus,
             tr=translator(self.config.language),
         )
@@ -184,6 +213,7 @@ class Daemon:
     def hide(self) -> dict:
         assert self.window is not None
         self._open.pop(self._workspace_key(), None)
+        self._shown_key = None
         self.window.hide_overlay()
         if not self._open:
             self._stop_workspace_watch()
@@ -194,6 +224,17 @@ class Daemon:
         self._start_workspace_watch()
         key = self._workspace_key()
         shown = self._open.get(key)
+        if shown is not None and shown.mode == "edit":
+            # 0014 D4: while editing, the hotkey is hide / show. "What I am looking at" is what
+            # is being written, so it must come back unchanged -- even from another window.
+            if self.window.is_shown():
+                log.info("hotkey during edit: hiding, keeping the draft")
+                self._sync_shown()
+                self.window.hide_overlay()
+                return {"visible": False, "mode": "edit"}
+            log.info("hotkey during edit: showing the draft again")
+            self._present(key, shown)
+            return {"visible": True, "sheet": shown.context.active_sheet, "mode": "edit"}
         ctx = self.resolver.resolve(self.store.sheets, self.config)
         action = toggle_action(
             shown is not None, shown is not None and shown.target_key() == ctx.target_key()
@@ -203,7 +244,7 @@ class Daemon:
         if action == "replace":
             log.info(
                 "hotkey from another window: replacing %s with %s",
-                shown.active_sheet,
+                shown.context.active_sheet,
                 ctx.active_sheet,
             )
         return self._open_here(ctx)
@@ -211,15 +252,36 @@ class Daemon:
     def _open_here(self, ctx: ResolvedContext) -> dict:
         """Present a context and record it as what is open on the current workspace."""
         key = self._workspace_key()
-        self._present(ctx)
-        self._open[key] = ctx
+        view = WorkspaceView(context=ctx)
+        self._open[key] = view
+        self._present(key, view)
         log.info("overlay open on workspace %s: sheet %s", key or "-", ctx.active_sheet)
         return {"visible": True, "sheet": ctx.active_sheet, "error": ctx.error}
 
-    def _present(self, ctx: ResolvedContext) -> None:
+    def _present(self, key: str, view: WorkspaceView) -> None:
+        """Put ``view`` on screen with its mode and draft; the window keeps no state of its own."""
         assert self.window is not None
-        self.window.present_context(ctx, self.store.sheets, self.config)
+        self._shown_key = key
+        self.window.present_context(view.context, self.store.sheets, self.config)
         self.window.show_issues(self.issues)
+        self.window.set_mode(view.mode, refocus=False)
+        if view.form is not None:
+            self.window.open_form(view.form)
+
+    def _sync_view(self, view: WorkspaceView) -> None:
+        """Copy the window's live state back into the workspace record before losing the screen."""
+        assert self.window is not None
+        view.mode = self.window.mode
+        view.form = self.window.form_draft()
+
+    def _current_view(self) -> WorkspaceView | None:
+        return self._open.get(self._workspace_key())
+
+    def _sync_shown(self) -> None:
+        """Save the window's live mode and draft into the view it belongs to."""
+        view = self._open.get(self._shown_key) if self._shown_key is not None else None
+        if view is not None:
+            self._sync_view(view)
 
     def context_reply(self) -> dict:
         """What the CLI needs to pick a sheet (DECISIONS 0014 D11).
@@ -239,8 +301,230 @@ class Daemon:
         }
 
     def enter_edit_mode(self) -> dict:
-        # Wired to the overlay in Phase 7c; the command exists now so the keybinding can be set up.
-        raise NotImplementedError("edit mode is not implemented yet")
+        """Show the overlay if needed and switch it to edit mode (DESIGN 編集モード §1).
+
+        Refused while a sheet is only there as last-known-good: the document cannot be
+        round-tripped, so writing to it would throw the broken file away. No grab is taken.
+        """
+        assert self.window is not None
+        if self.issues:
+            message = translator(self.config.language)("cannot edit while the YAML is broken")
+            self.window.show_message(f"⚠ {message}")
+            return {"ok": False, "error": message}
+        view = self._current_view()
+        if view is None or not self.window.is_shown():
+            self.show()
+            view = self._current_view()
+        if view is None:
+            return {"ok": False, "error": "nothing to edit"}
+        view.mode = "edit"
+        self.window.set_mode("edit")
+        return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
+
+    # --- edit mode actions -----------------------------------------------------------------
+
+    def on_edit_action(self, action: str, payload: dict | None) -> None:
+        """Everything the overlay's keys ask for. The window never writes YAML itself."""
+        assert self.window is not None
+        tr = translator(self.config.language)
+        payload = payload or {}
+        try:
+            self._edit_action(action, payload, tr)
+        except (SheetWriteError, OSError) as e:
+            log.warning("edit action %s failed: %s", action, e)
+            self.window.show_message(f"⚠ {e}")
+
+    def _edit_action(self, action: str, payload: dict, tr) -> None:
+        assert self.window is not None
+        view = self._current_view()
+        if action == "enter-edit":
+            self.enter_edit_mode()
+            return
+        if view is None:
+            return
+        if action == editmode.EXIT_EDIT:
+            view.mode = "normal"
+            view.form = None
+            self.window.set_mode("normal")
+            return
+        if action == editmode.ADD:
+            self._open_quick_add(view)
+            return
+        if action == editmode.OPEN_FORM:
+            self._open_edit_form(view, payload)
+            return
+        if action == editmode.FORM_PARENT:
+            self.window.toggle_form_parent()
+            return
+        if action == editmode.FORM_SAVE:
+            self._save_draft(view, payload["draft"], tr)
+            return
+        if action == editmode.UNDO:
+            self._undo_delete(tr)
+            return
+        if action == editmode.DELETE_COMMIT:
+            self._delete(payload, tr)
+            return
+        if action == editmode.FAVORITE:
+            self._toggle_favorite(payload)
+            return
+        if action in (editmode.MOVE_DOWN, editmode.MOVE_UP):
+            self._move(payload, down=action == editmode.MOVE_DOWN, tr=tr)
+            return
+        log.debug("unhandled edit action: %s", action)
+
+    def _hint_by_id(self, hint_id: str) -> tuple[Hint, HintSheet] | None:
+        for sheet in self.store.sheets:
+            for hint in sheet.hints:
+                if hint.id == hint_id:
+                    return hint, sheet
+        return None
+
+    def _sheet_by_id(self, sheet_id: str | None) -> HintSheet | None:
+        return next((s for s in self.store.sheets if s.id == sheet_id), None)
+
+    def _open_quick_add(self, view: WorkspaceView) -> None:
+        """Quick add works even when the context has no sheet: the sheet is made on save."""
+        assert self.window is not None
+        warning = None
+        sheet = self._sheet_by_id(view.context.active_sheet)
+        if sheet is None:
+            _match, warning = match_rule_for_context(view.context)
+        draft = FormDraft(sheet_id=sheet.id if sheet else None, fields={"kind": "shortcut"})
+        draft.warning = warning
+        view.form = draft
+        self.window.open_form(draft)
+
+    def _open_edit_form(self, view: WorkspaceView, payload: dict) -> None:
+        assert self.window is not None
+        found = self._hint_by_id(payload.get("hint_id", ""))
+        if found is None:
+            return
+        hint, sheet = found
+        draft = editmode.draft_from_hint(hint, sheet.id)
+        view.form = draft
+        self.window.open_form(draft)
+
+    def _save_draft(self, view: WorkspaceView, draft: FormDraft, tr) -> None:
+        assert self.window is not None
+        fields = editmode.draft_fields(draft)
+        if draft.hint_id is not None:
+            found = self._hint_by_id(draft.hint_id)
+            if found is None:
+                self.window.show_message(f"⚠ {tr('that sheet is gone')}")
+                return
+            _hint, sheet = found
+            self._write(sheet.path, lambda doc: update_hint(doc, draft.hint_id, fields))
+            saved_id = draft.hint_id
+        else:
+            saved_id = self._append_new(view, draft, fields)
+            if saved_id is None:
+                return
+        view.form = None
+        self.window.close_form()
+        self.window.show_message(tr("saved {id}").format(id=saved_id))
+
+    def _append_new(self, view: WorkspaceView, draft: FormDraft, fields: dict) -> str | None:
+        """Quick add: into the active sheet, the parent sheet, or a sheet made for the context."""
+        assert self.window is not None
+        sheet_id = view.context.parent_context if draft.to_parent else draft.sheet_id
+        sheet = self._sheet_by_id(sheet_id)
+        if sheet is not None:
+            if draft.to_parent:
+                child = self._sheet_by_id(view.context.active_sheet)
+                tags = effective_parent_tags(child, self.config.parent_tags)
+                if tags:
+                    fields["tags"] = list(tags)
+            fields["id"] = slug(str(fields["title"]), [h.id for h in sheet.hints])
+            fields["learned"] = _dt.date.today().isoformat()
+            self._write(sheet.path, lambda doc: append_hint(doc, build_hint(fields)))
+            return str(fields["id"])
+        fields["id"] = slug(str(fields["title"]))
+        fields["learned"] = _dt.date.today().isoformat()
+        path, doc = create_sheet(
+            view.context,
+            build_hint(fields),
+            self.config,
+            hints_dir=self.root / "hints",
+            existing_ids=[s.id for s in self.store.sheets],
+        )
+        write_document(path, doc)
+        log.info("created sheet %s for a context that had none", path)
+        return str(fields["id"])
+
+    def _delete(self, payload: dict, tr) -> None:
+        assert self.window is not None
+        found = self._hint_by_id(payload.get("hint_id", ""))
+        if found is None:
+            return
+        hint, sheet = found
+        removed: list[object] = []
+        self._write(sheet.path, lambda doc: removed.append(delete_hint(doc, hint.id)))
+        if removed:
+            self._undo = (sheet.path, removed[0])
+        self.window.show_message(tr("deleted {id}").format(id=hint.id))
+
+    def _undo_delete(self, tr) -> None:
+        assert self.window is not None
+        if self._undo is None:
+            self.window.show_message(f"⚠ {tr('nothing to undo')}")
+            return
+        path, node = self._undo
+        if not path.exists():
+            self.window.show_message(f"⚠ {tr('that sheet is gone')}")
+            return
+        self._write(path, lambda doc: append_hint(doc, node))
+        self._undo = None
+        self.window.show_message(tr("restored {id}").format(id=node.get("id", "?")))
+
+    def _toggle_favorite(self, payload: dict) -> None:
+        found = self._hint_by_id(payload.get("hint_id", ""))
+        if found is None:
+            return
+        hint, sheet = found
+        self._write(sheet.path, lambda doc: set_favorite(doc, hint.id, not hint.favorite))
+
+    def _move(self, payload: dict, down: bool, tr) -> None:
+        """Swap with the hint next to it on screen, inside the same group and sheet (D8)."""
+        assert self.window is not None
+        found = self._hint_by_id(payload.get("hint_id", ""))
+        if found is None:
+            return
+        hint, sheet = found
+        shown = sort_hints(
+            visible_hints(
+                self._sheet_by_id(self._current_sheet_id()),
+                self._sheet_by_id(self._current_parent_id()),
+                self.config.parent_tags,
+            )
+        )
+        index = next((i for i, h in enumerate(shown) if h.id == hint.id), None)
+        if index is None:
+            return
+        other_index = index + 1 if down else index - 1
+        if not 0 <= other_index < len(shown):
+            return
+        other = shown[other_index]
+        if not same_group(hint, other) or other.location.file != hint.location.file:
+            self.window.show_message(f"⚠ {tr('cannot move past another group')}")
+            return
+        self._write(sheet.path, lambda doc: swap_hints(doc, hint.id, other.id))
+
+    def _current_sheet_id(self) -> str | None:
+        view = self._current_view()
+        return view.context.active_sheet if view else None
+
+    def _current_parent_id(self) -> str | None:
+        view = self._current_view()
+        return view.context.parent_context if view else None
+
+    def _write(self, path: Path, mutate) -> None:
+        """Read, change, write. Reloading is left to the file monitor (0014 D2)."""
+        doc, issues = read_document(path)
+        if issues:
+            raise SheetWriteError(str(issues[0]))
+        mutate(doc)
+        write_document(path, doc)
 
     def refresh(self) -> dict:
         assert self.window is not None
@@ -343,9 +627,11 @@ class Daemon:
         active = self._watcher.active()
         if workspace_action(active, self._open) == "restore":
             log.info("workspace %s: restoring the overlay", active)
-            self._present(self._open[active])
+            self._sync_shown()  # the workspace being left keeps its mode and draft
+            self._present(active or "", self._open[active])
         elif self.window.is_shown():
             log.info("workspace %s: hiding the overlay", active)
+            self._sync_shown()
             self.window.hide_overlay()
         return False
 

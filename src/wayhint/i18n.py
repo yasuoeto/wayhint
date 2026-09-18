@@ -28,6 +28,37 @@ EN: dict[str, str] = {
     "tags": "tags",
     "source": "source",
     "learned": "learned",
+    # --- edit mode (Phase 7c) ---
+    "Edit": "Edit",
+    "Save": "Save",
+    "Cancel": "Cancel",
+    "Title": "Title",
+    "Kind": "Kind",
+    "Key": "Key",
+    "Command": "Command",
+    "Category": "Category",
+    "Remark": "Remark",
+    "New hint": "New hint",
+    "inbox": "inbox",
+    "to parent sheet": "to parent sheet",
+    "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
+        "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
+    ),
+    "Enter save · Esc discard · Tab next field · Ctrl+P parent sheet": (
+        "Enter save · Esc discard · Tab next field · Ctrl+P parent sheet"
+    ),
+    "press d again to delete {title}": "press d again to delete {title}",
+    "deleted {id}": "deleted {id}",
+    "nothing to undo": "nothing to undo",
+    "restored {id}": "restored {id}",
+    "saved {id}": "saved {id}",
+    "title is required": "title is required",
+    "cannot edit while the YAML is broken": "cannot edit while the YAML is broken",
+    "no hint selected": "no hint selected",
+    "that sheet is gone": "that sheet is gone",
+    "cannot move past another group": "cannot move past another group",
+    "generic process name: check the match rule": ("generic process name: check the match rule"),
+    "filter: {category}": "filter: {category}",
 }
 
 JA: dict[str, str] = {
@@ -46,6 +77,39 @@ JA: dict[str, str] = {
     "tags": "タグ",
     "source": "出典",
     "learned": "習得日",
+    # --- 編集モード (Phase 7c) ---
+    "Edit": "編集",
+    "Save": "保存",
+    "Cancel": "取消",
+    "Title": "タイトル",
+    "Kind": "種別",
+    "Key": "キー",
+    "Command": "コマンド",
+    "Category": "カテゴリ",
+    "Remark": "補足",
+    "New hint": "新しいヒント",
+    "inbox": "未定義",
+    "to parent sheet": "親シートに追加",
+    "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
+        "a 追加 · Enter 編集 · dd 削除 · u 取消 · f お気に入り · J/K 並び替え · Esc 終了"
+    ),
+    "Enter save · Esc discard · Tab next field · Ctrl+P parent sheet": (
+        "Enter 保存 · Esc 破棄 · Tab 次の欄 · Ctrl+P 親シート"
+    ),
+    "press d again to delete {title}": "もう一度 d で「{title}」を削除",
+    "deleted {id}": "{id} を削除しました",
+    "nothing to undo": "取り消せる削除がありません",
+    "restored {id}": "{id} を戻しました",
+    "saved {id}": "{id} を保存しました",
+    "title is required": "タイトルは必須です",
+    "cannot edit while the YAML is broken": "YAML が壊れている間は編集できません",
+    "no hint selected": "ヒントが選択されていません",
+    "that sheet is gone": "対象のシートがありません",
+    "cannot move past another group": "別のグループを越える移動はできません",
+    "generic process name: check the match rule": (
+        "汎用的なプロセス名です。match 規則を確認してください"
+    ),
+    "filter: {category}": "絞り込み: {category}",
 }
 
 CATALOGS: dict[str, Mapping[str, str]] = {"en": EN, "ja": JA}
