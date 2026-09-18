@@ -45,7 +45,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
   invalid YAML時のlast-known-good保持。
 - daemon + CLI(`wayhint toggle|show|hide|refresh|validate`)、Unix domain socket IPC、
   hotkeyはcompositor側keybindingに委譲。
-- 表示位置(9 anchor)、px/%サイズ、margin、multi-monitor(active output自動選択 + override)、
+- 表示位置(9 anchor)、px/%サイズ、margin、マウスでの手動リサイズ(config.yamlへ px で保存)、
+  multi-monitor(active output自動選択 + override)、
   font指定、GTK CSS override。
 
 ### Out of scope (V1で実装しないもの — 設計書 §75)

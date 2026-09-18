@@ -16,7 +16,7 @@ from __future__ import annotations
 import datetime as _dt
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -525,7 +525,29 @@ class HintNotFoundError(SheetWriteError):
 
 
 def write_document(path: Path, doc: object) -> None:
-    """Write ``doc`` over ``path``, atomically, and only if the result still validates.
+    """Write a sheet over ``path``, atomically, and only if the result still validates."""
+
+    def check(data: object) -> list[Issue]:
+        return parse_sheet(data, path)[1]
+
+    _write_checked(path, doc, check)
+
+
+def write_config(path: Path, doc: object) -> None:
+    """Write ``config.yaml`` the same way, validated as the global config (DECISIONS 0018)."""
+
+    def check(data: object) -> list[Issue]:
+        try:
+            parse_global_config(data)
+        except ConfigError as e:
+            return [Issue(path, _line_for_key_path(data, e.key), str(e))]
+        return []
+
+    _write_checked(path, doc, check)
+
+
+def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue]]) -> None:
+    """Dump, re-read, validate, then replace. Nothing is written when the result would not load.
 
     The temporary file sits next to the target (``os.replace`` cannot cross filesystems) and must
     not end in ``.yaml`` / ``.yml``: ``hints/`` is watched as a directory, so a temporary sheet
@@ -540,11 +562,11 @@ def write_document(path: Path, doc: object) -> None:
         data, issues = read_document(tmp)
         if not issues:
             # Validate what will actually land, but report it against the real name.
-            _, issues = parse_sheet(data, path)
+            issues = check(data)
         if issues:
             raise SheetWriteError(f"{path.name} would not validate; nothing was written", issues)
         if path.exists():
-            os.chmod(tmp, path.stat().st_mode & 0o7777)  # keep the mode the user gave the sheet
+            os.chmod(tmp, path.stat().st_mode & 0o7777)  # keep the mode the user gave the file
         os.replace(tmp, path)
     except Exception:
         try:
@@ -552,6 +574,23 @@ def write_document(path: Path, doc: object) -> None:
         except OSError:
             pass
         raise
+
+
+def set_overlay_size(doc: object, width: int, height: int) -> CommentedMap:
+    """``overlay.width`` / ``overlay.height`` set to ``<n>px``, keeping everything else.
+
+    Takes the document ``read_document`` returned (``None`` when there is no config.yaml yet) and
+    returns the document to write. Percentages given by hand become pixels the moment the overlay
+    is resized by hand -- that is the point of the resize (DECISIONS 0018).
+    """
+    root = doc if isinstance(doc, CommentedMap) else CommentedMap()
+    overlay = root.get("overlay")
+    if not isinstance(overlay, CommentedMap):
+        overlay = CommentedMap()
+        root["overlay"] = overlay
+    overlay["width"] = f"{max(1, int(width))}px"
+    overlay["height"] = f"{max(1, int(height))}px"
+    return root
 
 
 def _flow_tags(values: object) -> CommentedSeq:

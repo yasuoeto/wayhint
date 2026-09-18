@@ -31,9 +31,11 @@ from wayhint.yaml_store import (
     parse_sheet,
     read_document,
     set_favorite,
+    set_overlay_size,
     slug,
     swap_hints,
     update_hint,
+    write_config,
     write_document,
 )
 
@@ -136,6 +138,48 @@ class WriteDocumentTest(TmpSheetTest):
         with self.assertRaises(SheetWriteError):
             write_document(self.dir / "nope" / "s.yaml", {"id": "x", "title": "X"})
         self.assertFalse((self.dir / "nope").exists())
+
+
+class OverlaySizeTest(TmpSheetTest):
+    """The hand-resized overlay writes its size back to config.yaml (DECISIONS 0018)."""
+
+    CONFIG = """# 手書きのコメント
+overlay:
+  anchor: top-right   # 行末コメント
+  width: 420px
+  height: 60%
+editor:
+  command: [gvim, "{file}"]
+"""
+
+    def config(self, text: str = CONFIG) -> Path:
+        path = self.dir / "config.yaml"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_size_is_written_in_px_and_comments_survive(self) -> None:
+        path = self.config()
+        write_config(path, set_overlay_size(self.doc(path), 500, 640))
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("width: 500px", text)
+        self.assertIn("height: 640px", text)
+        self.assertIn("# 手書きのコメント", text)
+        self.assertIn("anchor: top-right   # 行末コメント", text)
+        self.assertIn('command: [gvim, "{file}"]', text)
+
+    def test_no_config_file_yet(self) -> None:
+        path = self.dir / "config.yaml"
+        write_config(path, set_overlay_size(None, 500, 640))
+        self.assertEqual(
+            path.read_text(encoding="utf-8"), "overlay:\n  width: 500px\n  height: 640px\n"
+        )
+
+    def test_a_config_that_would_not_load_is_not_written(self) -> None:
+        path = self.config("overlay:\n  anchor: nowhere\n")
+        with self.assertRaises(SheetWriteError):
+            write_config(path, set_overlay_size(self.doc(path), 500, 640))
+        self.assertEqual(path.read_text(encoding="utf-8"), "overlay:\n  anchor: nowhere\n")
+        self.assertFalse(list(self.dir.glob("*.tmp")))
 
 
 class BuildHintTest(unittest.TestCase):

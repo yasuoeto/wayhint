@@ -434,6 +434,34 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   sensitive を切り替える処理も消した。
 
 
+## 0018 — overlay は角の grip で手動リサイズし、サイズは config.yaml に書き戻す
+
+- **Date**: 2026-09-18
+- **Status**: accepted
+- **Context**: 幅・高さは `config.yaml` の `overlay.width` / `height` でしか変えられず、
+  ちょうどいい大きさを探すのに「編集 → 保存 → 開き直す」を繰り返す必要があった。layer surface
+  には compositor 側の frame も interactive resize も無いので、掴む場所はアプリが自分で出すしか
+  ない。サイズは「いつも同じ大きさで出る」(最重要原則の位置の安定)ために永続化が要る。
+- **Decision**: anchor の反対側に grip を `Gtk.Overlay` で重ね、`Gtk.GestureDrag` で掴んで
+  伸縮させる。角(16px)は縦横同時、自由な 2 辺に置いた 6px の帯は幅だけ・高さだけを変える。drag 終了時に daemon が `config.yaml` の `overlay.width` / `height` を
+  **px** で書き戻す。書き込みは sheet と同じ atomic write + 事前 validation
+  (`write_config`)で、ruamel の round-trip なので手書きのコメントは残る。file monitor が
+  reload するので、次の表示・再起動後も同じ大きさになる。適用は global(sheet ごとではない)。
+- **Alternatives**:
+  - サイズを別の state ファイル(`~/.local/state/wayhint/`)に持つ: 設定と実行時状態は分かれるが、
+    config.yaml を手で直しても state が勝つため、どちらが効いているのか分からなくなる。
+  - メモリだけで保持: daemon 再起動で戻る。「いつも同じ大きさ」を満たさない。
+  - sheet ごとに保存: sheet を切り替えるたびに大きさが変わり、位置の安定に反する。
+  - compositor 側のリサイズに任せる: layer surface には無い。通常 window にすると
+    「いつも同じ場所」が崩れる(0011 以前からの前提)。
+- **Consequences**: 手で `60%` と書いていても、一度掴んで離せば px になる(% に戻すには手で直す)。
+  GUI 操作が `config.yaml` を書き換えるようになった。壊れた config.yaml のときは書かずに
+  `⚠` を出す。grip は overlay child なので当たり判定を奪う: 角 16px と、自由な 2 辺の 6px 幅の帯。
+  toolbar の下 padding を 6px → 12px に広げ、帯が button に掛からないようにしてある。
+  sheet ごとの `display` 上書きがある場合、書き戻すのは global 側なので、sheet 側の指定が
+  勝ったままになる(その sheet では手動リサイズが効いていないように見える)。
+
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

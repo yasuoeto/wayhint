@@ -49,11 +49,21 @@ window.wayhint {
   padding: 4px 10px; color: #8c8c75; opacity: 1; font-size: 0.8em; font-family: monospace;
 }
 .wayhint-chip { background-color: alpha(#ffffff, 0.18); border-radius: 0; padding: 1px 6px; }
+/* リサイズのつまみ。layer surface には枠が無いので自前で置いている。角(both)は常に見え、
+   辺の帯(x = 幅だけ / y = 高さだけ)は hover したときだけ出す。 */
+.wayhint-grip-both {
+  background-image: linear-gradient(to bottom right, transparent 55%, alpha(#9fbfc1, 0.45));
+}
+.wayhint-grip-both:hover {
+  background-image: linear-gradient(to bottom right, transparent 45%, #9fbfc1);
+}
+.wayhint-grip-x:hover, .wayhint-grip-y:hover { background-color: alpha(#9fbfc1, 0.55); }
 .wayhint-form { padding: 8px 10px; border-top: 1px solid #3c3c3c; }
 .wayhint-form-title { font-weight: bold; padding-bottom: 4px; }
 .wayhint-form-label { color: #b4b4b4; opacity: 1; font-size: 0.85em; }
 .wayhint-form-note { color: #ffcc00; font-size: 0.85em; padding-top: 4px; }
-.wayhint-toolbar { padding: 6px 8px; border-top: 1px solid #3c3c3c; }
+/* 下の 6px は resize の帯(.wayhint-grip-y)の逃げ: button に掛からないようにする。 */
+.wayhint-toolbar { padding: 6px 8px 12px 8px; border-top: 1px solid #3c3c3c; }
 
 /* GTK 既定テーマは light なので、button と entry は暗い panel 用に明示する。
    button は window.active.button.*(unpressed 縦 gradient / hover 単色 / pressed 斜め)。 */

@@ -58,7 +58,8 @@ src/wayhint/
   models.py の ResolvedContext.target_key()  overlay が何を出しているかの比較キー(title は含めない)
   context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
   context/process.py              ProcessInfo 正規化
-  ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決(純粋、テスト対象)
+  ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決、
+                                  resize_delta(掴んだ角の drag → 新サイズ)(純粋、テスト対象)
   i18n.py                         UI 文字列カタログ(en/ja)、locale 検出(純粋、テスト対象)
   ui/window.py, ui/style.py       HintWindow(list/detail/search/toolbar)、CSS
   editor.py                       edit_target(開く file/line の決定、純粋)、placeholder 置換 + Popen(shell=False)
@@ -163,6 +164,14 @@ hints:
 - **layer-shell**: layer overlay, exclusive_zone 0。keyboard_mode は状態から導出する。
   normal = none、search / edit = exclusive。設定箇所は `_sync_keyboard_mode()` の 1 つ。
   anchor 名(9種)→ layer-shell anchor + margin へ変換。
+- **手動リサイズ**: layer surface に compositor 側の frame / interactive resize は無いので、
+  anchor の反対側に grip を `Gtk.Overlay` で重ね、`Gtk.GestureDrag` で掴む。角
+  (`.wayhint-grip-both`、16px)が縦横、自由な 2 辺の帯(`.wayhint-grip-x` / `-y`、6px)が
+  幅だけ・高さだけ。帯は動かさない側の delta を 0 にして同じ `resize_delta` に渡す。
+  重なる部分は後から `add_overlay` した角が勝つ。drag 中は `set_size_request`、drag 終了で
+  daemon が `config.yaml` の
+  `overlay.width` / `height` を px で書き戻す(DECISIONS 0018)。pointer だけで完結するので
+  keyboard_mode は触らない。サイズ計算は `geometry.resize_delta`(純粋)。
 
 ## 編集モード（Phase 7）
 
@@ -380,6 +389,7 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T22 `d` `d` → 削除、`u` → 復帰
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
 - T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
+- T25 角の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き直しても、daemon を再起動しても同じサイズ
 
 ## Known limits and future work
 

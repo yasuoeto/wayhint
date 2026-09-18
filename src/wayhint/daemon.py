@@ -74,9 +74,11 @@ from wayhint.yaml_store import (  # noqa: E402
     match_rule_for_context,
     read_document,
     set_favorite,
+    set_overlay_size,
     slug,
     swap_hints,
     update_hint,
+    write_config,
     write_document,
 )
 
@@ -120,6 +122,7 @@ class Daemon:
             on_edit=self.edit,
             on_close=self.hide,
             on_action=self.on_edit_action,
+            on_resize=self.resize,
             refocus=self._refocus,
             tr=translator(self.config.language),
         )
@@ -553,6 +556,28 @@ class Daemon:
             raise SheetWriteError(str(issues[0]))
         mutate(doc)
         write_document(path, doc)
+
+    def resize(self, width: int, height: int) -> None:
+        """Keep a hand-resized overlay: write the size back to ``config.yaml`` (0018).
+
+        The file monitor picks the write up and reloads, so the new size is what every later show
+        uses -- including after a restart. A percentage written by hand becomes pixels.
+        """
+        path = self.root / "config.yaml"
+        doc, issues = read_document(path) if path.exists() else (None, [])
+        if issues:  # a broken config.yaml is the user's to fix; do not overwrite it
+            self._warn(issues[0])
+            return
+        try:
+            write_config(path, set_overlay_size(doc, width, height))
+        except SheetWriteError as e:
+            self._warn(e)
+            return
+        log.info("overlay resized: %dx%d written to config.yaml", width, height)
+
+    def _warn(self, reason: object) -> None:
+        assert self.window is not None
+        self.window.show_message(f"⚠ {reason}")
 
     def refresh(self) -> dict:
         assert self.window is not None

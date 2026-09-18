@@ -24,7 +24,8 @@ window.wayhint { background-color: alpha(#1e1e2e, 0.92); color: #cdd6f4; border-
 .wayhint-command { font-family: monospace; color: #a6e3a1; }
 .wayhint-category { opacity: 0.6; font-size: 0.8em; }
 .wayhint-detail { padding: 8px 12px; border-top: 1px solid alpha(#cdd6f4, 0.15); font-size: 0.9em; }
-.wayhint-toolbar { padding: 6px 8px; border-top: 1px solid alpha(#cdd6f4, 0.15); }
+/* The last 6px of the bottom padding keep .wayhint-grip-y clear of the buttons. */
+.wayhint-toolbar { padding: 6px 8px 12px 8px; border-top: 1px solid alpha(#cdd6f4, 0.15); }
 .wayhint-toolbar button { padding: 2px 8px; }
 .wayhint-chip { background-color: alpha(#89b4fa, 0.25); border-radius: 6px; padding: 1px 6px; }
 .wayhint-form { padding: 8px 12px; border-top: 1px solid alpha(#cdd6f4, 0.15); }
@@ -32,6 +33,13 @@ window.wayhint { background-color: alpha(#1e1e2e, 0.92); color: #cdd6f4; border-
 .wayhint-form-label { opacity: 0.7; font-size: 0.85em; }
 .wayhint-form-note { color: #f9e2af; font-size: 0.85em; padding-top: 4px; }
 .wayhint-help { padding: 4px 12px; opacity: 0.6; font-size: 0.8em; font-family: monospace; }
+.wayhint-grip-both {
+  background-image: linear-gradient(to bottom right, transparent 55%, alpha(#cdd6f4, 0.35));
+}
+.wayhint-grip-both:hover {
+  background-image: linear-gradient(to bottom right, transparent 45%, alpha(#cdd6f4, 0.6));
+}
+.wayhint-grip-x:hover, .wayhint-grip-y:hover { background-color: alpha(#cdd6f4, 0.35); }
 """
 
 

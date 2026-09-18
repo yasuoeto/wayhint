@@ -21,6 +21,11 @@ _EDGES: dict[str, frozenset[str]] = {
 assert set(_EDGES) == set(ANCHORS)
 
 
+# A hand-resized overlay must stay big enough to read and small enough to be an overlay.
+MIN_WIDTH = 220
+MIN_HEIGHT = 120
+
+
 @dataclass(frozen=True)
 class Placement:
     edges: frozenset[str]  # subset of {"top","right","bottom","left"}
@@ -64,3 +69,33 @@ def placement(display: DisplayConfig, output: OutputInfo | None) -> Placement:
             )
             height = max(1, min(height, avail))
     return Placement(edges=edges, margins=margin, width=width, height=height)
+
+
+def resize_delta(
+    start: tuple[int, int],
+    dx: float,
+    dy: float,
+    edges: frozenset[str],
+    output: OutputInfo | None,
+) -> tuple[int, int]:
+    """Size after dragging the grip by ``(dx, dy)`` from a window that was ``start`` big.
+
+    The grip sits on the corner away from the anchored edges, so dragging *away* from the anchor
+    is what makes the window bigger: anchored right means dragging left (negative ``dx``) grows
+    it. On an unanchored axis the window is centred and grows both ways, so the edge only travels
+    half of what the pointer does -- the sign is still the one that reads as "drag out to grow".
+    """
+    sx = -1 if "right" in edges else 1
+    sy = -1 if "bottom" in edges else 1
+    width = start[0] + round(sx * dx)
+    height = start[1] + round(sy * dy)
+    return (
+        _clamp(width, MIN_WIDTH, output.width if output else None),
+        _clamp(height, MIN_HEIGHT, output.height if output else None),
+    )
+
+
+def _clamp(value: int, low: int, high: int | None) -> int:
+    if high is not None:
+        value = min(value, max(low, high))
+    return max(low, value)

@@ -37,11 +37,13 @@ from wayhint.selection import (  # noqa: E402
 )
 from wayhint.ui import editmode  # noqa: E402
 from wayhint.ui.editmode import FormDraft, keyboard_grab  # noqa: E402
-from wayhint.ui.geometry import Placement, placement  # noqa: E402
+from wayhint.ui.geometry import Placement, placement, resize_delta  # noqa: E402
 from wayhint.yaml_store import Issue  # noqa: E402
 
 log = logging.getLogger(__name__)
 
+GRIP_PX = 16  # the corner the pointer can grab to resize; layer surfaces have no frame
+GRIP_EDGE_PX = 6  # the side strips next to it, for one axis at a time
 KEY_MAX_CHARS = 12  # the key column wraps past this; `.wayhint-key` min-width keeps the floor
 
 _EDGE = {
@@ -97,6 +99,7 @@ class HintWindow(Gtk.Window):
         on_edit: Callable[[HintSheet | None, Hint | None], None],
         on_close: Callable[[], None],
         on_action: Callable[[str, dict | None], None],
+        on_resize: Callable[[int, int], None],
         refocus: Callable[[str | None], None],
         tr: Translator | None = None,
     ) -> None:
@@ -105,6 +108,7 @@ class HintWindow(Gtk.Window):
         self._on_edit = on_edit
         self._on_close = on_close
         self._on_action = on_action
+        self._on_resize = on_resize
         self._refocus = refocus
         self._tr = tr or translator()
         self._ctx: ResolvedContext | None = None
@@ -117,6 +121,8 @@ class HintWindow(Gtk.Window):
         self._filter: str | None = None
         self._completion: tuple[str, str] | None = None  # (typed prefix, candidate now shown)
         self._selected_id: str | None = None
+        self._edges: frozenset[str] = frozenset({"top", "right"})  # set by _apply_placement
+        self._drag_from: tuple[int, int] | None = None  # window size when the drag started
 
         LayerShell.init_for_window(self)
         LayerShell.set_namespace(self, "wayhint")
@@ -141,7 +147,12 @@ class HintWindow(Gtk.Window):
 
     def _build(self) -> None:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.set_child(root)
+        frame = Gtk.Overlay(child=root)
+        self.set_child(frame)
+        # The side strips go down first so the corner, added last, wins where they meet.
+        self._grips = {axis: self._build_grip(axis) for axis in ("x", "y", "both")}
+        for grip in self._grips.values():
+            frame.add_overlay(grip)
         self._header = Gtk.Label(xalign=0)
         self._header.add_css_class("wayhint-header")
         root.append(self._header)
@@ -224,6 +235,54 @@ class HintWindow(Gtk.Window):
         self._form_note.add_css_class("wayhint-form-note")
         box.append(self._form_note)
         return box
+
+    def _build_grip(self, axis: str) -> Gtk.Widget:
+        """One resize handle. A layer surface gets no frame from the compositor, so the drag has
+        to be handled here: the pointer works in every mode because it needs no keyboard grab.
+
+        ``axis`` is ``x`` (the side strip that only changes the width), ``y`` (only the height)
+        or ``both`` (the corner).
+        """
+        grip = Gtk.Box(can_focus=False)
+        grip.add_css_class("wayhint-grip")
+        grip.add_css_class(f"wayhint-grip-{axis}")
+        grip.set_size_request(
+            GRIP_PX if axis in ("x", "both") else GRIP_EDGE_PX,
+            GRIP_PX if axis in ("y", "both") else GRIP_EDGE_PX,
+        )
+        drag = Gtk.GestureDrag()
+        drag.connect("drag-begin", self._on_drag_begin)
+        drag.connect("drag-update", self._on_drag_update, axis)
+        drag.connect("drag-end", self._on_drag_end, axis)
+        grip.add_controller(drag)
+        return grip
+
+    # --- resize ------------------------------------------------------------------------------
+
+    def _on_drag_begin(self, *_args) -> None:
+        self._drag_from = (self.get_width(), self.get_height())
+
+    def _drag_size(self, dx: float, dy: float, axis: str) -> tuple[int, int] | None:
+        if self._drag_from is None:
+            return None
+        out = self._ctx.output if self._ctx else None
+        # A side strip pins the axis it does not own, so the size only moves the way it looks.
+        return resize_delta(
+            self._drag_from, 0 if axis == "y" else dx, 0 if axis == "x" else dy, self._edges, out
+        )
+
+    def _on_drag_update(self, _gesture, dx: float, dy: float, axis: str) -> None:
+        size = self._drag_size(dx, dy, axis)
+        if size is not None:
+            self.set_size_request(*size)
+
+    def _on_drag_end(self, _gesture, dx: float, dy: float, axis: str) -> None:
+        size = self._drag_size(dx, dy, axis)
+        self._drag_from = None
+        if size is None:
+            return
+        self.set_size_request(*size)
+        self._on_resize(*size)  # the daemon writes config.yaml; the reload brings it back here
 
     @staticmethod
     def _button(parent: Gtk.Box, label: str, cb: Callable[[], None]) -> Gtk.Button:
@@ -484,8 +543,31 @@ class HintWindow(Gtk.Window):
         self.set_default_size(place.width or -1, place.height or -1)
         if place.width:
             self.set_size_request(place.width, place.height or -1)
+        self._edges = place.edges
+        self._place_grip(place.edges)
         monitor = self._find_monitor(out.name) if out else None
         LayerShell.set_monitor(self, monitor)
+
+    def _place_grip(self, edges: frozenset[str]) -> None:
+        """Opposite the anchored edges: that is the side the window grows towards.
+
+        The corner takes both axes; the two side strips run along the same free edges and take
+        one each.
+        """
+        right = "right" in edges
+        bottom = "bottom" in edges
+        near_x = Gtk.Align.START if right else Gtk.Align.END  # the free vertical edge
+        near_y = Gtk.Align.START if bottom else Gtk.Align.END  # the free horizontal edge
+        corner = "nesw-resize" if right != bottom else "nwse-resize"
+        for axis, halign, valign, cursor in (
+            ("x", near_x, Gtk.Align.FILL, "ew-resize"),
+            ("y", Gtk.Align.FILL, near_y, "ns-resize"),
+            ("both", near_x, near_y, corner),
+        ):
+            grip = self._grips[axis]
+            grip.set_halign(halign)
+            grip.set_valign(valign)
+            grip.set_cursor(Gdk.Cursor.new_from_name(cursor, None))
 
     @staticmethod
     def _find_monitor(name: str) -> Gdk.Monitor | None:

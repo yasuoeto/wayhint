@@ -19,7 +19,7 @@ from wayhint.models import (
     Size,
     SourceLocation,
 )
-from wayhint.ui.geometry import placement, resolve_size
+from wayhint.ui.geometry import MIN_HEIGHT, MIN_WIDTH, placement, resize_delta, resolve_size
 
 
 class EditorTest(unittest.TestCase):
@@ -147,6 +147,28 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(p.margins, Margin(24, 24))
         self.assertEqual(placement(DisplayConfig(anchor="center"), None).edges, frozenset())
         self.assertEqual(placement(DisplayConfig(), None).edges, frozenset({"top", "right"}))
+
+    def test_resize_grows_away_from_the_anchor(self) -> None:
+        top_right = frozenset({"top", "right"})
+        # the grip is bottom-left there: drag left and down to grow
+        self.assertEqual(resize_delta((420, 600), -80, 40, top_right, self.OUT), (500, 640))
+        self.assertEqual(resize_delta((420, 600), 80, -40, top_right, self.OUT), (340, 560))
+        bottom_left = frozenset({"bottom", "left"})
+        self.assertEqual(resize_delta((420, 600), 80, -40, bottom_left, self.OUT), (500, 640))
+        # an unanchored axis still reads as "drag out to grow"
+        self.assertEqual(resize_delta((420, 600), 80, 40, frozenset(), self.OUT), (500, 640))
+
+    def test_resize_is_clamped(self) -> None:
+        top_right = frozenset({"top", "right"})
+        self.assertEqual(
+            resize_delta((420, 600), 9999, -9999, top_right, self.OUT), (MIN_WIDTH, MIN_HEIGHT)
+        )
+        self.assertEqual(
+            resize_delta((420, 600), -9999, 9999, top_right, self.OUT),
+            (2000, 1000),  # the output
+        )
+        # no output known: only the floor applies
+        self.assertEqual(resize_delta((420, 600), -9999, 0, top_right, None)[0], 420 + 9999)
 
     def test_clamped_to_output(self) -> None:
         d = DisplayConfig(anchor="left", width=Size(100, "%"), margin=Margin(left=100, right=100))
