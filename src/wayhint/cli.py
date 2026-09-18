@@ -17,7 +17,7 @@ import argparse
 import datetime as dt
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from wayhint import __version__, ipc
@@ -25,6 +25,7 @@ from wayhint.config import GlobalConfig, config_dir
 from wayhint.models import HINT_KINDS, Hint, HintSheet, ProcessInfo, ResolvedContext
 from wayhint.schema import json_schema
 from wayhint.selection import effective_parent_tags, same_group, sort_hints
+from wayhint.ui.editmode import kind_fields
 from wayhint.yaml_store import (
     HintNotFoundError,
     LoadResult,
@@ -156,9 +157,16 @@ def _edited_fields(args: argparse.Namespace) -> dict[str, object]:
         value = getattr(args, name, None)
         if value is not None:
             fields[name] = value
-    if fields.get("kind") == "command" and "key" in fields:
-        raise CommandError("--key and --kind command do not go together; use --command")
     return fields
+
+
+def _check_kind(fields: Mapping[str, object], kind: str) -> None:
+    """A hint only carries what its kind allows: ``tip`` both, ``note`` neither (DESIGN §3)."""
+    allowed = kind_fields(kind)
+    for name in ("key", "command"):
+        if name in fields and name not in allowed:
+            wanted = " or ".join(f"--{a}" for a in allowed) or "neither"
+            raise CommandError(f"--{name} does not go with --kind {kind}; use {wanted}")
 
 
 def _write(path: Path, mutate) -> None:
@@ -174,6 +182,7 @@ def cmd_add(args: argparse.Namespace) -> int:
     fields = _edited_fields(args)
     fields["title"] = args.title
     fields.setdefault("kind", "shortcut")
+    _check_kind(fields, str(fields["kind"]))
     fields["favorite"] = False
     fields["learned"] = dt.date.today().isoformat()
 
@@ -221,6 +230,8 @@ def cmd_edit(args: argparse.Namespace) -> int:
     fields = _edited_fields(args)
     if not fields:
         raise CommandError("nothing to change; pass at least one of --title/--kind/--key/…")
+    current = next((h for h in sheet.hints if h.id == args.id), None)
+    _check_kind(fields, str(fields.get("kind") or (current.kind if current else "shortcut")))
     _write(sheet.path, lambda doc: update_hint(doc, args.id, fields))
     print(f"updated {args.id} in {sheet.path}")
     return 0
@@ -304,9 +315,9 @@ def _hint_fields(parser: argparse.ArgumentParser, *, title_option: bool) -> None
     if title_option:
         parser.add_argument("--title")
     parser.add_argument("--kind", choices=list(HINT_KINDS))
-    what = parser.add_mutually_exclusive_group()
-    what.add_argument("--key", help="key combination, e.g. 'Ctrl-o'")
-    what.add_argument("--command", help="command string; wayhint never runs it")
+    # Not mutually exclusive: a ``tip`` carries both. The kind decides, in :func:`_check_kind`.
+    parser.add_argument("--key", help="key combination, e.g. 'Ctrl-o'")
+    parser.add_argument("--command", help="command string; wayhint never runs it")
     parser.add_argument("--category")
     parser.add_argument("--remark")
 

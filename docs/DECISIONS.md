@@ -309,7 +309,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 
 #### D5. quick add
 
-- 入力項目: title（必須）/ kind（選択、既定 `shortcut`）/ key または command（kind で排他: `shortcut` `tip` → `key`、`command` → `command`、`note` → 欄なし）/ category（任意）/ remark（任意）。
+- 入力項目: title（必須）/ kind（選択、既定 `shortcut`）/ key と command（kind が決める: `shortcut` → `key`、`command` → `command`、`tip` → 両方、`note` → どちらも無し。tip と note は覚え書きで、tip は「これを押す、または これを実行する」を 1 つの hint に書ける。2026-09-18 に amend）/ category（任意）/ remark（任意）。
 - 自動設定: `id` は title から slug 生成（`^[A-Za-z0-9][A-Za-z0-9._-]*$` に合わせ、衝突時 `-2` `-3`、slug が空なら `q-YYYYMMDD-HHMMSS`）。以後 GUI では変更しない。`learned` は当日、以後 GUI では変更しない。`favorite: false`、他は null。
 - category 未入力（null）は「未 curate」の印として扱い、表示側で i18n ラベル（en `inbox` / ja `未定義`）の擬似 category として末尾にまとめる。**YAML に書く値は locale に依存させない。**
 - 追加先は現在 context の active sheet。`Ctrl+P` toggle で親 sheet に切り替え、その場合 `effective_parent_tags` の tag を `tags` に付与する。

@@ -625,9 +625,9 @@ class HintWindow(Gtk.Window):
         return HINT_KINDS[index] if 0 <= index < len(HINT_KINDS) else "shortcut"
 
     def _sync_form_rows(self) -> None:
-        wanted = editmode.kind_field(self._current_kind())
+        wanted = editmode.kind_fields(self._current_kind())
         for name in ("key", "command"):
-            self._rows[name].set_visible(name == wanted)
+            self._rows[name].set_visible(name in wanted)
 
     def _save_form(self) -> None:
         draft = self.form_draft()

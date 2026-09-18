@@ -152,6 +152,30 @@ class CliTest(unittest.TestCase):
         self.run_cli("add", "Alpha", "--sheet", "demo")
         self.assertIn("alpha-2", self.ids())
 
+    def test_tip_takes_both_key_and_command(self) -> None:
+        code, _out, err = self.run_cli(
+            "add",
+            "Reset the terminal",
+            "--kind",
+            "tip",
+            "--key",
+            "Ctrl-l",
+            "--command",
+            "reset",
+            "--sheet",
+            "demo",
+        )
+        self.assertEqual(code, 0, err)
+        added = self.hints()[-1]
+        self.assertEqual((added.kind, added.key, added.command), ("tip", "Ctrl-l", "reset"))
+
+    def test_note_takes_neither(self) -> None:
+        code, _out, err = self.run_cli(
+            "add", "Remember this", "--kind", "note", "--key", "Ctrl-l", "--sheet", "demo"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("--kind note", err)
+
     def test_edit(self) -> None:
         code, _out, err = self.run_cli("edit", "alpha", "--title", "Renamed", "--sheet", "demo")
         self.assertEqual(code, 0, err)

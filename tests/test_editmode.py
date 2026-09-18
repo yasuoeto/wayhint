@@ -253,11 +253,14 @@ class StaleSheetTest(unittest.TestCase):
 
 
 class FormDraftTest(unittest.TestCase):
-    def test_kind_decides_which_field_is_shown(self) -> None:
-        self.assertEqual(em.kind_field("shortcut"), "key")
-        self.assertEqual(em.kind_field("tip"), "key")
-        self.assertEqual(em.kind_field("command"), "command")
-        self.assertIsNone(em.kind_field("note"))
+    def test_kind_decides_which_fields_are_shown(self) -> None:
+        # Changed 2026-09-18: tip and note are notes to self. A tip often says "press this, or
+        # run that", so it carries both; a note is prose and carries neither.
+        self.assertEqual(em.kind_fields("shortcut"), ("key",))
+        self.assertEqual(em.kind_fields("command"), ("command",))
+        self.assertEqual(em.kind_fields("tip"), ("key", "command"))
+        self.assertEqual(em.kind_fields("note"), ())
+        self.assertEqual(em.MEMO_KINDS, ("tip", "note"))
 
     def test_prefill_from_a_hint(self) -> None:
         draft = em.draft_from_hint(hint("h", "one", kind="command", command="/x"), "sheet")
@@ -282,6 +285,14 @@ class FormDraftTest(unittest.TestCase):
         fields = em.draft_fields(draft)
         self.assertIsNone(fields["key"])
         self.assertIsNone(fields["command"])
+
+    def test_tip_keeps_both(self) -> None:
+        draft = em.FormDraft(
+            fields={"title": "T", "kind": "tip", "key": "Ctrl-r", "command": "reset"}
+        )
+        fields = em.draft_fields(draft)
+        self.assertEqual(fields["key"], "Ctrl-r")
+        self.assertEqual(fields["command"], "reset")
 
     def test_quick_add_draft_has_no_hint_id(self) -> None:
         self.assertIsNone(em.FormDraft().hint_id)

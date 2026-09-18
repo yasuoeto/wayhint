@@ -212,7 +212,7 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
 |---|---|---|
 | title | ✓ | |
 | kind | ✓ | `shortcut` / `command` / `tip` / `note`。quick add の既定は `shortcut` |
-| key または command | – | kind で排他。`shortcut` `tip` → `key`、`command` → `command`、`note` → 欄なし |
+| key / command | – | kind が決める。`shortcut` → `key`、`command` → `command`、`tip` → **両方**、`note` → **どちらも無し**。tip と note は覚え書き |
 | category | – | 空なら null（表示上は擬似 category inbox / 未定義） |
 | remark | – | |
 

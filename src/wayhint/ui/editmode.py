@@ -251,13 +251,23 @@ def restore_index(hint_ids: Sequence[str], hint_id: str | None, previous: int | 
     return max(0, min(previous, len(hint_ids) - 1))
 
 
-def kind_field(kind: str) -> str | None:
-    """Which of ``key`` / ``command`` the form shows for this kind (DESIGN §3)."""
+MEMO_KINDS = ("tip", "note")
+"""The kinds that are notes to self rather than something to press or run."""
+
+
+def kind_fields(kind: str) -> tuple[str, ...]:
+    """Which of ``key`` / ``command`` this kind may carry (DESIGN §3, amended 2026-09-18).
+
+    ``tip`` is a note that often has both -- "press this, or run that" -- so it gets both fields;
+    ``note`` is prose and gets neither.
+    """
     if kind == "command":
-        return "command"
+        return ("command",)
+    if kind == "tip":
+        return ("key", "command")
     if kind == "note":
-        return None
-    return "key"
+        return ()
+    return ("key",)
 
 
 def draft_from_hint(hint: Hint, sheet_id: str | None) -> FormDraft:
@@ -274,12 +284,12 @@ def draft_from_hint(hint: Hint, sheet_id: str | None) -> FormDraft:
 
 
 def draft_fields(draft: FormDraft) -> dict[str, object]:
-    """The form's values as hint fields: the unused one of key/command is dropped, blanks null."""
+    """The form's values as hint fields: fields the kind does not carry are dropped, blanks null."""
     kind = draft.value("kind") or "shortcut"
-    wanted = kind_field(kind)
+    wanted = kind_fields(kind)
     out: dict[str, object] = {"title": draft.value("title").strip(), "kind": kind}
     for name in ("category", "remark"):
         out[name] = draft.value(name).strip() or None
-    out["key"] = draft.value("key").strip() or None if wanted == "key" else None
-    out["command"] = draft.value("command").strip() or None if wanted == "command" else None
+    for name in ("key", "command"):
+        out[name] = draft.value(name).strip() or None if name in wanted else None
     return out
