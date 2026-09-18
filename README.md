@@ -111,7 +111,7 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 | 更新 | context を取り直す。別のアプリに移ったあと、閉じずに sheet を切り替えたいとき |
 | コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
 | ヒントを編集 | 選択中の hint の行を editor で開く |
-| シートを編集 | 表示中の sheet を editor で開く |
+| シートを編集 | 選択中の hint が属する sheet を editor で開く(無選択なら表示中の sheet) |
 | 閉じる | overlay を隠す |
 
 検索は空白区切りの語をすべて含む hint に絞る。大文字小文字は区別しない。対象は title、`key`、

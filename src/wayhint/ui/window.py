@@ -28,7 +28,12 @@ from wayhint import clipboard  # noqa: E402
 from wayhint.config import GlobalConfig  # noqa: E402
 from wayhint.i18n import Translator, translator  # noqa: E402
 from wayhint.models import HINT_KINDS, Hint, HintSheet, ResolvedContext  # noqa: E402
-from wayhint.selection import search_hints, sort_hints, visible_hints  # noqa: E402
+from wayhint.selection import (  # noqa: E402
+    search_hints,
+    sheet_for_hint,
+    sort_hints,
+    visible_hints,
+)
 from wayhint.ui import editmode  # noqa: E402
 from wayhint.ui.editmode import FormDraft, keyboard_grab  # noqa: E402
 from wayhint.ui.geometry import Placement, placement  # noqa: E402
@@ -163,7 +168,7 @@ class HintWindow(Gtk.Window):
         self._button(bar, self._tr("Refresh"), lambda: self._on_refresh())
         self._copy_btn = self._button(bar, self._tr("Copy"), self._copy_selected)
         self._edit_hint_btn = self._button(bar, self._tr("Edit hint"), self._edit_selected)
-        self._button(bar, self._tr("Edit sheet"), lambda: self._on_edit(self._active_sheet(), None))
+        self._button(bar, self._tr("Edit sheet"), self._edit_sheet)
         self._button(bar, self._tr("Edit"), lambda: self._on_action("enter-edit", None))
         self._button(bar, self._tr("Close"), lambda: self._on_close())
         root.append(bar)
@@ -189,6 +194,10 @@ class HintWindow(Gtk.Window):
             caption = Gtk.Label(label=self._tr(label), xalign=0, width_chars=9)
             caption.add_css_class("wayhint-form-label")
             entry = Gtk.Entry(hexpand=True)
+            # ``activate`` is Enter *after* the input method is done with it: a conversion being
+            # confirmed does not emit it, so this is the IME-safe way to save (the bubble
+            # controller never sees Enter, because the entry consumes it).
+            entry.connect("activate", lambda *_: self._save_form())
             row.append(caption)
             row.append(entry)
             box.append(row)
@@ -379,8 +388,13 @@ class HintWindow(Gtk.Window):
 
     def _edit_key(self, name: str, ctrl: bool) -> bool:
         editable = self._editable_focused()
+        # With the form open, Enter and Esc mean save and discard wherever the focus sits -- the
+        # kind dropdown is not an Editable, and Enter there must not re-open a form.
         action = editmode.edit_action(
-            name, ctrl=ctrl, editable=editable, pending=bool(self._delete_pending)
+            name,
+            ctrl=ctrl,
+            editable=editable or self._form is not None,
+            pending=bool(self._delete_pending),
         )
         if editable and not editmode.capture_in_editable(action):
             return False  # let the input method have it; :meth:`_on_key_late` picks up the rest
@@ -682,6 +696,11 @@ class HintWindow(Gtk.Window):
         text = hint.copy_text() if hint else None
         if text is not None:
             clipboard.copy_text(text)
+
+    def _edit_sheet(self) -> None:
+        """Open the sheet the selected hint lives in; the active sheet when nothing is selected."""
+        sheet = sheet_for_hint(self._sheets.values(), self._selected()) or self._active_sheet()
+        self._on_edit(sheet, None)
 
     def _edit_selected(self) -> None:
         hint = self._selected()

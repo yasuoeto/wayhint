@@ -52,6 +52,17 @@ def visible_hints(
     return list(active.hints) + parent_hints_for(parent, tags)
 
 
+def sheet_for_hint(sheets: Iterable[HintSheet], hint: Hint | None) -> HintSheet | None:
+    """The sheet a hint lives in, found by file.
+
+    With ``nested.parent_tags`` the list mixes in hints from the parent sheet, so "the sheet" is
+    a property of the selected hint, not of the context.
+    """
+    if hint is None:
+        return None
+    return next((s for s in sheets if s.path == hint.location.file), None)
+
+
 def sort_hints(hints: Sequence[Hint]) -> list[Hint]:
     """Favorites first, in YAML order; then the rest grouped by category (DECISIONS 0014 D7).
 

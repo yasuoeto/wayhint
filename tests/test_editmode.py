@@ -223,6 +223,20 @@ class SwapRuleTest(unittest.TestCase):
         self.assertTrue(same_group(mine, theirs), "same group…")
         self.assertNotEqual(mine.location.file, theirs.location.file, "…but not the same sheet")
 
+    def test_sheet_for_hint_finds_the_owner(self) -> None:
+        from wayhint.models import HintSheet
+        from wayhint.selection import sheet_for_hint
+
+        child = HintSheet(id="child", title="C", path=Path("child.yaml"))
+        parent = HintSheet(id="parent", title="P", path=Path("parent.yaml"))
+        sheets = [child, parent]
+        # "Edit sheet" has to open the sheet of the selected hint, which in a nested view is often
+        # the parent, not the active sheet.
+        self.assertIs(sheet_for_hint(sheets, hint("a", file="parent.yaml")), parent)
+        self.assertIs(sheet_for_hint(sheets, hint("a", file="child.yaml")), child)
+        self.assertIsNone(sheet_for_hint(sheets, hint("a", file="gone.yaml")))
+        self.assertIsNone(sheet_for_hint(sheets, None))
+
     def test_neighbours_follow_the_displayed_order(self) -> None:
         hints = [hint("a", "one"), hint("fav", "two", favorite=True), hint("b", "one")]
         self.assertEqual([h.id for h in sort_hints(hints)], ["fav", "a", "b"])
