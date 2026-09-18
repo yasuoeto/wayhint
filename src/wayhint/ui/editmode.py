@@ -208,13 +208,32 @@ def matches_category(hint: Hint, category: str | None) -> bool:
     return (hint.category or "").casefold() == category.casefold()
 
 
+def completions(prefix: str, order: Iterable[str | None]) -> list[str]:
+    """Every category that starts with what has been typed, in the order they first appear."""
+    needle = prefix.casefold()
+    return [c for c in order if c is not None and c.casefold().startswith(needle)]
+
+
 def complete_category(partial: str, order: Iterable[str | None]) -> str | None:
     """The first category that starts with what has been typed, or ``None``."""
-    needle = partial.casefold()
-    for category in order:
-        if category is not None and category.casefold().startswith(needle):
-            return category
-    return None
+    found = completions(partial, order)
+    return found[0] if found else None
+
+
+def next_completion(
+    prefix: str, order: Iterable[str | None], current: str | None = None, forward: bool = True
+) -> str | None:
+    """The next candidate for ``prefix``, wrapping around.
+
+    With ``screen`` and ``session`` both present, ``#s`` + Tab has to be able to reach either;
+    completing to the first match and stopping there hides the other one entirely.
+    """
+    found = completions(prefix, order)
+    if not found:
+        return None
+    if current is None or current not in found:
+        return found[0] if forward else found[-1]
+    return found[(found.index(current) + (1 if forward else -1)) % len(found)]
 
 
 def restore_index(hint_ids: Sequence[str], hint_id: str | None, previous: int | None) -> int | None:

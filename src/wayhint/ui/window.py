@@ -98,6 +98,7 @@ class HintWindow(Gtk.Window):
         self._form: FormDraft | None = None
         self._delete_pending: str | None = None
         self._filter: str | None = None
+        self._completion: tuple[str, str] | None = None  # (typed prefix, candidate now shown)
         self._selected_id: str | None = None
 
         LayerShell.init_for_window(self)
@@ -302,6 +303,7 @@ class HintWindow(Gtk.Window):
             self._search_row.set_visible(False)
             self._search_btn.set_label(self._tr("Search"))
             self._filter = None
+            self._completion = None
             self._chip.set_visible(False)
         if mode != "edit":
             self.close_form()
@@ -543,17 +545,27 @@ class HintWindow(Gtk.Window):
         )
 
     def _cycle_filter(self, forward: bool) -> None:
-        """Tab in the search box: complete a half-typed ``#name``, else step the filter on."""
-        query = editmode.parse_search(self._search.get_text())
+        """Tab in the search box: cycle the candidates for a half-typed ``#name``, else the filter.
+
+        Pressing Tab again on a name this method completed keeps the prefix that was typed, so
+        ``#s`` reaches both ``screen`` and ``session``. Touching the text any other way starts over.
+        """
+        text = self._search.get_text()
+        query = editmode.parse_search(text)
         order = self._category_order()
-        if query.partial:
-            completed = editmode.complete_category(query.partial, order)
-            if completed is not None:
-                self._search.set_text(f"#{completed} ")
+        # Continuing a completion: the box still holds exactly what the last Tab put there.
+        continuing = self._completion is not None and text == f"#{self._completion[1]} "
+        prefix, current = self._completion if continuing else (query.partial, None)
+        if prefix is not None:
+            match = editmode.next_completion(prefix, order, current, forward)
+            if match is not None:
+                self._completion = (prefix, match)
+                self._search.set_text(f"#{match} ")
                 self._search.set_position(-1)
-                self._filter = completed
+                self._filter = match
                 self._render_list()
                 return
+        self._completion = None
         self._filter = editmode.cycle_category(order, self._filter, forward)
         self._render_list()
 

@@ -142,6 +142,21 @@ class SearchQueryTest(unittest.TestCase):
         self.assertEqual(em.complete_category("SES", order), "session")
         self.assertIsNone(em.complete_category("zzz", order))
 
+    def test_candidates_with_the_same_prefix_are_all_reachable(self) -> None:
+        # `screen` and `session` both start with "s": completing to the first and stopping there
+        # would hide the other one (found in T20, 2026-09-18).
+        order = ["panes", "screen", "session", None]
+        self.assertEqual(em.completions("s", order), ["screen", "session"])
+        first = em.next_completion("s", order)
+        self.assertEqual(first, "screen")
+        self.assertEqual(em.next_completion("s", order, first), "session")
+        self.assertEqual(em.next_completion("s", order, "session"), "screen", "wraps around")
+        self.assertEqual(em.next_completion("s", order, "screen", forward=False), "session")
+
+    def test_completion_of_an_unknown_prefix(self) -> None:
+        self.assertIsNone(em.next_completion("zzz", ["panes", None]))
+        self.assertEqual(em.completions("zzz", ["panes", None]), [])
+
 
 class CategoryCycleTest(unittest.TestCase):
     def setUp(self) -> None:
