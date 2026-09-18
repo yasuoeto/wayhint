@@ -362,6 +362,36 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - Wayfire は未確認のまま keyboard grab を握る面積が増える。実機チェック項目で確認する。
 - 後日の改修候補: 親 sheet 混入 hint の並び替え、Tab の focus 移動との競合、filter の永続化。
 
+## 0015 — labwc に合わせた配色は既定 CSS ではなく `examples/style.css` で配る
+
+- **Date**: 2026-09-18
+- **Status**: accepted
+- **Context**: 既定 CSS(`ui/style.py` の `DEFAULT_CSS`)は Catppuccin Mocha 風(紫寄りの `#1e1e2e`、
+  角丸 10px)で、実機の labwc(テーマ `Syscrash`、`cornerRadius` 0、OSD を waybar と同じ黒基調に
+  する `themerc-override`)から浮いていた。overlay は compositor の OSD と同じ役どころなので
+  そこに合わせたい。一方で既定 CSS を書き換えると、アプリの「設定なしの見た目」が 1 台の
+  テーマに固定される。CSS の層は 2 つあり、`style.css` は `PRIORITY_USER` で既定に勝つ。
+- **Decision**: 既定 CSS は中立のまま変えない。labwc 用の配色は `examples/style.css` として
+  リポジトリに置き、実配置は `~/.config/wayhint/style.css` へコピーして使う。色の出典は
+  Syscrash の themerc と labwc の OSD 色で、CSS 内のコメントに対応を残す
+  (panel = `osd.bg.color`、header = `window.active.label.bg` の縦 gradient、選択行 =
+  `menu.items.active`、button = `window.active.button.*`、accent = `#9fbfc1`)。テーマに対応色が
+  無い warning / critical だけ desktop 側で使っている `#ffcc00` / `#f53c3c` を使う。
+- **Alternatives**:
+  - 既定 CSS を書き換える(最初に実装した案): 設定ファイル無しで labwc に馴染むが、リポジトリの
+    既定が 1 台のテーマに寄る。ユーザーの判断で不採用。
+  - GTK テーマの色を使う(`@theme_bg_color` 等): 実機の GTK テーマは light Adwaita で、
+    layer-shell の overlay としては明るすぎ、labwc の OSD とも揃わない。
+  - themerc を実行時に読んで色を生成する: Openbox の gradient と GTK CSS が一対一でなく、
+    テーマが無い環境の fallback も要る。得られるのは追随性だけで V1 の価値に見合わない。
+- **Consequences**: 実配置はリポジトリ外なので、`examples/style.css` を直しても
+  `~/.config/wayhint/style.css` は自動では変わらない(コピーし直す)。`style.css` を読むのは
+  daemon 起動時の一度だけなので、変更には再起動が要る。既定 CSS が下に残るため、上書き側は
+  `opacity` のように「既定で付いている」property を明示的に戻す必要がある(実例:
+  `.wayhint-context` の `opacity: 1`)。`cp -r examples/. ~/.config/wayhint/` は style.css も
+  入れるので、既定の配色で使いたい場合は消す必要がある。色の検証は自動化できず、
+  `./scripts/check` が見るのは既定 CSS が parse できることまで。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

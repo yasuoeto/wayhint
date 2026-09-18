@@ -35,10 +35,11 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 |---|---|
 | `config.yaml` | overlay 位置・サイズ、editor、parent tags 等。無ければ全て既定値 |
 | UI 言語 | ボタン等の文字はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)から自動選択。`appearance.language: en\|ja` で固定。日英以外は英語 |
-| `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`) |
+| `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`)。雛形 `examples/style.css` は labwc のテーマ(Syscrash)に合わせた配色 |
 | `hints/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む |
 
-雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる。schema は
+雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる
+(`style.css` も入る。アプリ既定の配色で使うなら消す)。schema は
 `docs/DESIGN.md` の Data model。書いたら `wayhint validate` で確認する(問題があれば exit 1)。
 
 ## compositor の設定
