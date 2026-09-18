@@ -15,10 +15,8 @@ Translator = Callable[[str], str]
 EN: dict[str, str] = {
     "Search": "Search",
     "Done": "Done",
-    "Refresh": "Refresh",
     "Copy": "Copy",
-    "Edit hint": "Edit hint",
-    "Edit sheet": "Edit sheet",
+    "Edit in editor": "Edit in editor",
     "Close": "Close",
     "search hints…": "search hints…",
     "no matching sheet": "no matching sheet",
@@ -64,10 +62,8 @@ EN: dict[str, str] = {
 JA: dict[str, str] = {
     "Search": "検索",
     "Done": "完了",
-    "Refresh": "更新",
     "Copy": "コピー",
-    "Edit hint": "ヒントを編集",
-    "Edit sheet": "シートを編集",
+    "Edit in editor": "エディタで編集",
     "Close": "閉じる",
     "search hints…": "ヒントを検索…",
     "no matching sheet": "該当するシートなし",

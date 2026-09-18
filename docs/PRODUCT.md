@@ -17,8 +17,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
   ショートカット一覧ではない。
 - 使い方: 操作を忘れた瞬間にhotkey(既定 `Super+?`)を押す → いつも同じ場所(既定: 画面右上)に、
   現在のcontextに応じた自分用の情報が出る → 見終わったら同じhotkeyで消す。
-- 調べた操作はYAMLに追記して育てる。overlayの「Edit sheet / Edit hint」から外部editor(gvim)で
-  該当ファイル・該当行を直接開ける。
+- 調べた操作はYAMLに追記して育てる。追加・修正・削除はoverlayの編集モードで完結し、sheet全体を
+  見直すときはoverlayの「Edit in editor」から外部editor(gvim)で該当ファイル・該当行を直接開ける。
 
 ### 最重要原則(設計書 §1.1 / §81)
 
@@ -41,7 +41,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 - 1 application/context につき1 YAMLファイル(`~/.config/wayhint/hints/*.yaml`)。
 - 検索(通常表示ではkeyboardを取らず、Search開始時のみinteractive)。
 - 詳細表示(remark / source / learned / tags は詳細のみ。id / kind は表示しない)。clipboard copy。
-- 外部editorによる編集(Edit sheet / Edit hint行jump)、YAML保存時の自動reload、
+- 外部editorによる編集(Edit in editor: sheetを開き該当行へjump)、YAML保存時の自動reload、
   invalid YAML時のlast-known-good保持。
 - daemon + CLI(`wayhint toggle|show|hide|refresh|validate`)、Unix domain socket IPC、
   hotkeyはcompositor側keybindingに委譲。
@@ -77,7 +77,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 5. **multi-monitor**: 表示先の優先順位 = sheet output override → active viewのoutput →
    compositor の focused output(取れる場合)→ global fallback(§10)。
 6. **context snapshot**: 開いた瞬間のcontextを表示中固定(`context.live_update: false`)。
-   再判定は閉じて開く / Refresh / 明示reload(§11)。
+   再判定は閉じて開く / hotkeyの押し直し / `wayhint refresh` / 明示reload(§11)。
 7. **matcher**: `match.wayland.app_id_regex`(旧 `match.wayfire`) / `match.process.{argv_regex,cmdline_regex}`。
    複数一致は priority → matcher specificity → file order(§16, §59)。
 8. **Herdr adapter**: `herdr pane current` / `herdr pane process-info --pane <id>` から
@@ -117,8 +117,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 - 設計書 §74 Acceptance Criteria 全項目。
 - 実機テスト §69 (Test 1–11、labwc と Wayfire の双方。手順は `docs/DESIGN.md` の実機
   チェックリスト): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
-  output override、px/%サイズ、Search時のみ入力可、Search後にgrabが残らない、gvim Edit sheet、
-  gvim Edit hint行jump。
+  output override、px/%サイズ、Search時のみ入力可、Search後にgrabが残らない、
+  gvim Edit in editor(sheetが開き該当行へjump)。
 - Herdr実機テスト §70: bash → Herdr hints、Claude Code / Codex → 各hints + Herdr指定tag、
   unknown foreground → Herdr hints。
 - §71 editor行jump、§72 閉じずにreload、§73 broken YAMLで crashせず last-known-good 維持

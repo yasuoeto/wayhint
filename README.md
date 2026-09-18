@@ -109,18 +109,18 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 | ボタン | 動作 |
 |---|---|
 | 検索 | 検索欄を開く。検索中だけキー入力を受ける。もう一度押すか `Esc` で終了 |
-| 更新 | context を取り直す。別のアプリに移ったあと、閉じずに sheet を切り替えたいとき |
 | コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
-| ヒントを編集 | 選択中の hint の行を editor で開く |
-| シートを編集 | 選択中の hint が属する sheet を editor で開く(無選択なら表示中の sheet) |
+| エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用 |
+| 編集 | 編集モードに入る。hint の追加・修正・削除・並べ替えを overlay の中で行う(キー割当は `docs/DESIGN.md` の「編集モード」。`wayhint edit-mode` でも入れる) |
 | 閉じる | overlay を隠す |
 
 検索は空白区切りの語をすべて含む hint に絞る。大文字小文字は区別しない。対象は title、`key`、
 `command`、`category`、タグ、`remark`。件数の上限は `search.max_results`(既定 50)。
 検索を終えると keyboard focus は元の window に戻る。
 
-表示される context は **開いた瞬間に固定** される。別のアプリに移っても自動では追従しないので、
-**更新** を押すか、一度閉じて開き直す。
+表示される context は **開いた瞬間に固定** される。別のアプリに移っても自動では追従しない。
+切り替えたいときは移った先の window で **hotkey をもう一度押す**(閉じずに中身が差し替わる)。
+マウスしか使えない場面では `wayhint refresh`(表示中なら context を取り直す)でも同じことができる。
 
 overlay は **呼び出した workspace でだけ** 表示される。別の workspace に切り替えると隠れ、
 戻ってくると同じ内容で出直す。閉じるまでその workspace に居続けるので、workspace ごとに別の
@@ -198,7 +198,8 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 1. `hints/` に新しい YAML を置く(または既存の sheet に hint を足す)。
 2. daemon は保存を検知して自動 reload する(overlay を閉じる必要はない)。壊れた YAML のときは
    直前の正常版を表示し続け、overlay 上部に `⚠ YAML error file:line: message` が出る。
-3. overlay の **シートを編集** / **ヒントを編集** で editor が該当ファイル・該当行を開く。
+3. 追加・修正・削除は overlay の **編集**(編集モード)で完結する。sheet 全体を見直すときは
+   **エディタで編集** で editor が該当ファイル・該当行を開く。
 
 全 key の一覧と制約は `docs/DESIGN.md` の Data model。ここでは書くときに迷う点だけ挙げる。
 
@@ -230,7 +231,7 @@ pane 操作だけが並ぶ。
 | キー | 用途 |
 |---|---|
 | `kind` | hint の種別。`shortcut` は `key` だけ、`command` は `command` だけ、`tip` は両方、`note` はどちらも持たない(tip と note は覚え書き)。`note` は YAML に `key` / `command` が残っていても一覧に出さない。`kind` 自体は **overlay には出ない**。絞り込みにも使わない |
-| `key` | 一覧の左端に出るキー操作。例 `Ctrl-o` |
+| `key` | 一覧の左端に出るキー操作。例 `Ctrl-o`。長いものは 12 文字前後で折り返す(YAML に書いた改行もそのまま出る) |
 | `command` | 一覧の title の下に出るコマンド文字列。**実行はしない**。表示とコピーのみ |
 | `category` | 一覧の右端に出る見出し。同じ category の hint は隣り合って並ぶ |
 | `tags` | 親 sheet として取り込まれるときの絞り込みに使う。検索の対象にもなる |

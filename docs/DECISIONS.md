@@ -392,6 +392,48 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   入れるので、既定の配色で使いたい場合は消す必要がある。色の検証は自動化できず、
   `./scripts/check` が見るのは既定 CSS が parse できることまで。
 
+## 0016 — toolbar の「更新」ボタンを外す(IPC / CLI の `refresh` は残す)
+
+- **Date**: 2026-09-18
+- **Status**: accepted
+- **Amends**: 0012（「取り直したいときは更新」の記述）、0013（hotkey は差し替え）
+- **Context**: `refresh` は「表示中なら `show()` をやり直す」= context の再判定で、YAML の
+  読み直しではない(そちらは file monitor の自動 reload)。効くのは「overlay を開いたまま別の
+  window に移った」場面だけで、同じことは 0013 で hotkey の押し直しでもできるようになっていた。
+  7 個並んだ toolbar の中で、押す理由が説明しにくいボタンになっていた。
+- **Decision**: toolbar から「更新」を外す。`HintWindow` の `on_refresh` も消す。IPC の
+  `refresh` と CLI の `wayhint refresh` は残す(マウスしか使えない場面と script 用)。
+- **Alternatives**:
+  - 残して tooltip で説明する: 押す理由が hotkey と重なる事実は変わらない。
+  - `refresh` 自体を消す: CLI から context を取り直す手段が無くなる。overlay を閉じずに
+    確認したい場面(実機テスト含む)で使う。
+- **Consequences**: マウスだけで context を取り直す手段が overlay 上から無くなる
+  (端末から `wayhint refresh`、または hotkey)。README の toolbar 表と PRODUCT.md §11 の
+  「再判定」の記述を hotkey / CLI に書き換えた。i18n の `Refresh` は両カタログから削除。
+
+
+## 0017 — 外部 editor は sheet 全体のキュレーション用の 1 ボタンにまとめる
+
+- **Date**: 2026-09-18
+- **Status**: accepted
+- **Amends**: 0014（編集モードと外部 editor の役割分担）
+- **Context**: 0014 で hint 単位の追加・修正・削除・並べ替えが overlay の中でできるようになり、
+  外部 editor を開く動機は「1 件を直す」から「sheet 全体を見直す」に移った。それでも toolbar には
+  「ヒントを編集」と「シートを編集」が並んでいた。両者は開くファイルが同じ（0014 以降、
+  「シートを編集」も選択中 hint の sheet を開く）で、違いは該当行へ jump するかどうかだけ。
+- **Decision**: 2 つを **「エディタで編集」** 1 つに統合する。選択中の hint があればその hint の
+  file を該当行で開き、無選択なら表示中の sheet を先頭から開く。`editor.edit_target` が
+  「hint の location が sheet に勝つ」を既に実装しているので、両方を渡すだけで足りる。
+- **Alternatives**:
+  - 「シートを編集」だけ残す: 行 jump は sheet が長いほど効く。捨てる理由が無い。
+  - 「ヒントを編集」だけ残す: 無選択のとき押せないボタンになる（実際、選択に応じて sensitive を
+    切り替えていた）。
+- **Consequences**: toolbar は 検索 / コピー / エディタで編集 / 編集 / 閉じる の 5 個になった。
+  「選択中の hint だけを開く」「sheet を必ず先頭から開く」を選び分ける手段は無くなった。
+  i18n の `Edit hint` / `Edit sheet` は `Edit in editor` に置き換え、選択有無で editor ボタンの
+  sensitive を切り替える処理も消した。
+
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

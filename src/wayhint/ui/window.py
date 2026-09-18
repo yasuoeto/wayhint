@@ -21,7 +21,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+gi.require_version("Pango", "1.0")
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from wayhint import clipboard  # noqa: E402
@@ -41,6 +42,8 @@ from wayhint.yaml_store import Issue  # noqa: E402
 
 log = logging.getLogger(__name__)
 
+KEY_MAX_CHARS = 12  # the key column wraps past this; `.wayhint-key` min-width keeps the floor
+
 _EDGE = {
     "top": LayerShell.Edge.TOP,
     "right": LayerShell.Edge.RIGHT,
@@ -58,7 +61,17 @@ class HintRow(Gtk.ListBoxRow):
             self.add_css_class("favorite")
         shown = editmode.display_fields(hint.kind)
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        key = Gtk.Label(label=(hint.key or "") if "key" in shown else "", xalign=0)
+        # A chord ("Ctrl-x Ctrl-s") is wider than the column, so wrap instead of letting the
+        # label push the rest of the row off the fixed-width overlay. WORD_CHAR so that a long
+        # key with no space in it breaks too. Newlines written in the YAML are kept as they are.
+        key = Gtk.Label(
+            label=(hint.key or "") if "key" in shown else "",
+            xalign=0,
+            valign=Gtk.Align.START,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+            max_width_chars=KEY_MAX_CHARS,
+        )
         key.add_css_class("wayhint-key")
         box.append(key)
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
@@ -81,7 +94,6 @@ class HintWindow(Gtk.Window):
     def __init__(
         self,
         app: Gtk.Application,
-        on_refresh: Callable[[], None],
         on_edit: Callable[[HintSheet | None, Hint | None], None],
         on_close: Callable[[], None],
         on_action: Callable[[str, dict | None], None],
@@ -90,7 +102,6 @@ class HintWindow(Gtk.Window):
     ) -> None:
         super().__init__(application=app, title="wayhint", decorated=False)
         self.add_css_class("wayhint")
-        self._on_refresh = on_refresh
         self._on_edit = on_edit
         self._on_close = on_close
         self._on_action = on_action
@@ -166,10 +177,8 @@ class HintWindow(Gtk.Window):
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bar.add_css_class("wayhint-toolbar")
         self._search_btn = self._button(bar, self._tr("Search"), self._toggle_search)
-        self._button(bar, self._tr("Refresh"), lambda: self._on_refresh())
         self._copy_btn = self._button(bar, self._tr("Copy"), self._copy_selected)
-        self._edit_hint_btn = self._button(bar, self._tr("Edit hint"), self._edit_selected)
-        self._button(bar, self._tr("Edit sheet"), self._edit_sheet)
+        self._button(bar, self._tr("Edit in editor"), self._edit_in_editor)
         self._button(bar, self._tr("Edit"), lambda: self._on_action("enter-edit", None))
         self._button(bar, self._tr("Close"), lambda: self._on_close())
         root.append(bar)
@@ -534,7 +543,6 @@ class HintWindow(Gtk.Window):
             self._list.append(HintRow(h, self._config.show_category))
         self._detail.set_visible(False)
         self._copy_btn.set_sensitive(False)
-        self._edit_hint_btn.set_sensitive(False)
         self._restore_selection(previous_index)
 
     def _selected_index(self) -> int | None:
@@ -674,7 +682,6 @@ class HintWindow(Gtk.Window):
         if hint is None:
             self._detail.set_visible(False)
             self._copy_btn.set_sensitive(False)
-            self._edit_hint_btn.set_sensitive(False)
             return
         # Only what the row cannot show. `kind` and `id` are for whoever edits the YAML (id is
         # the duplicate check and the `{hint_id}` placeholder), not for whoever reads the hint.
@@ -690,7 +697,6 @@ class HintWindow(Gtk.Window):
         self._detail.set_label("\n".join(lines))
         self._detail.set_visible(bool(lines))
         self._copy_btn.set_sensitive(hint.copy_text() is not None)
-        self._edit_hint_btn.set_sensitive(True)
 
     def _copy_selected(self) -> None:
         hint = self._selected()
@@ -698,12 +704,13 @@ class HintWindow(Gtk.Window):
         if text is not None:
             clipboard.copy_text(text)
 
-    def _edit_sheet(self) -> None:
-        """Open the sheet the selected hint lives in; the active sheet when nothing is selected."""
-        sheet = sheet_for_hint(self._sheets.values(), self._selected()) or self._active_sheet()
-        self._on_edit(sheet, None)
+    def _edit_in_editor(self) -> None:
+        """Open the file the selected hint lives in, at its line.
 
-    def _edit_selected(self) -> None:
+        With nothing selected it is the sheet on display, from the top. The editor is for
+        curating a whole sheet now that single hints are edited in place (DECISIONS 0017), so
+        one button covers both: ``edit_target`` lets the hint's own location win over the sheet.
+        """
         hint = self._selected()
-        if hint is not None:
-            self._on_edit(self._active_sheet(), hint)
+        sheet = sheet_for_hint(self._sheets.values(), hint) or self._active_sheet()
+        self._on_edit(sheet, hint)

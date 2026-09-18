@@ -117,7 +117,6 @@ class Daemon:
         style.install(self.root / self.config.style)
         self.window = HintWindow(
             app,
-            on_refresh=self.refresh,
             on_edit=self.edit,
             on_close=self.hide,
             on_action=self.on_edit_action,

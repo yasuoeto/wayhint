@@ -230,8 +230,8 @@ class SwapRuleTest(unittest.TestCase):
         child = HintSheet(id="child", title="C", path=Path("child.yaml"))
         parent = HintSheet(id="parent", title="P", path=Path("parent.yaml"))
         sheets = [child, parent]
-        # "Edit sheet" has to open the sheet of the selected hint, which in a nested view is often
-        # the parent, not the active sheet.
+        # "Edit in editor" has to open the sheet of the selected hint, which in a nested view is
+        # often the parent, not the active sheet.
         self.assertIs(sheet_for_hint(sheets, hint("a", file="parent.yaml")), parent)
         self.assertIs(sheet_for_hint(sheets, hint("a", file="child.yaml")), child)
         self.assertIsNone(sheet_for_hint(sheets, hint("a", file="gone.yaml")))

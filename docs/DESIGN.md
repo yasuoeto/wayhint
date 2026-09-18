@@ -362,7 +362,7 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T4 sheet の `display.output` override が効く
 - T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
 - T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る
-- T7 シートを編集で editor が sheet を開く、ヒントを編集で該当行に jump
+- T7 エディタで編集: 選択中の hint の sheet が開き該当行に jump、無選択では表示中の sheet の先頭
 - T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
 - T9 Herdr で unknown process → Herdr hints のみ
 - T10 表示中に YAML を編集 → 閉じずに更新
