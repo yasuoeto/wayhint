@@ -389,7 +389,8 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T22 `d` `d` → 削除、`u` → 復帰
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
 - T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
-- T25 角の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き直しても、daemon を再起動しても同じサイズ
+- T25 角 / 辺の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き
+  直しても、daemon を再起動しても同じサイズ **(2026-09-18 確認済)**
 
 ## Known limits and future work
 
