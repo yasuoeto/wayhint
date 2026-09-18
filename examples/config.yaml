@@ -2,7 +2,7 @@ overlay:
   anchor: top-right
   width: 420px
   height: 60%
-  margin: {top: 24, right: 24}
+  margin: {top: 0, right: 0}   # 画面端にぴったり付ける。離すなら整数(全辺)か {top,right,bottom,left}
 appearance:
   style: style.css
   language: auto        # auto = マシンの locale(LC_ALL → LC_MESSAGES → LANG)。en | ja で固定可
