@@ -66,11 +66,11 @@ daemon はセッションに 1 つ起動し、hotkey は compositor の keybindi
 autostart は `~/.config/labwc/autostart` に 1 行(実行属性を付ける):
 
 ```sh
-GTK_IM_MODULE=fcitx /home/USER/work/tools/wayhint/.venv/bin/wayhintd &
+/home/USER/work/tools/wayhint/.venv/bin/wayhintd &
 ```
 
-`GTK_IM_MODULE` は IME を使う場合だけ必要(「困ったとき」参照)。セッション全体で設定しているなら
-付けなくてよい。
+IME のための環境変数は要らない。overlay は layer-shell surface でも Wayland ネイティブの
+text-input-v3 で入力メソッドに繋がる(効かないときは「困ったとき」参照)。
 
 autostart が起動した helper の PID を記録して終了時に落とす仕組みを持っているなら、その作法に
 従う(例: `spawn wayhintd`)。systemd の user unit は用意しない。理由は `docs/DECISIONS.md` 0011。
@@ -281,7 +281,7 @@ editor:
 | `⚠ Wayfire IPC unavailable` | `context.backend: wayfire` 固定時のみ。`echo $WAYFIRE_SOCKET`、`[core] plugins` に `ipc` |
 | `this Wayland session has no layer-shell support` | `gir1.2-gtk4layershell-1.0` が入っているか。X11/Xwayland では動かない |
 | Herdr の中で親 sheet しか出ない | `herdr pane process-info --current` の `foreground_processes` と `argv_regex` を照合 |
-| 検索欄や編集フォームで日本語(IME)が入らない | daemon の環境に `GTK_IM_MODULE=fcitx` を入れる。layer-shell surface には compositor 経由の text-input-v3 が届かず、fcitx5 の GTK4 immodule(`fcitx5-frontend-gtk4`)経由なら効く(labwc 0.20.2 で確認) |
+| 検索欄や編集フォームで日本語(IME)が入らない | GTK が Wayland ネイティブの text-input-v3 を選べていない。`gsettings get org.gnome.desktop.interface gtk-im-module` が空でなければ GTK はその値を優先するので `gsettings reset org.gnome.desktop.interface gtk-im-module`。`GTK_IM_MODULE` も未設定にする(空なら GTK は `zwp_text_input_manager_v3` を広告する compositor で `wayland` context を自動で選ぶ)。確認は `GTK_IM_MODULE= WAYLAND_DEBUG=1 wayhintd` の出力に `zwp_text_input_v3.enter` と `enable` が出るか。layer-shell surface でも届く(labwc 0.20.2 + GTK 4.22 で確認) |
 | 検索後にキー入力が元アプリに戻らない | 検索を終える(完了 / Esc)と keyboard_mode は必ず none に戻る。focus 復帰は foreign-toplevel `activate`(wayfire backend では IPC `set_focus`)。同じ app_id の window が複数あり title が変わっていると復帰先を決められない。`wayhintd -v` に `could not return focus` が出るか |
 
 ## ファイル構成
