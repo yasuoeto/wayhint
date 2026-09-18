@@ -10,8 +10,9 @@ Pure module: dataclasses and functions over plain values. No GTK, no compositor,
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Container, Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from wayhint.models import Hint, ResolvedContext
 
@@ -78,6 +79,20 @@ def keyboard_grab(mode: str, visible: bool) -> bool:
     failed refocus or a missed event can never leave the keyboard captured (DESIGN §1).
     """
     return visible and mode in ("search", "edit")
+
+
+def sheet_is_stale(path: Path | None, broken: Container[Path]) -> bool:
+    """True when this sheet is on screen only as last-known-good (DESIGN 編集モード §1).
+
+    Writing then would throw away whatever the file now holds, so edit mode is refused for that
+    one sheet. A different sheet being broken is none of its business.
+    """
+    return path is not None and path in broken
+
+
+def target_sheet_id(draft: FormDraft, context: ResolvedContext) -> str | None:
+    """Which sheet a save lands in: the parent when ``Ctrl+P`` is on, else the form's own."""
+    return context.parent_context if draft.to_parent else draft.sheet_id
 
 
 def edit_action(

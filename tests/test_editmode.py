@@ -188,6 +188,30 @@ class SwapRuleTest(unittest.TestCase):
         self.assertEqual([h.id for h in sort_hints(hints)], ["fav", "a", "b"])
 
 
+class StaleSheetTest(unittest.TestCase):
+    """DESIGN §1 / 0014 D2: only the sheet that is actually broken is off limits."""
+
+    def test_another_broken_sheet_does_not_block_this_one(self) -> None:
+        broken = {Path("/c/hints/other.yaml")}
+        self.assertFalse(em.sheet_is_stale(Path("/c/hints/active.yaml"), broken))
+        self.assertTrue(em.sheet_is_stale(Path("/c/hints/other.yaml"), broken))
+
+    def test_no_sheet_at_all_is_not_stale(self) -> None:
+        # A context with no sheet yet: quick add is allowed, the sheet is created on save.
+        self.assertFalse(em.sheet_is_stale(None, {Path("/c/hints/other.yaml")}))
+
+    def test_ctrl_p_moves_the_target_to_the_parent_sheet(self) -> None:
+        context = ResolvedContext(active_sheet="child", parent_context="parent")
+        draft = em.FormDraft(sheet_id="child")
+        self.assertEqual(em.target_sheet_id(draft, context), "child")
+        draft.to_parent = True
+        self.assertEqual(
+            em.target_sheet_id(draft, context),
+            "parent",
+            "so a broken parent has to be re-checked after Ctrl+P",
+        )
+
+
 class FormDraftTest(unittest.TestCase):
     def test_kind_decides_which_field_is_shown(self) -> None:
         self.assertEqual(em.kind_field("shortcut"), "key")

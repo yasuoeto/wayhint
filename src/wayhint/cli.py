@@ -138,8 +138,16 @@ def _target_sheet(args: argparse.Namespace, result: LoadResult) -> HintSheet:
     )
     sheet = _sheet_by_id(result, wanted)
     if sheet is None:
-        raise CommandError("no sheet for the current context; pass --sheet")
+        raise CommandError(_no_sheet_message(reply))
     return sheet
+
+
+def _no_sheet_message(reply: dict) -> str:
+    """Say *why* there is no sheet when the daemon told us (context resolution can fail)."""
+    reason = reply.get("error")
+    return (
+        "no sheet for the current context" + (f" ({reason})" if reason else "") + "; pass --sheet"
+    )
 
 
 def _edited_fields(args: argparse.Namespace) -> dict[str, object]:

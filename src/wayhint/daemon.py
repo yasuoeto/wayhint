@@ -298,25 +298,29 @@ class Daemon:
             "process": (
                 {"name": proc.name, "argv_basenames": argv_basenames(proc.argv)} if proc else None
             ),
+            "error": ctx.error,  # why there is no sheet, when there is none
         }
 
     def enter_edit_mode(self) -> dict:
         """Show the overlay if needed and switch it to edit mode (DESIGN 編集モード §1).
 
-        Refused while a sheet is only there as last-known-good: the document cannot be
-        round-tripped, so writing to it would throw the broken file away. No grab is taken.
+        Refused when *the sheet being shown* is only there as last-known-good: that document
+        cannot be round-tripped, so writing it would throw the broken file away. Another sheet
+        being broken does not stop this one from being edited. No grab is taken when refused.
         """
         assert self.window is not None
-        if self.issues:
-            message = translator(self.config.language)("cannot edit while the YAML is broken")
-            self.window.show_message(f"⚠ {message}")
-            return {"ok": False, "error": message}
         view = self._current_view()
         if view is None or not self.window.is_shown():
             self.show()
             view = self._current_view()
         if view is None:
             return {"ok": False, "error": "nothing to edit"}
+        stale = self._stale_sheet(view.context.active_sheet)
+        if stale is not None:
+            tr = translator(self.config.language)
+            message = f"{tr('cannot edit while the YAML is broken')}: {stale.name}"
+            self.window.show_message(f"⚠ {message}")
+            return {"ok": False, "error": message}
         view.mode = "edit"
         self.window.set_mode("edit")
         return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
@@ -355,6 +359,9 @@ class Daemon:
             return
         if action == editmode.FORM_PARENT:
             self.window.toggle_form_parent()
+            draft = self.window.form_draft()
+            if draft is not None:
+                self._refuse_stale_target(view, draft, tr)  # the target changed; re-check it
             return
         if action == editmode.FORM_SAVE:
             self._save_draft(view, payload["draft"], tr)
@@ -383,6 +390,26 @@ class Daemon:
     def _sheet_by_id(self, sheet_id: str | None) -> HintSheet | None:
         return next((s for s in self.store.sheets if s.id == sheet_id), None)
 
+    def _stale_sheet(self, sheet_id: str | None) -> Path | None:
+        """The sheet's path when it is shown as last-known-good, else ``None``."""
+        sheet = self._sheet_by_id(sheet_id)
+        if sheet is None:
+            return None
+        return sheet.path if editmode.sheet_is_stale(sheet.path, self.store.errors) else None
+
+    def _refuse_stale_target(self, view: WorkspaceView, draft: FormDraft, tr) -> bool:
+        """Put a message in the form when the sheet this save would write is broken (0014 D2)."""
+        assert self.window is not None
+        if draft.hint_id is not None:
+            found = self._hint_by_id(draft.hint_id)
+            sheet_id = found[1].id if found else None
+        else:
+            sheet_id = editmode.target_sheet_id(draft, view.context)
+        stale = self._stale_sheet(sheet_id)
+        message = f"{tr('cannot edit while the YAML is broken')}: {stale.name}" if stale else None
+        self.window.show_form_error(message)
+        return stale is not None
+
     def _open_quick_add(self, view: WorkspaceView) -> None:
         """Quick add works even when the context has no sheet: the sheet is made on save."""
         assert self.window is not None
@@ -407,6 +434,8 @@ class Daemon:
 
     def _save_draft(self, view: WorkspaceView, draft: FormDraft, tr) -> None:
         assert self.window is not None
+        if self._refuse_stale_target(view, draft, tr):
+            return
         fields = editmode.draft_fields(draft)
         if draft.hint_id is not None:
             found = self._hint_by_id(draft.hint_id)

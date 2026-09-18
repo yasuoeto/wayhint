@@ -552,6 +552,11 @@ class HintWindow(Gtk.Window):
             self._help.set_label(self._help_text())
             self._list.grab_focus()
 
+    def show_form_error(self, text: str | None) -> None:
+        """A problem with *this* form, shown inside it (a broken target sheet, for instance)."""
+        self._form_note.set_label(f"⚠ {text}" if text else "")
+        self._form_note.set_visible(bool(text))
+
     def form_draft(self) -> FormDraft | None:
         """The draft with the widgets' current values, for the daemon to keep across a hide."""
         if self._form is None:

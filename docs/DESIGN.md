@@ -126,9 +126,9 @@ hints:
 - `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで canonical 順
   (`id` `title` `kind` `key` `command` `category` `tags` `favorite` `copy` `remark` `source`
   `learned`)に出力する。読み込む際は key の順序と省略を問わない(DECISIONS 0014 D2)。
-- 表示順: favorite 区画(YAML 記述順、category 無視)→ 非 favorite 区画(category 初出順 →
-  YAML 記述順)。category null は 1 グループとして初出順に入り、ラベルは擬似 category
-  (DECISIONS 0014 D7)。
+- 表示順: favorite 区画(YAML 記述順、category 無視)→ 非 favorite 区画(**非 favorite の hint だけで
+  採番した** category 初出順 → YAML 記述順)。category null は 1 グループとして初出順に入り、
+  ラベルは擬似 category(DECISIONS 0014 D7)。
 - 各 hint の `location` は list 要素の開始行(1-based)。`learned` の日付は ISO 文字列に正規化。
 - validation は 1 ファイル内の問題を全部集めて `Issue(file, line, message)` で返す。1 つでも
   あれば sheet は採用しない。`SheetStore` は採用済みの sheet を保持し(last-known-good)、次に
@@ -248,8 +248,10 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 
 `J` / `K` の制約:
 - 隣が同グループ（favorite 区画内、または非 favorite 区画で同 category）かつ同 sheet のときだけ swap。
+  所属 sheet の同一性は `hint.location.file` で判定する。
 - それ以外は何もしない（音や表示は出さない）。
 - フィルタ中も可。
+- CLI の `move` はグループ跨ぎ・sheet 跨ぎをエラー終了、GUI は無反応（メッセージのみ）。
 
 ### 6. 削除と undo
 
@@ -280,7 +282,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 - 検索文字列の先頭トークンが `#` 始まりなら category フィルタ。残りはテキスト検索。両者は AND。
 - `Tab` / `Shift+Tab` で巡回: 全表示 → category 初出順（擬似 category を含む）→ 全表示。`#` 入力途中なら補完。
 - フィルタ状態は入力欄横に chip 表示。表示セッション限り。
-- 実装: SearchEntry の CAPTURE フェーズ controller で Tab を横取りし `EVENT_STOP`。
+- 実装: window の CAPTURE フェーズ controller で search 中の `Tab` / `Shift+Tab` を処理する（key 経路を 1 箇所に集約するため）。
 
 ### 10. IPC / CLI
 
@@ -288,7 +290,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 
 | cmd | 応答 |
 |---|---|
-| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}}`。argv 全体は載せない |
+| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, error}`。argv 全体は載せない。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから）。`{visible, sheet, error}` |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の

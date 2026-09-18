@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 from wayhint import ipc
-from wayhint.cli import CommandError, main, neighbour
+from wayhint.cli import CommandError, _no_sheet_message, main, neighbour
 from wayhint.models import Hint, SourceLocation
 from wayhint.selection import same_group, sort_hints
 from wayhint.yaml_store import load_sheet
@@ -248,6 +248,26 @@ class IpcCommandTest(unittest.TestCase):
             sorted(reply), ["active_sheet", "desktop_app", "ok", "parent_context", "process"]
         )
         self.assertNotIn("cmdline", reply["process"], "the command line never leaves the daemon")
+
+    def test_context_says_why_there_is_no_sheet(self) -> None:
+        reply = ipc.handle_request(
+            b'{"cmd":"context"}\n',
+            lambda _cmd: {
+                "active_sheet": None,
+                "parent_context": None,
+                "desktop_app": None,
+                "process": None,
+                "error": "desktop context unavailable",
+            },
+        )
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["error"], "desktop context unavailable")
+
+    def test_no_sheet_message_carries_the_reason(self) -> None:
+        message = _no_sheet_message({"error": "desktop context unavailable"})
+        self.assertIn("desktop context unavailable", message)
+        self.assertIn("--sheet", message)
+        self.assertNotIn("(", _no_sheet_message({}), "no reason, no parenthesis")
 
     def test_edit_mode_is_not_implemented_yet(self) -> None:
         def dispatch(_cmd):

@@ -328,9 +328,9 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 #### D7. 表示順の変更
 
 従来: favorite → category 初出順 → YAML 記述順。
-変更後: **favorite 区画は category を無視して YAML 記述順**、非 favorite 区画は従来どおり category 初出順 → YAML 記述順。
+変更後: **favorite 区画は category を無視して YAML 記述順**、非 favorite 区画は、非 favorite の hint だけで採番した category 初出順 → YAML 記述順。
 これにより favorite 同士を category を跨いで並び替えられる。並び替えは YAML 上の位置 swap で実装し、swap は他 hint の相対順を変えない。
-副作用として、swap した hint がある category の初出だった場合、非 favorite 区画の category 順が動くことを許容する。
+副作用として、ある category の最初の hint を favorite にすると、非 favorite 区画でその category の位置が動き得る（favorite 化は意図的な操作なので許容する）。
 
 #### D8. 並び替えの制約
 
@@ -340,7 +340,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 
 #### D9. 親 sheet から混入した hint
 
-編集・削除・favorite は所属 sheet のファイルに書く。hint は所属 sheet を保持する。並び替えは D8 のとおり sheet を跨がない。
+編集・削除・favorite は所属 sheet のファイルに書く。所属 sheet の同一性は `hint.location.file` で判定する。並び替えは D8 のとおり sheet を跨がない。
 
 #### D10. category フィルタ
 
