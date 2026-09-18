@@ -56,15 +56,16 @@ class HintRow(Gtk.ListBoxRow):
         self.add_css_class("wayhint-row")
         if hint.favorite:
             self.add_css_class("favorite")
+        shown = editmode.display_fields(hint.kind)
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        key = Gtk.Label(label=hint.key or "", xalign=0)
+        key = Gtk.Label(label=(hint.key or "") if "key" in shown else "", xalign=0)
         key.add_css_class("wayhint-key")
         box.append(key)
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         title = Gtk.Label(label=("★ " if hint.favorite else "") + hint.title, xalign=0, wrap=True)
         title.add_css_class("wayhint-title")
         col.append(title)
-        if hint.command:
+        if hint.command and "command" in shown:
             cmd = Gtk.Label(label=hint.command, xalign=0, ellipsize=3, selectable=False)
             cmd.add_css_class("wayhint-command")
             col.append(cmd)

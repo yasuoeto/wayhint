@@ -228,7 +228,7 @@ pane 操作だけが並ぶ。
 
 | キー | 用途 |
 |---|---|
-| `kind` | hint の種別。`shortcut` は `key` だけ、`command` は `command` だけ、`tip` は両方、`note` はどちらも持たない(tip と note は覚え書き)。**overlay には出ない**。絞り込みにも使わない |
+| `kind` | hint の種別。`shortcut` は `key` だけ、`command` は `command` だけ、`tip` は両方、`note` はどちらも持たない(tip と note は覚え書き)。`note` は YAML に `key` / `command` が残っていても一覧に出さない。`kind` 自体は **overlay には出ない**。絞り込みにも使わない |
 | `key` | 一覧の左端に出るキー操作。例 `Ctrl-o` |
 | `command` | 一覧の title の下に出るコマンド文字列。**実行はしない**。表示とコピーのみ |
 | `category` | 一覧の右端に出る見出し。同じ category の hint は隣り合って並ぶ |

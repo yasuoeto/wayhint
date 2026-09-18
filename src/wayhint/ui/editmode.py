@@ -270,6 +270,15 @@ def kind_fields(kind: str) -> tuple[str, ...]:
     return ("key",)
 
 
+def display_fields(kind: str) -> tuple[str, ...]:
+    """Which of ``key`` / ``command`` the list shows for a hint of this kind.
+
+    A ``note`` is prose: even if the YAML still carries a key or a command from before it was
+    made a note, the row does not show them. The other kinds show whatever they have.
+    """
+    return () if kind == "note" else ("key", "command")
+
+
 def draft_from_hint(hint: Hint, sheet_id: str | None) -> FormDraft:
     """Prefill the form from an existing hint. ``id`` is shown but never edited here."""
     fields = {

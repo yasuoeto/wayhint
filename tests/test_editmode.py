@@ -300,6 +300,13 @@ class FormDraftTest(unittest.TestCase):
         self.assertIsNone(fields["key"])
         self.assertIsNone(fields["command"])
 
+    def test_a_note_never_shows_a_key_or_a_command(self) -> None:
+        # The YAML may still carry them from before the hint became a note; the row stays prose.
+        self.assertEqual(em.display_fields("note"), ())
+        for kind in ("shortcut", "command", "tip"):
+            with self.subTest(kind=kind):
+                self.assertEqual(em.display_fields(kind), ("key", "command"))
+
     def test_tip_keeps_both(self) -> None:
         draft = em.FormDraft(
             fields={"title": "T", "kind": "tip", "key": "Ctrl-r", "command": "reset"}
