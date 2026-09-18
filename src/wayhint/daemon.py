@@ -16,6 +16,7 @@ import signal
 import socket
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import gi
@@ -158,10 +159,16 @@ class Daemon:
             self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
 
     def _after_reload(self) -> None:
-        if self.window is not None and self.window.is_shown() and self.window.context is not None:
-            self.window.present_context(self.window.context, self.store.sheets, self.config)
-        if self.window is not None:
-            self.window.show_issues(self.issues)
+        if self.window is None:
+            return
+        # The view record, not the window, says what is open: when the daemon changed the
+        # context itself (quick add creating a sheet) the window still holds the copy it was
+        # handed at show time.
+        view = self._open.get(self._shown_key) if self._shown_key is not None else None
+        ctx = view.context if view is not None else self.window.context
+        if self.window.is_shown() and ctx is not None:
+            self.window.present_context(ctx, self.store.sheets, self.config)
+        self.window.show_issues(self.issues)
 
     @property
     def issues(self) -> list[Issue]:
@@ -480,6 +487,11 @@ class Daemon:
             existing_ids=[s.id for s in self.store.sheets],
         )
         write_document(path, doc)
+        # The context was resolved before this sheet existed, so it still says "no sheet" and
+        # the reload the monitor is about to trigger would render nothing. Naming the sheet here
+        # puts the hint on screen as soon as it is loaded, and lets the next quick add append to
+        # it instead of creating a second sheet (DESIGN 実機チェックリスト T16).
+        view.context = replace(view.context, active_sheet=str(doc["id"]))
         log.info("created sheet %s for a context that had none", path)
         return str(fields["id"])
 

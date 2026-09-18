@@ -380,7 +380,8 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る
 - T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
 - T15 edit 中の hotkey → hide / show、入力が残る
-- T16 sheet が無い context で quick add → 新規 sheet が生成され、次の hotkey でその sheet が表示される
+- T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
+  一覧へ出る(次の hotkey を待たない)。続けて quick add すると同じ sheet に追記される
 - T17 保存 → reload で overlay が閉じず、選択位置が保たれる
 - T18 gvim で開いたまま GUI 保存 → gvim に W11
 - T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない

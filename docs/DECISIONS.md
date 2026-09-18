@@ -323,6 +323,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - app_id から作る regex は `re.escape` した完全一致とする（`.` を含む app_id で必要）。
 - 汎用名の候補生成では `-` で始まる引数（オプション）を候補から除く（`bash -l` から `^-l$` を作らない）。
 - 生成ファイルの先頭に、生成日時・判定に使った context 情報・採用した regex をコメントで残す。
+- 生成した sheet は、その場で表示中の view の `active_sheet` になる。`active_sheet` は context を 解決した時点（show）でしか決まらないため、これをしないと file monitor の reload が来ても 一覧に出ず、次の quick add が二つ目の sheet を作ってしまう。
 - config `editor.schema_modeline: bool`（既定 false）が true なら、先頭に `# yaml-language-server: $schema=...` を付ける。`$schema=` に書く path は config `editor.schema_path`（既定 `~/.config/wayhint/schema.json`）。`wayhint format` も同じ設定を見る。
 
 #### D7. 表示順の変更
