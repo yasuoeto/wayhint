@@ -66,8 +66,11 @@ daemon はセッションに 1 つ起動し、hotkey は compositor の keybindi
 autostart は `~/.config/labwc/autostart` に 1 行(実行属性を付ける):
 
 ```sh
-/home/USER/work/tools/wayhint/.venv/bin/wayhintd &
+GTK_IM_MODULE=fcitx /home/USER/work/tools/wayhint/.venv/bin/wayhintd &
 ```
+
+`GTK_IM_MODULE` は IME を使う場合だけ必要(「困ったとき」参照)。セッション全体で設定しているなら
+付けなくてよい。
 
 autostart が起動した helper の PID を記録して終了時に落とす仕組みを持っているなら、その作法に
 従う(例: `spawn wayhintd`)。systemd の user unit は用意しない。理由は `docs/DECISIONS.md` 0011。
@@ -278,6 +281,7 @@ editor:
 | `⚠ Wayfire IPC unavailable` | `context.backend: wayfire` 固定時のみ。`echo $WAYFIRE_SOCKET`、`[core] plugins` に `ipc` |
 | `this Wayland session has no layer-shell support` | `gir1.2-gtk4layershell-1.0` が入っているか。X11/Xwayland では動かない |
 | Herdr の中で親 sheet しか出ない | `herdr pane process-info --current` の `foreground_processes` と `argv_regex` を照合 |
+| 検索欄や編集フォームで日本語(IME)が入らない | daemon の環境に `GTK_IM_MODULE=fcitx` を入れる。layer-shell surface には compositor 経由の text-input-v3 が届かず、fcitx5 の GTK4 immodule(`fcitx5-frontend-gtk4`)経由なら効く(labwc 0.20.2 で確認) |
 | 検索後にキー入力が元アプリに戻らない | 検索を終える(完了 / Esc)と keyboard_mode は必ず none に戻る。focus 復帰は foreign-toplevel `activate`(wayfire backend では IPC `set_focus`)。同じ app_id の window が複数あり title が変わっていると復帰先を決められない。`wayhintd -v` に `could not return focus` が出るか |
 
 ## ファイル構成

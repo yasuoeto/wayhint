@@ -161,7 +161,7 @@ hints:
   `location` が sheet より優先する**: nested 表示では親 sheet の hint が一覧に混ざるため、active
   sheet の file を使うと別ファイルの行番号で開いてしまう。hint が無いときだけ sheet の file:1。
 - **layer-shell**: layer overlay, exclusive_zone 0。keyboard_mode は状態から導出する。
-  normal = none、search / edit = on_demand。設定箇所は `_sync_keyboard_mode()` の 1 つ。
+  normal = none、search / edit = exclusive。設定箇所は `_sync_keyboard_mode()` の 1 つ。
   anchor 名(9種)→ layer-shell anchor + margin へ変換。
 
 ## 編集モード（Phase 7）
@@ -173,17 +173,19 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 | 状態 | keyboard_mode | 入口 | 出口 |
 |---|---|---|---|
 | `normal` | NONE | show / toggle | hide、workspace 離脱 |
-| `search` | ON_DEMAND | 検索ボタン、既存の begin_search | Esc、hide、workspace 離脱 |
-| `edit` | ON_DEMAND | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、hide、workspace 離脱 |
+| `search` | EXCLUSIVE | 検索ボタン、既存の begin_search | Esc、hide、workspace 離脱 |
+| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、hide、workspace 離脱 |
 
 - `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
   hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
+- EXCLUSIVE を使う理由: `ON_DEMAND` では compositor が surface への再クリックまで keyboard focus を
+  渡さず、検索ボタンを押しただけでは入力が下のアプリへ行ってしまう（labwc 0.20.2 で確認）。
 - `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
 - `edit` 中の hotkey は hide / show（0013 の例外）。`Esc` が唯一の破棄経路。
 - 編集状態（モード、開いているフォーム、フォームの入力値、対象 hint id、追加先 sheet）は workspace ごとの context dict と同じ粒度で保持する。メモリのみ。
 - 保存後も `edit` に留まる。
 
-### 2. key 割当（edit 中、CAPTURE フェーズで処理）
+### 2. key 割当（edit 中）
 
 | key | 動作 |
 |---|---|
@@ -195,6 +197,10 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 | `J` / `K` | 画面上の下 / 上の hint と swap（§5 の制約） |
 | `↑` `↓` | 選択移動（GTK 既定を使う） |
 | `Esc` | フォームが開いていればフォームを閉じる（入力破棄）、開いていなければ `edit` を抜ける |
+
+一覧の単打キーと `Tab` / `Shift+Tab` は CAPTURE フェーズの `EventControllerKey` で受ける（ListBox の
+行操作や Tab の focus 移動より先に処理するため）。テキスト欄の `Enter` / `Esc` は input method に先に
+渡し、bubble フェーズで受ける（変換の確定・取り消しを奪わないため）。
 
 edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/ja）。
 
@@ -362,8 +368,8 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T10 表示中に YAML を編集 → 閉じずに更新
 - T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 - T12 「閉じる」で閉じたあと workspace を往復しても再表示されない
-- T13 `wayhint edit-mode` で ON_DEMAND、Esc で NONE に戻り前の view に focus が返る
-- T14 edit 中に workspace を離れる → NONE、戻ると ON_DEMAND が張り直され入力が残っている
+- T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る
+- T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
 - T15 edit 中の hotkey → hide / show、入力が残る
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、次の hotkey でその sheet が表示される
 - T17 保存 → reload で overlay が閉じず、選択位置が保たれる

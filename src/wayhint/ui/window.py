@@ -21,7 +21,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 
 from wayhint import clipboard  # noqa: E402
@@ -113,6 +113,11 @@ class HintWindow(Gtk.Window):
         key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         key.connect("key-pressed", self._on_key)
         self.add_controller(key)
+        # BUBBLE: what a text field and its input method did not want. Enter and Esc only reach
+        # here when no conversion was in flight, which is what makes the form usable with an IME.
+        late = Gtk.EventControllerKey()
+        late.connect("key-pressed", self._on_key_late)
+        self.add_controller(late)
 
     # --- widgets ----------------------------------------------------------------------------
 
@@ -264,12 +269,25 @@ class HintWindow(Gtk.Window):
 
     # --- modes and keyboard ----------------------------------------------------------------
 
+    def _focus_soon(self, widget: Gtk.Widget) -> None:
+        """Focus a widget that was just shown; retry once if it is not ready to take it yet."""
+        if widget.grab_focus():
+            return
+        GLib.idle_add(lambda: (widget.grab_focus(), False)[1])
+
     def _sync_keyboard_mode(self) -> None:
-        """The only place that touches ``keyboard_mode``. See the module docstring."""
+        """The only place that touches ``keyboard_mode``. See the module docstring.
+
+        EXCLUSIVE, not ON_DEMAND: with on-demand the compositor only hands the keyboard over on
+        the *next* click on the surface, so pressing the Search button left the keys going to the
+        application underneath. Search and edit are the modes where the overlay is being typed
+        into, so taking the keyboard outright is what the user just asked for.
+        """
         grab = keyboard_grab(self._mode, self.get_visible())
+        log.debug("keyboard: mode=%s visible=%s grab=%s", self._mode, self.get_visible(), grab)
         LayerShell.set_keyboard_mode(
             self,
-            LayerShell.KeyboardMode.ON_DEMAND if grab else LayerShell.KeyboardMode.NONE,
+            LayerShell.KeyboardMode.EXCLUSIVE if grab else LayerShell.KeyboardMode.NONE,
         )
 
     def set_mode(self, mode: str, *, refocus: bool = True) -> None:
@@ -293,8 +311,10 @@ class HintWindow(Gtk.Window):
         self._sync_keyboard_mode()  # after the widgets, before anything can steal focus
         if mode == "search":
             self._search_row.set_visible(True)
-            self._search.grab_focus()
-        self._render_list()
+            self._search_btn.set_label(self._tr("Done"))  # the same button ends the search
+        self._render_list()  # restoring the selection can take the focus, so grab it after
+        if mode == "search":
+            self._focus_soon(self._search)
         if mode == "normal" and leaving != "normal" and refocus:
             try:
                 self._refocus(self._ctx.view_ref if self._ctx else None)
@@ -327,18 +347,41 @@ class HintWindow(Gtk.Window):
         return False  # normal: the compositor does not even send us keys
 
     def _search_key(self, name: str) -> bool:
-        if name == "Escape":
-            self.end_search()
-            return True
+        # Escape is left to the entry's ``stop-search``: an input method needs it first, to cancel
+        # a conversion rather than the whole search.
         if name in ("Tab", "ISO_Left_Tab"):
             self._cycle_filter(forward=name == "Tab")
             return True
         return False
 
-    def _edit_key(self, name: str, ctrl: bool) -> bool:
+    def _on_key_late(self, _ctrl, keyval, _keycode, state) -> bool:
+        """Bubble phase: only runs when the focused widget and its IME let the key through."""
+        if self._mode == "normal" or not self._editable_focused():
+            return False
+        name = Gdk.keyval_name(keyval) or ""
+        if self._mode == "search":
+            if name == "Escape":
+                self.end_search()
+                return True
+            return False
         action = editmode.edit_action(
-            name, ctrl=ctrl, editable=self._editable_focused(), pending=bool(self._delete_pending)
+            name, ctrl=bool(state & Gdk.ModifierType.CONTROL_MASK), editable=True
         )
+        if action == editmode.FORM_SAVE:
+            self._save_form()
+            return True
+        if action == editmode.FORM_CANCEL:
+            self.close_form()
+            return True
+        return False
+
+    def _edit_key(self, name: str, ctrl: bool) -> bool:
+        editable = self._editable_focused()
+        action = editmode.edit_action(
+            name, ctrl=ctrl, editable=editable, pending=bool(self._delete_pending)
+        )
+        if editable and not editmode.capture_in_editable(action):
+            return False  # let the input method have it; :meth:`_on_key_late` picks up the rest
         if editmode.cancels_delete(action) and self._delete_pending is not None:
             self._delete_pending = None
             self._error.set_visible(False)
@@ -542,7 +585,7 @@ class HintWindow(Gtk.Window):
             self._form_note.set_label(f"⚠ {self._tr(draft.warning)}")
         self._form_box.set_visible(True)
         self._help.set_label(self._help_text())
-        self._entries["title"].grab_focus()
+        self._focus_soon(self._entries["title"])
 
     def close_form(self) -> None:
         self._form = None

@@ -291,9 +291,9 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 
 #### D3. keyboard grab と状態遷移
 
-- overlay の状態を `normal` / `search` / `edit` の 3 つとし、`keyboard_mode` は **状態から導出する 1 つの関数**（`_sync_keyboard_mode()` 相当）でのみ設定する。`normal` = NONE、`search` / `edit` = ON_DEMAND。
+- overlay の状態を `normal` / `search` / `edit` の 3 つとし、`keyboard_mode` は **状態から導出する 1 つの関数**（`_sync_keyboard_mode()` 相当）でのみ設定する。`normal` = NONE、`search` / `edit` = EXCLUSIVE（`ON_DEMAND` では compositor が focus を渡すのにsurface への再クリックが要り、検索ボタンを押しても入力が下のアプリに行く。labwc 0.20.2 で確認）。
   hide、workspace 離脱、Esc、hotkey の全経路がこの関数を通る。「grab の残留禁止」の不変条件はここで守る。
-- 編集・検索モードの key handler は CAPTURE フェーズの `EventControllerKey` で受け、GTK 組み込み（Entry の activate / stop-search、ListBox の行操作、Tab の focus 移動）より先に処理する。
+- 一覧の単打キーと `Tab` / `Shift+Tab` は CAPTURE フェーズの `EventControllerKey` で受け、GTK 組み込み（ListBox の行操作、Tab の focus 移動）より先に処理する。テキスト欄の `Enter` / `Esc` は input method に先に渡し、bubble フェーズで受ける（変換の確定・取り消しを奪わないため）。
 - 編集モードへの入口は **compositor keybinding → `wayhint edit-mode`（IPC コマンド新設）を主、toolbar ボタンを併設**。
   通常表示は NONE のため overlay 上の key では入れない。
 - 編集モード中は下部に key 割当の一覧を表示する。
@@ -301,7 +301,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 
 #### D4. 0012 / 0013 との関係（amend）
 
-- **workspace 切り替え（0012 の延長）**: 編集状態と未保存の下書きは workspace ごとに保持する。離れると overlay は隠れ `NONE` に戻り、戻ると `ON_DEMAND` を張り直して編集中の内容のまま復帰する。
+- **workspace 切り替え（0012 の延長）**: 編集状態と未保存の下書きは workspace ごとに保持する。離れると overlay は隠れ `NONE` に戻り、戻ると grab を張り直して編集中の内容のまま復帰する。
   下書きはメモリのみで、ファイルには持たない。
 - **hotkey（0013 の例外）**: 編集モード中の hotkey は「差し替え」ではなく overlay の **hide / show** とする。
   hotkey の意味は「いま見ているものの hint」だが、書き込み中は「いま書いているもの」に置き換わっていると解釈する。
@@ -359,7 +359,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - 「あとは書きたいものだけ書く」は「省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで出力する」に改める。既存の手書き sheet は `wayhint format` で手動一括正規化する。
 - yaml_store.py に dump 経路と hint 操作の純粋関数を追加し、golden test（round-trip byte 一致、コメント付き hint の移動・削除、null 表記、flow style 保持）を追加する。GUI 部分は実機チェックリストへ。
 - 0003 の「GUI からの書き戻しは行わない」は superseded。ruamel 採用の判断自体は維持。
-- Wayfire は未確認のまま `ON_DEMAND` を握る面積が増える。実機チェック項目で確認する。
+- Wayfire は未確認のまま keyboard grab を握る面積が増える。実機チェック項目で確認する。
 - 後日の改修候補: 親 sheet 混入 hint の並び替え、Tab の focus 移動との競合、filter の永続化。
 
 <!--

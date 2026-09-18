@@ -87,6 +87,31 @@ class EditActionTest(unittest.TestCase):
         self.assertIsNone(em.edit_action("p", editable=True), "plain p is a character")
 
 
+class ImeTest(unittest.TestCase):
+    """A text field must see Enter and Esc before the overlay does, or IME input is impossible."""
+
+    def test_enter_and_escape_are_not_taken_before_the_ime(self) -> None:
+        for key in ("Return", "KP_Enter", "Escape"):
+            with self.subTest(key=key):
+                action = em.edit_action(key, editable=True)
+                self.assertIn(action, (em.FORM_SAVE, em.FORM_CANCEL), "still the right meaning")
+                self.assertFalse(
+                    em.capture_in_editable(action),
+                    "but only once the conversion is confirmed or cancelled",
+                )
+
+    def test_field_movement_is_taken_early(self) -> None:
+        # Tab would otherwise move the focus out of the overlay before anyone sees it.
+        for key, ctrl in (("Tab", False), ("ISO_Left_Tab", False), ("p", True)):
+            with self.subTest(key=key):
+                self.assertTrue(
+                    em.capture_in_editable(em.edit_action(key, ctrl=ctrl, editable=True))
+                )
+
+    def test_plain_characters_are_never_captured(self) -> None:
+        self.assertFalse(em.capture_in_editable(em.edit_action("a", editable=True)))
+
+
 class SearchQueryTest(unittest.TestCase):
     def test_plain_text(self) -> None:
         query = em.parse_search("new pane")

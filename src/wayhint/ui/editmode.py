@@ -131,6 +131,17 @@ def edit_action(
     return simple.get(key)
 
 
+def capture_in_editable(action: str | None) -> bool:
+    """May this action be taken *before* the input method sees the key, in a text field?
+
+    Only the keys the input method never wants. ``Enter`` confirms a conversion and ``Esc``
+    cancels one, so those two have to reach the IME first and are handled on the way back up
+    (bubble) instead -- otherwise typing Japanese into the form is impossible: the key that
+    confirms 「ペイン」 would save the form with the text still unconfirmed.
+    """
+    return action in (FORM_NEXT, FORM_PREVIOUS, FORM_PARENT)
+
+
 def cancels_delete(action: str | None) -> bool:
     """``d`` waits for a second ``d``; anything else -- including no action -- calls it off."""
     return action not in (DELETE_CONFIRM, DELETE_COMMIT)
