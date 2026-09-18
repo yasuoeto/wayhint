@@ -149,7 +149,7 @@ hotkey に割り当てるのは `toggle`。
 | `reload` | `config.yaml` と `hints/*.yaml` を読み直す |
 | `ping` | daemon の生死確認。pid と読み込み済み sheet 数を返す |
 | `validate` | YAML を検証する。daemon を必要としない唯一の command。問題があれば exit 1 |
-| `edit-mode` | 編集モードに入る(表示中でなければ表示してから) |
+| `edit-mode` | 編集モードに入る(表示中でなければ表示してから)。編集モード中に呼ぶと抜ける |
 | `add TITLE` | hint の追加 |
 | `edit ID` | hint の編集 |
 | `remove ID` | hint の削除 |

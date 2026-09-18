@@ -183,7 +183,7 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 |---|---|---|---|
 | `normal` | NONE | show / toggle | hide、workspace 離脱 |
 | `search` | EXCLUSIVE | 検索ボタン、既存の begin_search | Esc、hide、workspace 離脱 |
-| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、hide、workspace 離脱 |
+| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`、hide、workspace 離脱 |
 
 - `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
   hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
@@ -306,7 +306,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 | cmd | 応答 |
 |---|---|
 | `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, error}`。argv 全体は載せない。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
-| `edit-mode` | 編集モードに入る（表示中でなければ show してから）。`{visible, sheet, error}` |
+| `edit-mode` | 編集モードに入る（表示中でなければ show してから）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
 引数一覧は README「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、
@@ -377,7 +377,8 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T10 表示中に YAML を編集 → 閉じずに更新
 - T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 - T12 「閉じる」で閉じたあと workspace を往復しても再表示されない
-- T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る
+- T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る。
+  もう一度 `wayhint edit-mode` を呼んでも同じく抜ける（フォームが開いていれば 1 回目はフォームを閉じるだけ）
 - T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
 - T15 edit 中の hotkey → hide / show、入力が残る
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が

@@ -313,12 +313,24 @@ class Daemon:
     def enter_edit_mode(self) -> dict:
         """Show the overlay if needed and switch it to edit mode (DESIGN 編集モード §1).
 
+        The hotkey is symmetric: pressing it again in edit mode leaves edit mode, the same way
+        Escape does, so the key that enters is also the key that gets out.
+
         Refused when *the sheet being shown* is only there as last-known-good: that document
         cannot be round-tripped, so writing it would throw the broken file away. Another sheet
         being broken does not stop this one from being edited. No grab is taken when refused.
         """
         assert self.window is not None
         view = self._current_view()
+        if view is not None and view.mode == "edit" and self.window.is_shown():
+            self._sync_shown()  # the window holds the live draft; the view may not have it yet
+            if view.form is not None:
+                # Cancel the form first, like Escape: one keystroke never drops an open draft.
+                view.form = None
+                self.window.close_form()
+                return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
+            self._exit_edit_mode(view)
+            return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
         if view is None or not self.window.is_shown():
             self.show()
             view = self._current_view()
@@ -356,9 +368,7 @@ class Daemon:
         if view is None:
             return
         if action == editmode.EXIT_EDIT:
-            view.mode = "normal"
-            view.form = None
-            self.window.set_mode("normal")
+            self._exit_edit_mode(view)
             return
         if action == editmode.ADD:
             self._open_quick_add(view)
@@ -388,6 +398,13 @@ class Daemon:
             self._move(payload, down=action == editmode.MOVE_DOWN, tr=tr)
             return
         log.debug("unhandled edit action: %s", action)
+
+    def _exit_edit_mode(self, view: WorkspaceView) -> None:
+        """Back to normal: no grab, no draft. Escape and a second edit-mode hotkey share this."""
+        assert self.window is not None
+        view.mode = "normal"
+        view.form = None
+        self.window.set_mode("normal")
 
     def _hint_by_id(self, hint_id: str) -> tuple[Hint, HintSheet] | None:
         for sheet in self.store.sheets:
