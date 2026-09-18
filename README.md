@@ -55,10 +55,10 @@ daemon はセッションに 1 つ起動し、hotkey は compositor の keybindi
 
 ```xml
 <keyboard>
-  <keybind key="W-slash">
+  <keybind key="W-h">
     <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint toggle"/>
   </keybind>
-  <keybind key="W-S-slash">
+  <keybind key="W-C-h">
     <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode"/>
   </keybind>
 </keyboard>
@@ -82,9 +82,9 @@ autostart が起動した helper の PID を記録して終了時に落とす仕
 
 ```ini
 [command]
-binding_wayhint = <super> KEY_SLASH
+binding_wayhint = <super> KEY_H
 command_wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhint toggle
-binding_wayhint_edit = <super> <shift> KEY_SLASH
+binding_wayhint_edit = <super> <ctrl> KEY_H
 command_wayhint_edit = /home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode
 
 [autostart]
