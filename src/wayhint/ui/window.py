@@ -54,10 +54,24 @@ _EDGE = {
 }
 
 
+class _RowLayout(Gtk.BinLayout):
+    """Lays the row out like a plain bin, then lets it re-check its vertical alignment.
+
+    A widget that has a layout manager never gets its own ``size_allocate`` called, and the
+    number of lines a label takes is only known once it has been laid out at the final width,
+    so this is where :class:`HintRow` learns about a wrap.
+    """
+
+    def do_allocate(self, widget: Gtk.Widget, width: int, height: int, baseline: int) -> None:
+        Gtk.BinLayout.do_allocate(self, widget, width, height, baseline)
+        widget.sync_align()
+
+
 class HintRow(Gtk.ListBoxRow):
     def __init__(self, hint: Hint, show_category: bool) -> None:
         super().__init__()
         self.hint = hint
+        self.set_layout_manager(_RowLayout())
         self.add_css_class("wayhint-row")
         if hint.favorite:
             self.add_css_class("favorite")
@@ -66,20 +80,31 @@ class HintRow(Gtk.ListBoxRow):
         # A chord ("Ctrl-x Ctrl-s") is wider than the column, so wrap instead of letting the
         # label push the rest of the row off the fixed-width overlay. WORD_CHAR so that a long
         # key with no space in it breaks too. Newlines written in the YAML are kept as they are.
+        # The vertical alignment of the key against the title is decided in sync_align(),
+        # after Pango knows how many lines each of them takes.
         key = Gtk.Label(
             label=(hint.key or "") if "key" in shown else "",
             xalign=0,
-            valign=Gtk.Align.START,
+            valign=Gtk.Align.BASELINE_CENTER,
             wrap=True,
             wrap_mode=Pango.WrapMode.WORD_CHAR,
             max_width_chars=KEY_MAX_CHARS,
         )
         key.add_css_class("wayhint-key")
         box.append(key)
-        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+        # baseline_child=0: the title, not the command line under it, carries the baseline.
+        col = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            hexpand=True,
+            valign=Gtk.Align.BASELINE_CENTER,
+            baseline_child=0,
+        )
         title = Gtk.Label(label=("★ " if hint.favorite else "") + hint.title, xalign=0, wrap=True)
         title.add_css_class("wayhint-title")
         col.append(title)
+        self._key = key
+        self._col = col
+        self._title = title
         if hint.command and "command" in shown:
             cmd = Gtk.Label(label=hint.command, xalign=0, ellipsize=3, selectable=False)
             cmd.add_css_class("wayhint-command")
@@ -90,6 +115,29 @@ class HintRow(Gtk.ListBoxRow):
             cat.add_css_class("wayhint-category")
             box.append(cat)
         self.set_child(box)
+
+    def sync_align(self) -> None:
+        """Keep the key and the title on one baseline, or centre them once one of them wraps.
+
+        How many lines each label takes is only known after Pango has laid it out at the
+        current width, so the choice is made from the allocation. While both are a single
+        line BASELINE_CENTER puts the two fonts on a shared baseline; once one of them wraps,
+        pinning the other to the first line looks detached, so both are centred instead.
+        """
+        wrapped = (
+            self._key.get_layout().get_line_count() > 1
+            or self._title.get_layout().get_line_count() > 1
+        )
+        align = Gtk.Align.CENTER if wrapped else Gtk.Align.BASELINE_CENTER
+        if self._key.get_valign() == align:
+            return
+        # Not from inside the allocation: changing valign queues another one.
+        GLib.idle_add(self._apply_align, align)
+
+    def _apply_align(self, align: Gtk.Align) -> bool:
+        self._key.set_valign(align)
+        self._col.set_valign(align)
+        return GLib.SOURCE_REMOVE
 
 
 class HintWindow(Gtk.Window):

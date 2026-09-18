@@ -35,7 +35,11 @@ window.wayhint {
   padding: 6px 10px; border-bottom: 1px solid #3c3c3c;
 }
 
-.wayhint-row { padding: 4px 10px; }
+/* hint 一覧だけシステムフォント(ここでは Adwaita Sans 11)より 2pt 大きくする。
+   category など em 指定の子はこれに追従する。header や toolbar は変えない。 */
+/* border-bottom が hint 同士の区切り線。最終行だけ消して下端が二重にならないようにする。 */
+.wayhint-row { padding: 4px 10px; font-size: 13pt; border-bottom: 1px solid #3c3c3c; }
+.wayhint-row:last-child { border-bottom: none; }
 .wayhint-row:hover { background-color: alpha(#ffffff, 0.08); }
 .wayhint-row:selected { background-color: #4c4c4c; color: #ffffff; }  /* menu.items.active */
 .wayhint-title { color: #ffffff; }
