@@ -9,6 +9,7 @@ from unittest import mock
 
 from wayhint import ipc
 from wayhint.config import EditorConfig
+from wayhint.context import herdr
 from wayhint.editor import EditorError, edit_target, open_in_editor
 from wayhint.models import (
     DisplayConfig,
@@ -77,6 +78,11 @@ class EditTargetTest(unittest.TestCase):
 
 
 class IpcTest(unittest.TestCase):
+    def test_a_context_lookup_cannot_outlast_the_client(self) -> None:
+        # The lookup runs on the main loop while the client waits on the socket. If it could
+        # take longer, the CLI would report a timeout for a command that still goes through.
+        self.assertLess(herdr.LOOKUP_BUDGET, ipc.CLIENT_TIMEOUT)
+
     def test_handle_request(self) -> None:
         seen = []
         reply = ipc.handle_request(

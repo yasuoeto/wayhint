@@ -1,0 +1,291 @@
+"""Controller integration tests with a window boundary fake; no GUI or compositor imports."""
+
+import tempfile
+import unittest
+from dataclasses import replace
+from pathlib import Path
+from unittest import mock
+
+from wayhint import daemon as daemon_module
+from wayhint.daemon import Daemon
+from wayhint.editor import EditorError
+from wayhint.models import ResolvedContext
+from wayhint.ui import editmode as em
+from wayhint.ui.editmode import WorkspaceView
+from wayhint.yaml_store import load_sheet
+
+
+class Window:
+    """Only the widget boundary is replaced; actions use real store and YAML writes."""
+
+    def __init__(self):
+        self.mode = "edit"
+        self.form = None
+        self.messages = []
+        self.context = None
+        self.visible = True
+
+    def open_form(self, draft):
+        self.form = draft
+
+    def close_form(self):
+        self.form = None
+
+    def form_draft(self):
+        return self.form
+
+    def show_form_error(self, text):
+        self.messages.append(text)
+
+    def show_message(self, text):
+        self.messages.append(text)
+
+    def is_shown(self):
+        return self.visible
+
+    def hide_overlay(self):
+        self.visible = False
+
+    def present_context(self, context, sheets, config):
+        self.context = context
+        self.visible = True
+
+    def show_issues(self, issues):
+        pass
+
+    def set_mode(self, mode, *, refocus=True):
+        self.mode = mode
+        if mode != "edit":
+            self.close_form()
+
+
+class Workspace:
+    def __init__(self, alive=True):
+        self.key = "A"
+        self.alive = alive
+        self.stopped = False
+
+    def active(self):
+        return self.key
+
+    def roundtrip(self):
+        return True
+
+    def known(self):
+        return {self.key}
+
+    def dispatch(self):
+        return self.alive
+
+    def stop(self):
+        self.stopped = True
+
+
+class DaemonEditTest(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        (self.root / "hints").mkdir()
+        self.paths = [self.root / "hints" / f"{name}.yaml" for name in ("a", "b")]
+        for name, path in zip(("a", "b"), self.paths, strict=True):
+            path.write_text(
+                f"id: {name}\ntitle: {name}\nhints:\n"
+                f"  - {{id: same, title: {name} original}}\n"
+                f"  - {{id: next, title: {name} next}}\n"
+            )
+        self.daemon = Daemon(self.root, self.root / "unused.sock")
+        self.daemon.config = replace(self.daemon.config, workspace_scope="all")
+        self.daemon.store.load_all()
+        self.window = Window()
+        self.daemon.window = self.window
+        self.view = WorkspaceView(ResolvedContext(active_sheet="b"), mode="edit")
+        self.daemon._open[""] = self.view
+        self.daemon._shown_key = ""
+
+    def action(self, name, hint_id="same", path=None):
+        self.daemon.on_edit_action(name, {"hint_id": hint_id, "file": str(path or self.paths[1])})
+
+    def sheet(self, path):
+        sheet, issues = load_sheet(path)
+        self.assertEqual(issues, [])
+        return sheet
+
+    def test_delete_changes_only_the_selected_sheet_with_a_shared_hint_id(self):
+        before = self.paths[0].read_bytes()
+        self.action(em.DELETE_COMMIT)
+        self.assertEqual(self.paths[0].read_bytes(), before)
+        self.assertEqual([h.id for h in self.sheet(self.paths[1]).hints], ["next"])
+
+    def test_edit_and_save_keep_the_owner_even_with_another_matching_id(self):
+        before = self.paths[0].read_bytes()
+        self.action(em.OPEN_FORM)
+        self.assertEqual(self.window.form.value("title"), "b original")
+        self.window.form.fields["title"] = "edited B"
+        self.daemon.on_edit_action(em.FORM_SAVE, {"draft": self.window.form})
+        self.assertEqual(self.paths[0].read_bytes(), before)
+        self.assertEqual(self.sheet(self.paths[1]).hints[0].title, "edited B")
+        self.assertIsNone(self.window.form)
+
+    def test_missing_owner_never_falls_back_to_another_sheet(self):
+        self.action(em.OPEN_FORM)
+        before = self.paths[0].read_bytes()
+        self.paths[1].unlink()
+        self.daemon.store.reload(self.paths[1])
+        self.daemon.on_edit_action(em.FORM_SAVE, {"draft": self.window.form})
+        self.assertEqual(self.paths[0].read_bytes(), before)
+        self.assertIsNotNone(self.window.form)
+        self.assertTrue(self.window.messages[-1].startswith("⚠"))
+
+    def test_favorite_changes_only_the_selected_sheet(self):
+        before = self.paths[0].read_bytes()
+        self.action(em.FAVORITE)
+        self.assertEqual(self.paths[0].read_bytes(), before)
+        self.assertTrue(self.sheet(self.paths[1]).hints[0].favorite)
+
+    def test_move_locates_the_selected_parent_hint_not_the_same_id_in_the_child(self):
+        path = self.paths[1]
+        path.write_text(path.read_text().replace("title: b ", "tags: [shared], title: b "))
+        self.daemon.store.reload(path)
+        self.daemon.config = replace(self.daemon.config, parent_tags=("shared",))
+        self.view.context = ResolvedContext(active_sheet="a", parent_context="b")
+        before = self.paths[0].read_bytes()
+        self.action(em.MOVE_DOWN)
+        self.assertEqual(self.paths[0].read_bytes(), before)
+        self.assertEqual([h.id for h in self.sheet(path).hints], ["next", "same"])
+
+    def test_restore_workspace_without_a_form_does_not_inherit_another_draft(self):
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved A"
+        workspace = Workspace()
+        self.daemon._watcher = workspace
+        self.daemon._open = {
+            "A": self.view,
+            "B": WorkspaceView(ResolvedContext(active_sheet="a"), mode="edit"),
+        }
+        self.daemon._shown_key = "A"
+        self.daemon.toggle()  # hide A, preserving its live draft
+        workspace.key = "B"
+        self.daemon.toggle()  # restore B's edit list, which has no form
+        self.assertIsNone(self.window.form)
+        self.daemon.toggle()
+        workspace.key = "A"
+        self.daemon.toggle()
+        self.assertEqual(self.window.form.value("title"), "unsaved A")
+
+    def test_search_actions_keep_controller_and_window_modes_in_sync(self):
+        self.view.mode = "normal"
+        self.window.set_mode("normal")
+        self.daemon.on_edit_action("begin-search", None)
+        self.assertEqual((self.view.mode, self.window.mode), ("search", "search"))
+        self.daemon.on_edit_action("end-search", None)
+        self.assertEqual((self.view.mode, self.window.mode), ("normal", "normal"))
+
+    def test_cancel_closes_both_the_controller_draft_and_the_visible_form(self):
+        self.action(em.OPEN_FORM)
+        self.daemon.on_edit_action(em.FORM_CANCEL, None)
+        self.assertIsNone(self.view.form)
+        self.assertIsNone(self.window.form)
+        self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
+
+    def test_search_request_during_edit_preserves_the_live_draft(self):
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.daemon.on_edit_action("begin-search", None)
+        self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
+        self.assertEqual(self.window.form.value("title"), "unsaved")
+
+    def test_edit_mode_restores_a_hidden_draft_without_resolving_another_context(self):
+        class OtherContext:
+            def resolve(self, sheets, config):
+                return ResolvedContext(active_sheet="a")
+
+        self.daemon.resolver = OtherContext()
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.daemon.toggle()
+        self.daemon.enter_edit_mode()
+        self.assertEqual(self.window.context.active_sheet, "b")
+        self.assertEqual(self.window.form.value("title"), "unsaved")
+
+    def lose_the_watch(self):
+        """The compositor connection dies while the overlay is open on workspace A."""
+        watcher = Workspace(alive=False)
+        self.daemon._watcher = watcher
+        self.daemon._open = {"A": self.view}
+        self.daemon._shown_key = "A"
+        with self.assertLogs("wayhintd", level="WARNING"):  # and it says so in the log
+            self.daemon._on_watch_fd(0, None)
+        return watcher
+
+    def test_losing_the_workspace_watch_keeps_the_open_view_and_its_draft(self):
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        watcher = self.lose_the_watch()
+        self.assertTrue(watcher.stopped)
+        self.assertIsNone(self.daemon._watcher)
+        self.assertIs(self.daemon._current_view(), self.view)
+        self.assertEqual(self.window.form.value("title"), "unsaved")
+
+    def test_escape_after_losing_the_workspace_watch_leaves_edit_mode(self):
+        self.lose_the_watch()
+        self.daemon.on_edit_action(em.EXIT_EDIT, None)
+        self.assertEqual((self.view.mode, self.window.mode), ("normal", "normal"))
+
+    def test_hide_after_losing_the_workspace_watch_closes_the_overlay(self):
+        self.lose_the_watch()
+        self.daemon.hide()
+        self.assertFalse(self.window.visible)
+        self.assertEqual(self.daemon._open, {})
+
+    def open_the_editor(self, **patch):
+        sheet = next(s for s in self.daemon.store.sheets if s.path == self.paths[1])
+        with mock.patch.object(daemon_module, "open_in_editor", **patch) as spawn:
+            self.daemon.edit(sheet, sheet.hints[0])
+        return spawn
+
+    def test_starting_the_editor_frees_the_keyboard_and_keeps_the_draft(self):
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.open_the_editor()
+        self.assertFalse(self.window.visible)  # EXCLUSIVE would leave the editor unusable
+        self.assertEqual(self.view.mode, "edit")
+        self.assertEqual(self.view.form.value("title"), "unsaved")
+
+    def test_an_editor_that_cannot_start_leaves_the_overlay_as_it_was(self):
+        self.action(em.OPEN_FORM)
+        self.open_the_editor(side_effect=EditorError("gvim: not found"))
+        self.assertTrue(self.window.visible)
+        self.assertTrue(self.window.messages[-1].startswith("⚠"))
+        self.assertIsNotNone(self.window.form)
+
+    def test_the_normal_list_stays_on_screen_when_the_editor_starts(self):
+        self.view.mode = "normal"
+        self.window.set_mode("normal")
+        self.open_the_editor()
+        self.assertTrue(self.window.visible)
+
+    def test_a_resize_that_cannot_be_written_is_reported_not_raised(self):
+        # The drag ends inside a GTK callback: an OSError from the write would be a traceback
+        # in the log and nothing on screen.
+        with mock.patch.object(daemon_module, "write_config", side_effect=OSError("read-only")):
+            self.daemon.resize(500, 400)
+        self.assertTrue(self.window.messages[-1].startswith("⚠"))
+
+    def test_two_favorite_presses_in_a_row_really_toggle_twice(self):
+        # The reload is debounced (200 ms), so a second press lands while the store still has
+        # the old value. What is written has to come from the file, not from that copy.
+        self.action(em.FAVORITE)
+        self.assertTrue(self.sheet(self.paths[1]).hints[0].favorite)
+        self.action(em.FAVORITE)
+        self.assertFalse(self.sheet(self.paths[1]).hints[0].favorite)
+
+    def test_an_edit_action_applies_a_reload_that_is_still_pending(self):
+        self.paths[1].write_text(
+            "id: b\ntitle: b\nhints:\n  - {id: same, title: changed on disk}\n"
+        )
+        self.daemon._pending_reload[self.paths[1]] = 1  # the monitor saw it, the timer has not run
+        with mock.patch.object(daemon_module, "GLib", mock.Mock(), create=True):
+            self.action(em.OPEN_FORM)
+        self.assertEqual(self.window.form.value("title"), "changed on disk")
+        self.assertEqual(self.daemon._pending_reload, {})

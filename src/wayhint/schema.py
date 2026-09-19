@@ -24,6 +24,16 @@ def _nullable(*types: str) -> dict[str, Any]:
     return {"type": [*types, "null"]}
 
 
+def _scalar() -> dict[str, Any]:
+    """A text field as validation takes it: ``key: 5`` is kept as ``"5"`` by ``_opt_str``.
+
+    Numbers are in the type list for that reason only. Widening the schema is the one way to
+    keep this file's rule -- what validation accepts, the schema accepts -- without making an
+    unquoted digit an error in the editor while the daemon loads it happily.
+    """
+    return _nullable("string", "number")
+
+
 def _regex_list(title: str) -> dict[str, Any]:
     return {"title": title, "type": ["array", "null"], "items": {"type": "string"}}
 
@@ -36,10 +46,10 @@ def _hint_properties() -> dict[str, Any]:
         "tags": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
         "favorite": {"type": "boolean"},
         # ``learned: 2026-09-18`` parses as a YAML date; both spellings are accepted.
-        "learned": {"type": ["string", "null"], "format": "date"},
+        "learned": {"type": ["string", "number", "null"], "format": "date"},
     }
     for key in ("key", "command", "category", "copy", "remark", "source"):
-        props[key] = _nullable("string")
+        props[key] = _scalar()
     missing = set(_HINT_KEYS) - set(props)
     assert not missing, f"hint key(s) missing from the schema: {sorted(missing)}"
     return props

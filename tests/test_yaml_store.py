@@ -1,5 +1,6 @@
 import contextlib
 import io
+import shutil
 import tempfile
 import textwrap
 import unittest
@@ -36,6 +37,43 @@ def read_document_from_text(text: str, name: str):
         p = Path(d) / name
         p.write_text(text, encoding="utf-8")
         return read_document(p)
+
+
+class InvalidEncodingTest(unittest.TestCase):
+    """A file that is not UTF-8 is a normal problem report, not an exception (DESIGN §11)."""
+
+    BAD = b"id: broken\ntitle: caf\xe9\n"  # latin-1, written by hand or by another tool
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp(prefix="wayhint-encoding-"))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.hints = self.dir / "hints"
+        self.hints.mkdir()
+        self.sheet = self.hints / "s.yaml"
+        self.sheet.write_text("id: s\ntitle: S\nhints:\n  - {id: a, title: A}\n")
+
+    def test_read_document_reports_it_instead_of_raising(self) -> None:
+        self.sheet.write_bytes(self.BAD)
+        data, issues = read_document(self.sheet)
+        self.assertIsNone(data)
+        self.assertEqual(len(issues), 1)
+        self.assertIn("utf-8", str(issues[0]).lower())
+
+    def test_the_store_keeps_the_last_good_sheet(self) -> None:
+        store = SheetStore(self.hints)
+        store.load_all()
+        self.sheet.write_bytes(self.BAD)
+        self.assertFalse(store.reload(self.sheet))
+        self.assertEqual([s.id for s in store.sheets], ["s"])
+        self.assertTrue(store.issues)
+
+    def test_load_config_reports_it(self) -> None:
+        config = self.dir / "config.yaml"
+        config.write_bytes(self.BAD)
+        result = load_config(config)
+        self.assertIsNone(result.config)
+        self.assertEqual(len(result.issues), 1)
+        self.assertIn("utf-8", str(result.issues[0]).lower())
 
 
 class GoodFixtureTest(unittest.TestCase):
@@ -137,6 +175,19 @@ class SheetValidationTest(unittest.TestCase):
 
     def test_unknown_keys_and_version(self) -> None:
         self.assert_issue("id: x\ntitle: X\nfoo: 1\n", "unknown top-level key(s): foo")
+
+    def test_unknown_keys_inside_match_and_display(self) -> None:
+        # DESIGN §Data model / DECISIONS 0002 (d): an unknown key is an error wherever it sits,
+        # so a typo cannot quietly do nothing.
+        self.assert_issue(
+            "id: x\ntitle: X\nmatch:\n  process:\n    argv_rgex: ['^a$']\n",
+            "match.process: unknown key(s): argv_rgex",
+        )
+        self.assert_issue(
+            "id: x\ntitle: X\nmatch:\n  wayland:\n    app_id_rgex: ['^a$']\n",
+            "match.wayland: unknown key(s): app_id_rgex",
+        )
+        self.assert_issue("id: x\ntitle: X\ndisplay:\n  widht: 10\n", "unknown key(s): widht")
         self.assert_issue("id: x\ntitle: X\nversion: 2\n", "version must be 1", line=3)
         self.assert_issue(
             "id: x\ntitle: X\nhints:\n  - {id: a, title: A, colour: red}\n",
@@ -170,6 +221,20 @@ class ConfigValidationTest(unittest.TestCase):
         self.check("logging:\n  level: loud\n", "must be one of")
         self.check("bogus: {}\n", "unknown section")
 
+    def test_unknown_key_inside_a_section(self) -> None:
+        # "未知の section / key は error" (DESIGN §Config): the section is only half of it.
+        for text, fragment in (
+            ("overlay:\n  widht: 10\n", "overlay: unknown key(s): widht"),
+            ("appearance:\n  colour: dark\n", "appearance: unknown key(s): colour"),
+            ("editor:\n  commnad: [ed]\n", "editor: unknown key(s): commnad"),
+            ("nested:\n  parent_tag: [a]\n", "nested: unknown key(s): parent_tag"),
+            ("context:\n  backends: auto\n", "context: unknown key(s): backends"),
+            ("search:\n  max_result: 5\n", "search: unknown key(s): max_result"),
+            ("logging:\n  levle: info\n", "logging: unknown key(s): levle"),
+        ):
+            with self.subTest(text=text):
+                self.check(text, fragment)
+
     def test_margin_shorthand(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "config.yaml"
@@ -178,17 +243,72 @@ class ConfigValidationTest(unittest.TestCase):
         self.assertEqual(cfg.display.margin, Margin(8, 8, 8, 8))
 
 
-class DuplicateSheetIdTest(unittest.TestCase):
-    def test_reported_once_per_extra_file(self) -> None:
+class SheetFileNameTest(unittest.TestCase):
+    """``id`` has to be the file name (DECISIONS 0020): a copy is not a second sheet."""
+
+    def load(self, d: str, name: str, sheet_id: str):
+        root = Path(d)
+        (root / name).write_text(f"id: {sheet_id}\ntitle: T\n", encoding="utf-8")
+        return load_sheets(root)
+
+    def test_a_sheet_whose_id_is_not_its_file_name_is_not_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            result = self.load(d, "claude-backup.yaml", "claude")
+        self.assertEqual(result.sheets, [])
+        self.assertEqual(len(result.issues), 1)
+        self.assertIn("claude-backup", result.issues[0].message)
+        self.assertIn("claude", result.issues[0].message)
+
+    def test_a_matching_name_loads(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            result = self.load(d, "claude.yaml", "claude")
+        self.assertEqual([s.id for s in result.sheets], ["claude"])
+        self.assertEqual(result.issues, [])
+
+    def test_the_extension_is_not_part_of_the_name(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            result = self.load(d, "claude.yml", "claude")
+        self.assertEqual([s.id for s in result.sheets], ["claude"])
+
+    def test_the_store_keeps_it_out_too(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            for name in ("a.yaml", "b.yaml"):
-                (root / name).write_text("id: same\ntitle: T\n", encoding="utf-8")
-            result = load_sheets(root)
-        self.assertEqual(len(result.sheets), 2)
-        self.assertEqual(len(result.issues), 1)
+            (root / "a.yaml").write_text("id: a\ntitle: A\n", encoding="utf-8")
+            (root / "a-copy.yaml").write_text("id: a\ntitle: A\n", encoding="utf-8")
+            store = SheetStore(root)
+            store.load_all()
+            self.assertEqual([s.path.name for s in store.sheets], ["a.yaml"])
+            self.assertEqual(len(store.issues), 1)
+
+
+class DuplicateSheetIdTest(unittest.TestCase):
+    """``a.yaml`` and ``a.yml`` both pass the file-name rule and still collide."""
+
+    def duplicates(self, d: str) -> Path:
+        root = Path(d)
+        for name in ("same.yml", "same.yaml"):
+            (root / name).write_text("id: same\ntitle: T\n", encoding="utf-8")
+        return root
+
+    def test_the_first_file_in_name_order_is_the_one_that_is_used(self) -> None:
+        # Never pick at random (設計書 §59): files are read in name order, so the first one wins.
+        with tempfile.TemporaryDirectory() as d:
+            result = load_sheets(self.duplicates(d))
+        self.assertEqual([s.path.name for s in result.sheets], ["same.yaml"])
+
+    def test_the_file_that_is_left_out_says_which_one_won(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            result = load_sheets(self.duplicates(d))
+        self.assertEqual([i.file.name for i in result.issues], ["same.yml"])
         self.assertIn("duplicate sheet id 'same'", result.issues[0].message)
-        self.assertEqual(result.issues[0].file.name, "b.yaml")
+        self.assertIn("same.yaml", result.issues[0].message)  # both names, so the pair is obvious
+
+    def test_the_store_leaves_the_duplicate_out_as_well(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            store = SheetStore(self.duplicates(d))
+            store.load_all()
+            self.assertEqual([s.path.name for s in store.sheets], ["same.yaml"])
+            self.assertEqual(len(store.issues), 1)
 
 
 class SheetStoreTest(unittest.TestCase):
@@ -216,6 +336,32 @@ class SheetStoreTest(unittest.TestCase):
             p.unlink()
             self.assertTrue(store.reload(p))
             self.assertEqual(store.sheets, [])
+
+    def test_loading_everything_again_forgets_a_file_that_is_gone(self) -> None:
+        # An explicit reload is the way out when a delete event was missed, so what the store
+        # holds afterwards has to be what the directory holds.
+        with tempfile.TemporaryDirectory() as d:
+            hints = Path(d)
+            for name in ("a", "b"):
+                (hints / f"{name}.yaml").write_text(f"id: {name}\ntitle: {name}\n")
+            store = SheetStore(hints)
+            store.load_all()
+            self.assertEqual([s.id for s in store.sheets], ["a", "b"])
+            (hints / "b.yaml").unlink()  # removed while the monitor was not looking
+            store.load_all()
+            self.assertEqual([s.id for s in store.sheets], ["a"])
+
+    def test_loading_everything_again_forgets_the_issues_of_a_file_that_is_gone(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            hints = Path(d)
+            bad = hints / "bad.yaml"
+            bad.write_text("title: no id\n")
+            store = SheetStore(hints)
+            store.load_all()
+            self.assertTrue(store.issues)
+            bad.unlink()
+            store.load_all()
+            self.assertEqual(store.issues, [])
 
     def test_cli_exit_code_on_problems(self) -> None:
         with tempfile.TemporaryDirectory() as d, contextlib.redirect_stderr(io.StringIO()):

@@ -36,7 +36,7 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 | `config.yaml` | overlay 位置・サイズ、editor、parent tags 等。無ければ全て既定値 |
 | UI 言語 | ボタン等の文字はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)から自動選択。`appearance.language: en\|ja` で固定。日英以外は英語 |
 | `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`)。雛形 `examples/style.css` は labwc のテーマ(Syscrash)に合わせた配色 |
-| `hints/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む |
+| `hints/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む。**`id` はファイル名（拡張子を除く部分）と同じにする**。違うものは読み込まず ⚠ に理由が出る(バックアップの `claude-backup.yaml` が `claude` を名乗っても二重に効かない) |
 
 雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる
 (`style.css` も入る。アプリ既定の配色で使うなら消す)。schema は
@@ -108,9 +108,9 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 
 | ボタン | 動作 |
 |---|---|
-| 検索 | 検索欄を開く。検索中だけキー入力を受ける。もう一度押すか `Esc` で終了 |
+| 検索 | 検索欄を開く。もう一度押すか `Esc` で終了。編集中は無効なので、編集を終了してから検索する |
 | コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
-| エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用 |
+| エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用。検索中・編集モード中に押したときは overlay を隠す(keyboard を editor に渡すため。下書きは残り、次に出したとき戻る) |
 | 編集 | 編集モードに入る。hint の追加・修正・削除・並べ替えを overlay の中で行う(キー割当は `docs/DESIGN.md` の「編集モード」。`wayhint edit-mode` でも入れる) |
 | 閉じる | overlay を隠す |
 

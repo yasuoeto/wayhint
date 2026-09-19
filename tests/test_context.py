@@ -9,6 +9,7 @@ from wayhint.context.base import ContextError, DesktopSnapshot
 from wayhint.context.herdr import HerdrContextProvider
 from wayhint.context.process import process_info_from_mapping
 from wayhint.context.resolver import ContextResolver
+from wayhint.context.wayfire import WayfireContextProvider
 from wayhint.models import DisplayConfig, Hint, HintSheet, MatchRule, OutputInfo, SourceLocation
 
 LOC = SourceLocation(Path("x.yaml"), 1)
@@ -226,6 +227,63 @@ class HerdrAdapterTest(unittest.TestCase):
             with self.subTest(name):
                 p, _ = self.make(responses)
                 self.assertIsNone(p.foreground_process())
+
+
+class WayfireAdapterTest(unittest.TestCase):
+    """An IPC failure and "no window is focused" are different answers (DESIGN Failure modes)."""
+
+    OUTPUT = {"name": "DP-1", "geometry": {"width": 2560, "height": 1440}}
+
+    def provider(self, **calls):
+        sock = self.Sock(**calls)
+        provider = WayfireContextProvider()
+        provider._connect = lambda: sock
+        return provider
+
+    class Sock:
+        def __init__(self, view=None, output=None, per_output=None, fail=()):
+            self.view, self.output, self.per_output, self.fail = view, output, per_output, fail
+
+        def _answer(self, name, value):
+            if name in self.fail:
+                raise RuntimeError(f"{name} failed")
+            return value
+
+        def get_focused_view(self):
+            return self._answer("get_focused_view", self.view)
+
+        def get_focused_output(self):
+            return self._answer("get_focused_output", self.output)
+
+        def get_output(self, _id):
+            return self._answer("get_output", self.per_output)
+
+        def close(self):
+            return None
+
+    def test_no_focused_window_is_a_snapshot_without_an_app(self) -> None:
+        snap = self.provider(view=None, output=self.OUTPUT).snapshot()
+        self.assertIsNone(snap.app_id)
+        self.assertIsNone(snap.view_ref)
+        self.assertEqual(snap.focused_output, DP1)  # enough to place the overlay
+
+    def test_a_failed_call_is_an_error_not_an_empty_desktop(self) -> None:
+        for call in ("get_focused_view", "get_focused_output"):
+            with self.subTest(call=call):
+                provider = self.provider(view={"app-id": "foot"}, output=self.OUTPUT, fail=(call,))
+                with self.assertRaises(ContextError) as caught:
+                    provider.snapshot()
+                self.assertIn(call, str(caught.exception))
+
+    def test_the_view_output_falls_back_to_the_focused_one(self) -> None:
+        provider = self.provider(
+            view={"app-id": "foot", "title": "t", "id": 7, "output-id": 3},
+            output=self.OUTPUT,
+            fail=("get_output",),
+        )
+        snap = provider.snapshot()
+        self.assertEqual((snap.app_id, snap.view_ref), ("foot", "7"))
+        self.assertEqual(snap.output, DP1)
 
 
 class ProcessInfoTest(unittest.TestCase):

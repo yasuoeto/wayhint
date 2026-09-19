@@ -14,6 +14,7 @@ Two levels of API:
 from __future__ import annotations
 
 import datetime as _dt
+import itertools
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -128,6 +129,10 @@ def read_document(path: Path) -> tuple[object, list[Issue]]:
         text = path.read_text(encoding="utf-8")
     except OSError as e:
         return None, [Issue(path, None, f"cannot read: {e.strerror or e}")]
+    except UnicodeDecodeError as e:
+        # A file saved in another encoding is a problem to report like any other, not a crash
+        # in whatever asked for it: the CLI, the daemon at start, or a reload.
+        return None, [Issue(path, None, f"not valid utf-8 at byte {e.start}: {e.reason}")]
     try:
         return _yaml().load(text), []
     except MarkedYAMLError as e:
@@ -202,6 +207,15 @@ def _regex_list(ctx: _Ctx, parent: Mapping, key: str, path: str) -> tuple[str, .
     return tuple(out)
 
 
+def _no_unknown(
+    ctx: _Ctx, node: Mapping, where: str, allowed: set[str], parent: object, key: object
+) -> None:
+    """An unknown key is an error at every level, not only the top one (DECISIONS 0002 (d))."""
+    unknown = sorted(set(map(str, node)) - allowed)
+    if unknown:
+        ctx.error(f"{where}: unknown key(s): {', '.join(unknown)}", parent, key)
+
+
 def _match_rule(ctx: _Ctx, root: Mapping) -> MatchRule:
     node = root.get("match")
     if node is None:
@@ -218,9 +232,13 @@ def _match_rule(ctx: _Ctx, root: Mapping) -> MatchRule:
     if not isinstance(desktop, Mapping):
         ctx.error(f"match.{desktop_key} must be a mapping", node, desktop_key)
         desktop = {}
+    else:
+        _no_unknown(ctx, desktop, f"match.{desktop_key}", {"app_id_regex"}, node, desktop_key)
     if not isinstance(process, Mapping):
         ctx.error("match.process must be a mapping", node, "process")
         process = {}
+    else:
+        _no_unknown(ctx, process, "match.process", {"argv_regex", "cmdline_regex"}, node, "process")
     return MatchRule(
         app_id_regex=_regex_list(ctx, desktop, "app_id_regex", f"match.{desktop_key}.app_id_regex"),
         argv_regex=_regex_list(ctx, process, "argv_regex", "match.process.argv_regex"),
@@ -394,10 +412,24 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
 
 
 def load_sheet(path: Path) -> tuple[HintSheet | None, list[Issue]]:
+    """Read one file. A sheet whose ``id`` is not the file name is not a sheet (0020).
+
+    Renaming or copying a file is how a second sheet with somebody else's id appears; loading it
+    would mean two files answering for one id, and which of them won would depend on the names.
+    Tying the id to the file name removes the question: ``claude.yaml`` is sheet ``claude``, and
+    ``claude-backup.yaml`` is reported and left out until it is given its own id.
+    """
     data, issues = read_document(path)
     if issues:
         return None, issues
-    return parse_sheet(data, path)
+    sheet, issues = parse_sheet(data, path)
+    if sheet is not None and sheet.id != path.stem:
+        message = (
+            f"sheet id {sheet.id!r} does not match the file name {path.stem!r}: "
+            f"rename the file to {sheet.id}{path.suffix} or change the id to {path.stem!r}"
+        )
+        return None, [Issue(path, _line_for_key_path(data, "id"), message)]
+    return sheet, issues
 
 
 def sheet_files(hints_dir: Path) -> list[Path]:
@@ -406,18 +438,31 @@ def sheet_files(hints_dir: Path) -> list[Path]:
     return sorted(p for p in hints_dir.iterdir() if p.is_file() and p.suffix in (".yaml", ".yml"))
 
 
-def check_duplicate_sheet_ids(sheets: Sequence[HintSheet]) -> list[Issue]:
-    issues = []
+def unique_sheet_ids(sheets: Sequence[HintSheet]) -> tuple[list[HintSheet], list[Issue]]:
+    """Split ``sheets`` into the ones that are used and the collisions that are not.
+
+    Two files claiming one id is ambiguous, and ambiguity is never resolved by chance
+    (設計書 §59): sheets are read in file-name order, so the first file wins and every later one
+    is left out with an issue naming both files. ``sheets`` is expected in that order.
+    """
+    kept: list[HintSheet] = []
+    issues: list[Issue] = []
     first: dict[str, HintSheet] = {}
     for sheet in sheets:
         other = first.get(sheet.id)
         if other is None:
             first[sheet.id] = sheet
+            kept.append(sheet)
         else:
             issues.append(
-                Issue(sheet.path, 1, f"duplicate sheet id {sheet.id!r} (also in {other.path})")
+                Issue(
+                    sheet.path,
+                    1,
+                    f"duplicate sheet id {sheet.id!r}: {sheet.path.name} is not used, "
+                    f"{other.path.name} was read first",
+                )
             )
-    return issues
+    return kept, issues
 
 
 def load_sheets(hints_dir: Path) -> LoadResult:
@@ -427,7 +472,8 @@ def load_sheets(hints_dir: Path) -> LoadResult:
         result.issues.extend(issues)
         if sheet is not None:
             result.sheets.append(sheet)
-    result.issues.extend(check_duplicate_sheet_ids(result.sheets))
+    result.sheets, duplicates = unique_sheet_ids(result.sheets)
+    result.issues.extend(duplicates)
     return result
 
 
@@ -457,7 +503,18 @@ class SheetStore:
         self.errors: dict[Path, list[Issue]] = {}
 
     def load_all(self) -> None:
-        for path in sheet_files(self.hints_dir):
+        """Re-read the directory, including what is no longer in it.
+
+        An explicit reload is the way out of a missed file event, so it has to end up agreeing
+        with the directory: a sheet whose file is gone -- and the issues recorded against it --
+        are dropped instead of lingering until the daemon restarts.
+        """
+        found = set(sheet_files(self.hints_dir))
+        for path in [*self._sheets, *self.errors]:
+            if path not in found:
+                self._sheets.pop(path, None)
+                self.errors.pop(path, None)
+        for path in found:
             self.reload(path)
 
     def reload(self, path: Path) -> bool:
@@ -475,12 +532,13 @@ class SheetStore:
 
     @property
     def sheets(self) -> list[HintSheet]:
-        return [self._sheets[p] for p in sorted(self._sheets)]
+        """The sheets in use: file-name order, and never two files under one id."""
+        return unique_sheet_ids([self._sheets[p] for p in sorted(self._sheets)])[0]
 
     @property
     def issues(self) -> list[Issue]:
         out = [i for issues in self.errors.values() for i in issues]
-        out.extend(check_duplicate_sheet_ids(self.sheets))
+        out.extend(unique_sheet_ids([self._sheets[p] for p in sorted(self._sheets)])[1])
         return out
 
 
@@ -546,16 +604,26 @@ def write_config(path: Path, doc: object) -> None:
     _write_checked(path, doc, check)
 
 
+_write_serial = itertools.count()
+
+
 def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue]]) -> None:
     """Dump, re-read, validate, then replace. Nothing is written when the result would not load.
 
     The temporary file sits next to the target (``os.replace`` cannot cross filesystems) and must
     not end in ``.yaml`` / ``.yml``: ``hints/`` is watched as a directory, so a temporary sheet
     would be picked up as a real one for as long as it exists.
+
+    The name also has to be this writer's own. The overlay and the CLI write the same sheets, and
+    a shared ``<name>.tmp`` lets one writer read, replace or delete the other's file mid-flight,
+    which fails in ways that are not "the last writer wins". Process id plus a counter is unique
+    while both are running, which is exactly as long as it matters; a name left behind by a
+    crashed writer is simply overwritten. Ordering between writers is still last-write-wins --
+    no mtime comparison is added here.
     """
     if not path.parent.is_dir():
         raise SheetWriteError(f"no such directory: {path.parent}")
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}-{next(_write_serial)}.tmp")
     try:
         with open(tmp, "w", encoding="utf-8") as fh:
             _yaml().dump(doc, fh)
@@ -676,6 +744,18 @@ def update_hint(doc: object, hint_id: str, fields: Mapping[str, object]) -> Comm
 
 def set_favorite(doc: object, hint_id: str, value: bool) -> CommentedMap:
     return update_hint(doc, hint_id, {"favorite": bool(value)})
+
+
+def toggle_favorite(doc: object, hint_id: str) -> CommentedMap:
+    """Flip what the file says, not what the caller last saw.
+
+    Reloads are debounced, so two presses in a row would otherwise both be computed from the
+    same in-memory copy and write the same value twice.
+    """
+    hints = _hints_of(doc)
+    node = hints[_index_of(hints, hint_id)]
+    current = node.get("favorite") if isinstance(node, Mapping) else False
+    return set_favorite(doc, hint_id, not bool(current))
 
 
 def delete_hint(doc: object, hint_id: str) -> CommentedMap:

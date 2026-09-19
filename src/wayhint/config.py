@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -70,11 +70,20 @@ class ConfigError(ValueError):
         self.message = message
 
 
-def _mapping(node: object, key: str) -> Mapping:
+def _mapping(node: object, key: str, allowed: Collection[str] | None = None) -> Mapping:
+    """A section, with its keys checked when ``allowed`` is given.
+
+    An unknown key is an error, not a warning, so a typo is noticed the moment it is written
+    instead of silently doing nothing (DECISIONS 0002 (d), DESIGN "Config").
+    """
     if node is None:
         return {}
     if not isinstance(node, Mapping):
         raise ConfigError(key, "must be a mapping")
+    if allowed is not None:
+        unknown = sorted(set(map(str, node)) - set(allowed))
+        if unknown:
+            raise ConfigError(key, f"unknown key(s): {', '.join(unknown)}")
     return node
 
 
@@ -147,7 +156,7 @@ def parse_margin(node: object, key: str) -> Margin | None:
 
 
 def parse_display(node: object, key: str) -> DisplayConfig:
-    m = _mapping(node, key)
+    m = _mapping(node, key, ("anchor", "width", "height", "margin", "output"))
     output = m.get("output")
     if output is not None and (not isinstance(output, str) or not output):
         raise ConfigError(f"{key}.output", "must be a non-empty string")
@@ -187,7 +196,9 @@ def parse_global_config(data: object) -> GlobalConfig:
 
     display = parse_display(root.get("overlay"), "overlay").merged_over(defaults.display)
 
-    appearance = _mapping(root.get("appearance"), "appearance")
+    appearance = _mapping(
+        root.get("appearance"), "appearance", ("style", "language", "show_category")
+    )
     style = appearance.get("style", defaults.style)
     if not isinstance(style, str) or not style:
         raise ConfigError("appearance.style", "must be a non-empty string")
@@ -195,7 +206,9 @@ def parse_global_config(data: object) -> GlobalConfig:
     if not isinstance(language, str) or language not in LANGUAGES:
         raise ConfigError("appearance.language", f"must be one of {', '.join(LANGUAGES)}")
 
-    editor_node = _mapping(root.get("editor"), "editor")
+    editor_node = _mapping(
+        root.get("editor"), "editor", ("command", "schema_modeline", "schema_path")
+    )
     command = (
         parse_editor_command(editor_node["command"], "editor.command")
         if "command" in editor_node
@@ -215,16 +228,16 @@ def parse_global_config(data: object) -> GlobalConfig:
         ),
     )
 
-    nested = _mapping(root.get("nested"), "nested")
-    context = _mapping(root.get("context"), "context")
-    search = _mapping(root.get("search"), "search")
+    nested = _mapping(root.get("nested"), "nested", ("parent_tags",))
+    context = _mapping(root.get("context"), "context", ("backend", "workspace", "live_update"))
+    search = _mapping(root.get("search"), "search", ("max_results",))
     backend = context.get("backend", defaults.context_backend)
     if not isinstance(backend, str) or backend not in CONTEXT_BACKENDS:
         raise ConfigError("context.backend", f"must be one of {', '.join(CONTEXT_BACKENDS)}")
     scope = context.get("workspace", defaults.workspace_scope)
     if not isinstance(scope, str) or scope not in WORKSPACE_SCOPES:
         raise ConfigError("context.workspace", f"must be one of {', '.join(WORKSPACE_SCOPES)}")
-    logging_node = _mapping(root.get("logging"), "logging")
+    logging_node = _mapping(root.get("logging"), "logging", ("level",))
     level = logging_node.get("level", defaults.log_level)
     if not isinstance(level, str) or level.lower() not in LOG_LEVELS:
         raise ConfigError("logging.level", f"must be one of {', '.join(LOG_LEVELS)}")

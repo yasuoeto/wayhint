@@ -30,9 +30,21 @@ Runner = Callable[[Sequence[str]], str]
 """Run argv, return stdout. Raise OSError / subprocess.SubprocessError on failure."""
 
 
+CALLS_PER_LOOKUP = 2  # "pane current", then "pane process-info"
+CALL_TIMEOUT = 0.75
+LOOKUP_BUDGET = CALLS_PER_LOOKUP * CALL_TIMEOUT
+"""Worst case for one context lookup.
+
+The calls are synchronous and run on the GTK main loop, so a herdr that does not answer holds
+up drawing and the socket as well. The budget therefore has to stay under
+``ipc.CLIENT_TIMEOUT``: otherwise ``wayhint toggle`` reports a timeout and the overlay opens a
+moment later anyway. Both numbers are worst cases -- a lookup measures a few milliseconds.
+"""
+
+
 def default_runner(argv: Sequence[str]) -> str:
     proc = subprocess.run(  # noqa: S603 - fixed executable, no shell, argv from code only
-        list(argv), capture_output=True, text=True, timeout=3, check=True
+        list(argv), capture_output=True, text=True, timeout=CALL_TIMEOUT, check=True
     )
     return proc.stdout
 

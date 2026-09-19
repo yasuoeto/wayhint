@@ -10,10 +10,12 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import jsonschema
 import jsonschema.validators
 
+from wayhint import yaml_store
 from wayhint.config import EditorConfig, GlobalConfig
 from wayhint.models import ProcessInfo, ResolvedContext
 from wayhint.schema import json_schema
@@ -138,6 +140,46 @@ class WriteDocumentTest(TmpSheetTest):
         with self.assertRaises(SheetWriteError):
             write_document(self.dir / "nope" / "s.yaml", {"id": "x", "title": "X"})
         self.assertFalse((self.dir / "nope").exists())
+
+
+class ConcurrentWriteTest(TmpSheetTest):
+    """Two writers on one file: the GUI and the CLI, or two CLI calls (DESIGN §4)."""
+
+    def interleave(self, target: Path, outer: object, inner: object) -> None:
+        """Run a whole second write in the middle of the first one's dump."""
+        real = yaml_store._yaml
+
+        def hooked() -> object:
+            y = real()
+            dump = y.dump
+
+            def dump_then_interleave(doc: object, fh: object) -> None:
+                dump(doc, fh)
+                if doc is outer:  # the nested write must not recurse
+                    write_document(target, inner)
+
+            y.dump = dump_then_interleave
+            return y
+
+        with mock.patch.object(yaml_store, "_yaml", hooked):
+            write_document(target, outer)
+
+    def test_a_writer_mid_flight_does_not_lose_the_write_that_finishes_last(self) -> None:
+        target = self.copy(DIRTY / "messy.yaml")
+        outer = self.doc(target)
+        outer["title"] = "outer"
+        inner = self.doc(target)
+        inner["title"] = "inner"
+        self.interleave(target, outer, inner)
+        self.assertEqual(self.doc(target)["title"], "outer")
+
+    def test_neither_writer_leaves_a_temporary_behind(self) -> None:
+        target = self.copy(DIRTY / "messy.yaml")
+        outer = self.doc(target)
+        inner = self.doc(target)
+        inner["title"] = "inner"
+        self.interleave(target, outer, inner)
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["messy.yaml"])
 
 
 class OverlaySizeTest(TmpSheetTest):
@@ -433,6 +475,18 @@ class SchemaTest(unittest.TestCase):
                 _sheet, issues = parse_sheet(data, path)
                 self.assertEqual(issues, [], "fixture must be valid for this test to mean anything")
                 validator.validate(self.plain(data))
+
+    def test_numbers_that_validation_accepts_pass_the_schema(self) -> None:
+        # ``key: 5`` is a hint for the digit 5, not a typo: yaml_store._opt_str keeps it as
+        # "5", so the schema has to accept it as well, or an editor flags a valid sheet.
+        doc = {
+            "id": "s",
+            "title": "S",
+            "hints": [{"id": "h", "title": "T", "key": 5, "command": 3, "category": 2026}],
+        }
+        _sheet, issues = parse_sheet(doc, Path("s.yaml"))
+        self.assertEqual(issues, [])
+        self.validator().validate(self.plain(doc))
 
     def test_generated_sheet_passes_the_schema(self) -> None:
         _path, doc = create_sheet(

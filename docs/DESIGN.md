@@ -110,7 +110,7 @@ logging:    {level: warning}
 
 ```yaml
 version: 1              # 任意、1 のみ
-id: claude              # 必須 ^[A-Za-z0-9][A-Za-z0-9._-]*$、全 sheet で一意
+id: claude              # 必須 ^[A-Za-z0-9][A-Za-z0-9._-]*$、ファイル名(stem)と同じ、全 sheet で一意
 title: Claude Code      # 必須
 priority: 10            # 任意 int、既定 0
 match:
@@ -138,7 +138,9 @@ hints:
 ## Interfaces
 
 - **CLI ↔ daemon**: Unix domain socket `$XDG_RUNTIME_DIR/wayhint.sock`。ネットワーク socket は
-  使わない。メッセージ形式は未決(1行テキスト or JSON、実装時に決めて DECISIONS へ)。
+  使わない。メッセージは 1 接続 1 リクエストの改行終端 JSON(DECISIONS 0008): client が
+  `{"cmd": "<name>"}\n` を 1 つ送って書き込み側を閉じ、daemon が `{"ok": true, ...}` か
+  `{"ok": false, "error": "..."}` を 1 つ返して切断する。上限 4096 bytes、未知の `cmd` は error。
 - **Wayland (既定)**: `wlr-foreign-toplevel-management-unstable-v1`(pywayland、呼び出し毎に接続)。
   取得: activated な toplevel の app_id / title / output(wl_output v4 の name、mode ÷ scale)。
   focus 復帰は `activate(seat)`。handle は接続をまたげないので `view_ref = "<app_id>\t<title>"` を
@@ -190,8 +192,15 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 - EXCLUSIVE を使う理由: `ON_DEMAND` では compositor が surface への再クリックまで keyboard focus を
   渡さず、検索ボタンを押しただけでは入力が下のアプリへ行ってしまう（labwc 0.20.2 で確認）。
 - `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
-- `edit` 中の hotkey は hide / show（0013 の例外）。`Esc` が唯一の破棄経路。
+- `edit` 中の hotkey は hide / show（0013 の例外）。
+- エディタ起動（`edit` / `search` 中の「エディタで編集」）は、起動に成功したら overlay を hide する。
+  EXCLUSIVE のままではエディタに入力できないため。モードと下書きは hide のときと同じく保持し、
+  次の show でそのまま戻る。起動に失敗したときは何も隠さずエラーを表示する。`normal` からの起動は
+  keyboard を持っていないので一覧を出したままにする。
 - 編集状態（モード、開いているフォーム、フォームの入力値、対象 hint id、追加先 sheet）は workspace ごとの context dict と同じ粒度で保持する。メモリのみ。
+- モード変更とフォームのキャンセルは daemon を経由し、UI はその状態を描画する。復帰先にフォームが
+  無い場合も明示的に閉じ、他 workspace のフォームを残さない。編集中は検索ボタンを無効にし、
+  編集を終了してから検索する。非表示の編集画面への `edit-mode` は保持した下書きを再表示する。
 - 保存後も `edit` に留まる。
 
 ### 2. key 割当（edit 中）
@@ -210,6 +219,11 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 一覧の単打キーと `Tab` / `Shift+Tab` は CAPTURE フェーズの `EventControllerKey` で受ける（ListBox の
 行操作や Tab の focus 移動より先に処理するため）。テキスト欄の `Enter` / `Esc` は input method に先に
 渡し、bubble フェーズで受ける（変換の確定・取り消しを奪わないため）。
+
+一覧のキーは修飾なしのときだけ受ける。`Ctrl+d` 等は別のアプリ・ウィジェットのキーであり、
+これを削除確認に使うと狙っていない操作が走る。テキスト欄で先に受ける `Tab` / `Shift+Tab` /
+`Ctrl+P` も、**変換中（preedit あり）は input method に渡す**（候補選択・候補移動に使われるため）。
+preedit の有無は `GtkText::preedit-changed` で追う。
 
 edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/ja）。
 
@@ -236,7 +250,7 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
 
 | 関数 | 内容 |
 |---|---|
-| `write_document(path, doc)` | tmp（`.yaml` / `.yml` 以外の拡張子、同一ディレクトリ）→ validate → `st_mode` コピー → `os.replace` |
+| `write_document(path, doc)` | tmp（`.yaml` / `.yml` 以外の拡張子、同一ディレクトリ、**writer ごとに別名**）→ validate → `st_mode` コピー → `os.replace` |
 | `build_hint(fields) -> CommentedMap` | 12 項目 canonical 順、未設定 null、`tags` は flow style |
 | `append_hint(doc, hint)` | `hints` 末尾に追加 |
 | `update_hint(doc, id, fields)` | 該当 hint を canonical 順で再構築。見つからなければ `HintNotFoundError` |
@@ -288,8 +302,21 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 ### 8. 同時編集と reload
 
 - 後勝ち。mtime 比較なし。
+- tmp 名は writer ごとに分ける（`<name>.<pid>-<連番>.tmp`）。GUI と CLI、CLI 同士が同じ sheet を
+  書くため、共有すると片方の tmp を他方が read / replace / unlink して「後勝ち」ではない失敗になる。
 - 保存時に対象 id が無ければエラー表示、reload に任せる。
-- 自己書き込みの reload は抑止しない。`_after_reload` で選択・スクロールを hint id で復元、無ければ index。
+- 自己書き込みの reload は抑止しない。`_after_reload` で選択を hint id で復元し、無ければ index。
+  スクロールは pixel 位置を保存せず、復元した選択 hint が見える位置まで動かすだけ(復元できなければ先頭)。スクロールバーは常時表示(overlay scrollbar は使わない)。
+- hint id は sheet 内だけで一意。GUI の編集・削除・favorite・移動・選択復元には
+  `(所属ファイル, hint id)` を使う。編集フォームも所属ファイルを保持し、対象消失時は他 sheet へ代替しない。
+- 編集操作の前に debounce 待ちの reload を先に適用する(`_flush_pending_reloads`)。自分の書き込みの
+  reload は 200ms 後なので、連打すると古い store を見て決めてしまうため。favorite の toggle は
+  さらに file の値を反転する(`toggle_favorite`)。
+- sheet の `id` はファイル名の stem と一致必須。違うファイルは hint として読み込まず Issue にする
+  (rename / backup コピーで他人の id を名乗るファイルが増えるため。DECISIONS 0020)。
+- それでも `x.yaml` と `x.yml` は衝突しうるので、重複時はファイル名順で先に読んだ 1 枚だけを使い、
+  後続は store に入れず Issue にする(両方のファイル名を含める)。曖昧なときに選び方を運任せにしない
+  (設計書 §59)。
 - gvim の古い buffer は editor 側（W11）に任せる。
 
 ### 9. category フィルタ（search 状態）
@@ -345,6 +372,9 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 | sheet YAML が invalid | last-known-good を表示し続け `⚠ YAML error`(file/line/error)を表示。修正で自動復帰 |
 | editor 不在 / 起動失敗 | GUI で error 表示 |
 | 検索終了時 focus 復帰失敗 | それでも keyboard_mode は必ず none に戻す(grab 残留禁止) |
+| 復帰先の window が一意に決まらない(app_id と title が同じ window が複数) | focus 復帰を諦めて log に残す。別 window を掴まない |
+| workspace 監視の接続が切れた | 監視だけを止め、表示中の view(モード・下書き)は単一 slot に引き継ぐ。Esc / hide で必ず抜けられる |
+| YAML が UTF-8 でない | 他の読み取り失敗と同じ Issue。last-known-good を保つ |
 
 ## Testing strategy
 
@@ -357,6 +387,8 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - **実機**(§69–§73): 自動化しない。下の手動チェックリストで確認する。
 - `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
   テストから分離し、ヘッドレスでも通るようにする。
+- daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の
+  境界を fake にし、実際の daemon / SheetStore / YAML 保存を通して対象ファイルと編集状態を検証する。
 
 ### 実機チェックリスト(§69–§73、手動)
 
@@ -383,19 +415,28 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T15 edit 中の hotkey → hide / show、入力が残る
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
   一覧へ出る(次の hotkey を待たない)。続けて quick add すると同じ sheet に追記される
-- T17 保存 → reload で overlay が閉じず、選択位置が保たれる
+- T17 保存 → reload で overlay が閉じず、選択位置が保たれる。選択中の hint が画面外に出ていたら
+  見える位置までスクロールする。一覧が画面に収まらないときスクロールバーが出ている
 - T18 gvim で開いたまま GUI 保存 → gvim に W11
 - T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない
 - T20 `#` 途中入力 + Tab → 補完
 - T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
 - T22 `d` `d` → 削除、`u` → 復帰
+- T22b `f` を続けて 2 回 → favorite が付いて外れる。`J` を続けて 2 回 → 2 つ下まで動く
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
+- T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と id の不一致が出る
 - T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
 - T25 角 / 辺の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き
   直しても、daemon を再起動しても同じサイズ **(2026-09-18 確認済)**
 - T26 key と title が 1 行ずつのとき文字のベースラインが揃う。どちらかが折り返したら、
   1 行のほうが行の高さの中央に来る(overlay の幅を grip で変えて title を折り返させる)
   **(2026-09-18 確認済)**
+- T27 IME で変換中に `Tab` / `Ctrl+P` → 候補操作が効き、欄移動や親 sheet toggle に取られない。
+  確定後は従来どおり欄移動になる
+- T28 `edit` / `search` 中に「エディタで編集」→ overlay が隠れ、エディタで入力できる。
+  hotkey で戻すと下書きがそのまま残っている。エディタが起動できないときは隠れずエラーが出る
+- T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
+  (回転できるモニタが要るため未実施)
 
 ## Known limits and future work
 
@@ -406,6 +447,16 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   (DECISIONS 0012)。
   **Wayfire は未対応**。protocol を出すかどうかは実機が無く未確認で、確認できないものを対応とは
   書かない。protocol が無い compositor では監視せず、従来どおり全 workspace に表示する。
+- **fractional scaling の論理サイズ**: `wl_output.scale` は整数しか持たないため、1.5 倍等の環境では
+  論理サイズが概算になる(`mode / ceil(scale)`)。正確に取るには `xdg_output` の `logical_size` を
+  bind する必要があるが、主環境(labwc)で fractional scaling を使っていないため入れない
+  (DECISIONS 0020)。使う予定が出たら `xdg_output_manager` 利用・無ければ現行計算へ fallback、
+  として別件で起こす。回転(`wl_output.geometry.transform`)と `mode` の CURRENT flag は対応済み。
+- **context 取得の同期呼び出し**: Herdr(subprocess)と Wayland(roundtrip)は GTK の main loop 上で
+  同期に走る。実測は herdr 2 往復で 2-3ms、Wayland snapshot で 0-18ms だが、応答しない相手が
+  いると描画と IPC が止まる。Herdr 側は 1 回の context 取得の上限を `ipc.CLIENT_TIMEOUT` より
+  短くしてあり(`herdr.LOOKUP_BUDGET`)、CLI が諦めたあとに遅れて処理が通ることは無い。Wayland 側の
+  roundtrip には時間制限が無い。非同期化は adapter の契約を変えるため別途判断する。
 - 拡張余地(§76、V1 には含めない): アプリ内部 mode(Vim/shell)、SSH remote、tmux pane、
   terminal title detector、AI agent lifecycle state、context 別 styling、usage frequency、
   recently learned、explicit executable flag 付き command 実行。

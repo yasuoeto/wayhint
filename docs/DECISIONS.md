@@ -337,7 +337,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 
 - `J` `K` は画面上の隣と swap する。隣が別グループ（favorite / 非 favorite、または非 favorite 区画で別 category）なら動かさない。category を変えたい場合は編集で category を書き換える。
 - 隣が別 sheet（親 sheet から混入した hint）なら動かさない。ファイルを跨ぐ移動はしない。
-- 検索・category フィルタ中も `J` `K` は可。swap 意味論のため、フィルタで隠れている hint を飛び越える形になるが他の順序は保たれる。
+- ~~検索・category フィルタ中も `J` `K` は可。~~ **撤回（0020）**。検索中は入力欄に focus があり、フィルタを確定したあとも語を足したり消したりして絞り込みを変える使い方をするため、`J` `K` を一覧に渡すには入力欄から focus を奪うことになる。並び替えは検索を終えてから行う。
 
 #### D9. 親 sheet から混入した hint
 
@@ -462,6 +462,66 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   sheet ごとの `display` 上書きがある場合、書き戻すのは global 側なので、sheet 側の指定が
   勝ったままになる(その sheet では手動リサイズが効いていないように見える)。
 
+
+## 0019 — hint の所属と workspace の編集状態を失わずに操作する
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Amends**: 0014 D2 / D3 / D4 / D9
+- **Context**: 実装監査 F1/F2 で、全 sheet から hint id だけで対象を選ぶ誤更新と、workspace 復帰時の
+  フォーム混入、検索ボタンによる下書き破棄が判明した。
+- **Decision**: hint の操作・フォーム・選択復元では所属ファイルと id の組を保持する。
+  モード変更とキャンセルは daemon を経由し、復元時にはフォームの有無も適用する。
+  編集中の検索ボタンは無効とし、検索するには先に編集を終了する。非表示の編集画面への
+  `edit-mode` は context を再取得せず下書きを再表示する。
+- **Consequences**: YAML schema は変更しない。検索と編集の同時使用は追加せず、D8 の
+  「フィルタ中の J/K」の未実装は別件として残す。daemon の GUI import を起動時へ遅延し、
+  window を fake にした headless の保存・状態遷移テストを追加する。
+
+
+## 0020 — 監査の残件に対する方針（D8 撤回、重複 sheet id、scroll、adapter の失敗区別ほか）
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Amends**: 0014 D8（撤回）、0008 / 0012 の記述整合
+- **Context**: 実装監査 F3–F11 とその周辺で、仕様と実装が食い違う点、仕様自体が未決の点が残った。
+  実装で決められるもの（不具合）と、使い方の判断が要るものを分けてユーザーに諮った結果をここにまとめる。
+  前提として、このプロジェクトは Wayland 専用で主環境は **labwc**。Wayfire 固有の記述は adapter の
+  一実装として扱い、実機確認と F7 / F10 の判断は labwc を正とする。
+- **Decision**:
+  1. **検索・フィルタ中の `J` `K`（0014 D8）は実装しない**。D8 のその一文は撤回する。フィルタ確定後も
+     フィルタ内容を変える使い方をするので、入力欄から focus を奪う仕様は採らない。
+  2. **reload 後の scroll は pixel 位置を復元しない**。復元した選択 hint が見える位置まで動かすだけとし、
+     選択が復元できなければ先頭を見せる。スクロールバーは常時表示（overlay scrollbar を使わない）。
+  3. **sheet の `id` はファイル名の stem と一致必須**とし、一致しないファイルは hint として読み込まない
+     （Issue にして一覧には出さない）。rename やバックアップコピーで他人の id を名乗るファイルが増えても、
+     どちらが効くかがファイル名次第という状況を作らないため。調査時点で生成物・fixture・examples・実配置の
+     全 sheet が既に一致していた（`create_sheet` は `<slug>.yaml` を作るので生成側は常に一致する）。
+     それでも `x.yaml` と `x.yml` のように stem が同じ組は残るので、**重複したときはファイル名昇順で先に
+     読んだ 1 枚だけを使い**、後続は store に入れず Issue にして GUI に出す（メッセージに両方のファイル名。
+     曖昧さを運任せにしない、設計書 §59）。
+  4. **編集操作の前に debounce 待ちの reload を適用する**。favorite の toggle は file の値を反転する。
+     200ms 以内の連打で「2 回目が効かない / 並び替えが戻る」ことを headless テストで再現してから直した。
+  5. **fractional scaling のために `xdg_output` を bind しない**。`wl_output.scale` は整数のため論理サイズは
+     概算のままとし、既知の制限として DESIGN に記録する。実機で fractional scaling を使う予定が出たら
+     `xdg_output_manager` 利用（無ければ現行計算へ fallback）を別件として起こす。transform による
+     縦横入れ替えと `mode` の CURRENT flag は実装する。
+  6. **editor の起動後の異常終了は監視しない**。起動の失敗は従来どおり GUI に出す。
+  7. **Wayfire adapter は IPC 失敗と window 不在を区別する**。snapshot に不可欠な呼び出しの失敗は
+     `ContextError`（overlay は落とさず error 表示）、`None` は「focus されている window が無い」として
+     desktop context に fallback する（設計書 §63）。
+  8. **文書の矛盾は文書側で直す**。DESIGN の「IPC メッセージ形式は未決」は 0008 の内容に置き換える。
+     AGENTS の「subprocess は editor だけ」に Herdr adapter を例外として明記する（固定 argv、
+     `shell=False`、timeout 付き、YAML 由来の文字列を引数にしない）。
+  9. **STATUS** は実機確認・常駐状態を推測で書き換えない。
+- **Alternatives**: D8 を実装する（フィルタ確定で一覧へ focus を移す案。絞り込みの変更が主な使い方
+  なので却下）; 重複 sheet を両方読む（どちらが効いたのか分からない）; scroll 位置を pixel で保存する
+  （reload 後は行の並びが変わり得るので意味が薄い）; `xdg_output` を今 bind する（実機で必要になって
+  いない）; Wayfire の失敗を従来どおり無視する（context が空なのか壊れたのか区別できない）。
+- **Consequences**: YAML schema は変わらない。id がファイル名と違う sheet と、重複 id の 2 枚目以降は
+  「読まれない」ので、そうした構成では表示が変わる（Issue で理由とリネーム先が出る）。手でファイル名を
+  変えるときは `id` も一緒に変える必要がある。Wayfire の IPC 失敗は今後 error として見えるようになる
+  （従来は無言で空の context）。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot

@@ -19,27 +19,6 @@ from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
-import gi
-
-# gtk4-layer-shell hooks libwayland-client and therefore has to be in the process *before* GTK
-# (or any typelib) loads it. Importing the typelib first is not enough under PyGObject, so the
-# shared library is loaded explicitly with RTLD_GLOBAL (DECISIONS 0009). Failure is tolerated
-# here; ``Daemon.start`` reports the missing support via ``is_supported``.
-for _name in ("libgtk4-layer-shell.so.0", "libgtk4-layer-shell.so"):
-    try:
-        ctypes.CDLL(_name, mode=ctypes.RTLD_GLOBAL)
-        break
-    except OSError:
-        continue
-
-gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
-
-gi.require_version("Gtk", "4.0")
-gi.require_version("Gio", "2.0")
-gi.require_version("GLibUnix", "2.0")
-from gi.repository import Gio, GLib, GLibUnix, Gtk  # noqa: E402
-
 from wayhint import ipc  # noqa: E402
 from wayhint.config import GlobalConfig, config_dir  # noqa: E402
 from wayhint.context.herdr import HerdrContextProvider  # noqa: E402
@@ -60,9 +39,8 @@ from wayhint.selection import (  # noqa: E402
     sort_hints,
     visible_hints,
 )
-from wayhint.ui import editmode, style  # noqa: E402
+from wayhint.ui import editmode  # noqa: E402
 from wayhint.ui.editmode import FormDraft, WorkspaceView  # noqa: E402
-from wayhint.ui.window import HintWindow  # noqa: E402
 from wayhint.yaml_store import (  # noqa: E402
     Issue,
     SheetStore,
@@ -74,10 +52,10 @@ from wayhint.yaml_store import (  # noqa: E402
     load_config,
     match_rule_for_context,
     read_document,
-    set_favorite,
     set_overlay_size,
     slug,
     swap_hints,
+    toggle_favorite,
     update_hint,
     write_config,
     write_document,
@@ -85,6 +63,31 @@ from wayhint.yaml_store import (  # noqa: E402
 
 log = logging.getLogger("wayhintd")
 DEBOUNCE_MS = 200
+
+
+def _load_gui() -> None:
+    """Load GUI dependencies only when starting the application, not the controller tests."""
+    global Gio, GLib, GLibUnix, Gtk, LayerShell, HintWindow, style
+
+    import gi
+
+    # Keep the preload before any GTK typelib import (DECISIONS 0009).
+    for name in ("libgtk4-layer-shell.so.0", "libgtk4-layer-shell.so"):
+        try:
+            ctypes.CDLL(name, mode=ctypes.RTLD_GLOBAL)
+            break
+        except OSError:
+            continue
+    gi.require_version("Gtk4LayerShell", "1.0")
+    from gi.repository import Gtk4LayerShell as LayerShell
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gio", "2.0")
+    gi.require_version("GLibUnix", "2.0")
+    from gi.repository import Gio, GLib, GLibUnix, Gtk
+
+    from wayhint.ui import style
+    from wayhint.ui.window import HintWindow
 
 
 class Daemon:
@@ -271,6 +274,8 @@ class Daemon:
         """Put ``view`` on screen with its mode and draft; the window keeps no state of its own."""
         assert self.window is not None
         self._shown_key = key
+        # Apply absence as well as presence; an edit list must not inherit the previous form.
+        self.window.close_form()
         self.window.present_context(view.context, self.store.sheets, self.config)
         self.window.show_issues(self.issues)
         self.window.set_mode(view.mode, refocus=False)
@@ -280,7 +285,6 @@ class Daemon:
     def _sync_view(self, view: WorkspaceView) -> None:
         """Copy the window's live state back into the workspace record before losing the screen."""
         assert self.window is not None
-        view.mode = self.window.mode
         view.form = self.window.form_draft()
 
     def _current_view(self) -> WorkspaceView | None:
@@ -322,7 +326,10 @@ class Daemon:
         """
         assert self.window is not None
         view = self._current_view()
-        if view is not None and view.mode == "edit" and self.window.is_shown():
+        if view is not None and view.mode == "edit":
+            if not self.window.is_shown():
+                self._present(self._workspace_key(), view)
+                return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
             self._sync_shown()  # the window holds the live draft; the view may not have it yet
             if view.form is not None:
                 # Cancel the form first, like Escape: one keystroke never drops an open draft.
@@ -361,14 +368,29 @@ class Daemon:
 
     def _edit_action(self, action: str, payload: dict, tr) -> None:
         assert self.window is not None
+        self._flush_pending_reloads()
         view = self._current_view()
         if action == "enter-edit":
             self.enter_edit_mode()
             return
         if view is None:
             return
+        if action == editmode.BEGIN_SEARCH:
+            if view.mode != "edit":
+                view.mode = "search"
+                self.window.set_mode("search")
+            return
+        if action == editmode.END_SEARCH:
+            if view.mode == "search":
+                view.mode = "normal"
+                self.window.set_mode("normal", refocus=payload.get("refocus", True))
+            return
         if action == editmode.EXIT_EDIT:
             self._exit_edit_mode(view)
+            return
+        if action == editmode.FORM_CANCEL:
+            view.form = None
+            self.window.close_form()
             return
         if action == editmode.ADD:
             self._open_quick_add(view)
@@ -399,6 +421,18 @@ class Daemon:
             return
         log.debug("unhandled edit action: %s", action)
 
+    def _flush_pending_reloads(self) -> None:
+        """Read writes that are still inside the debounce window before acting on the store.
+
+        A write of our own schedules a reload 200 ms later. Until it runs, the store still has
+        the previous version, and an action decided from it -- which hint is next in the order,
+        what is in a field -- would be decided from something the file no longer says.
+        """
+        for path, tid in list(self._pending_reload.items()):
+            self._pending_reload.pop(path, None)
+            GLib.source_remove(tid)
+            self._debounced_reload(path)
+
     def _exit_edit_mode(self, view: WorkspaceView) -> None:
         """Back to normal: no grab, no draft. Escape and a second edit-mode hotkey share this."""
         assert self.window is not None
@@ -406,8 +440,12 @@ class Daemon:
         view.form = None
         self.window.set_mode("normal")
 
-    def _hint_by_id(self, hint_id: str) -> tuple[Hint, HintSheet] | None:
+    def _hint_by_id(self, hint_id: str, file: Path | str | None) -> tuple[Hint, HintSheet] | None:
+        if file is None:
+            return None
         for sheet in self.store.sheets:
+            if sheet.path != Path(file):
+                continue
             for hint in sheet.hints:
                 if hint.id == hint_id:
                     return hint, sheet
@@ -427,7 +465,7 @@ class Daemon:
         """Put a message in the form when the sheet this save would write is broken (0014 D2)."""
         assert self.window is not None
         if draft.hint_id is not None:
-            found = self._hint_by_id(draft.hint_id)
+            found = self._hint_by_id(draft.hint_id, draft.file)
             sheet_id = found[1].id if found else None
         else:
             sheet_id = editmode.target_sheet_id(draft, view.context)
@@ -450,7 +488,7 @@ class Daemon:
 
     def _open_edit_form(self, view: WorkspaceView, payload: dict) -> None:
         assert self.window is not None
-        found = self._hint_by_id(payload.get("hint_id", ""))
+        found = self._hint_by_id(payload.get("hint_id", ""), payload.get("file"))
         if found is None:
             return
         hint, sheet = found
@@ -464,7 +502,7 @@ class Daemon:
             return
         fields = editmode.draft_fields(draft)
         if draft.hint_id is not None:
-            found = self._hint_by_id(draft.hint_id)
+            found = self._hint_by_id(draft.hint_id, draft.file)
             if found is None:
                 self.window.show_message(f"⚠ {tr('that sheet is gone')}")
                 return
@@ -514,7 +552,7 @@ class Daemon:
 
     def _delete(self, payload: dict, tr) -> None:
         assert self.window is not None
-        found = self._hint_by_id(payload.get("hint_id", ""))
+        found = self._hint_by_id(payload.get("hint_id", ""), payload.get("file"))
         if found is None:
             return
         hint, sheet = found
@@ -538,16 +576,16 @@ class Daemon:
         self.window.show_message(tr("restored {id}").format(id=node.get("id", "?")))
 
     def _toggle_favorite(self, payload: dict) -> None:
-        found = self._hint_by_id(payload.get("hint_id", ""))
+        found = self._hint_by_id(payload.get("hint_id", ""), payload.get("file"))
         if found is None:
             return
         hint, sheet = found
-        self._write(sheet.path, lambda doc: set_favorite(doc, hint.id, not hint.favorite))
+        self._write(sheet.path, lambda doc: toggle_favorite(doc, hint.id))
 
     def _move(self, payload: dict, down: bool, tr) -> None:
         """Swap with the hint next to it on screen, inside the same group and sheet (D8)."""
         assert self.window is not None
-        found = self._hint_by_id(payload.get("hint_id", ""))
+        found = self._hint_by_id(payload.get("hint_id", ""), payload.get("file"))
         if found is None:
             return
         hint, sheet = found
@@ -558,7 +596,10 @@ class Daemon:
                 self.config.parent_tags,
             )
         )
-        index = next((i for i, h in enumerate(shown) if h.id == hint.id), None)
+        index = next(
+            (i for i, h in enumerate(shown) if (h.location.file, h.id) == (sheet.path, hint.id)),
+            None,
+        )
         if index is None:
             return
         other_index = index + 1 if down else index - 1
@@ -599,7 +640,9 @@ class Daemon:
             return
         try:
             write_config(path, set_overlay_size(doc, width, height))
-        except SheetWriteError as e:
+        except (SheetWriteError, OSError) as e:
+            # The drag ends in a GTK callback: a write that fails has to say so on screen, the
+            # way every other write does (see on_edit_action).
             self._warn(e)
             return
         log.info("overlay resized: %dx%d written to config.yaml", width, height)
@@ -643,6 +686,24 @@ class Daemon:
             open_in_editor(self.config.editor, target.file, target.line, target.hint_id)
         except EditorError as e:
             self.window.show_message(f"⚠ {e}")
+            return  # nothing was started, so the overlay keeps the keyboard and the draft
+        self._release_for_editor()
+
+    def _release_for_editor(self) -> None:
+        """Get out of the way of the editor that was just started.
+
+        ``search`` and ``edit`` hold the keyboard (EXCLUSIVE), so the editor would come up with
+        no way to type in it. Hiding drops the grab and keeps the mode and the draft, exactly as
+        the hotkey does during an edit (0014 D4): the overlay comes back unchanged. ``normal``
+        holds nothing, so the list stays on screen.
+        """
+        assert self.window is not None
+        view = self._current_view()
+        if view is None or view.mode == "normal" or not self.window.is_shown():
+            return
+        self._sync_shown()
+        log.info("editor started: hiding the overlay so it can have the keyboard")
+        self.window.hide_overlay()
 
     # --- workspace scoping -----------------------------------------------------------------
 
@@ -665,13 +726,28 @@ class Daemon:
             )
 
     def _stop_workspace_watch(self) -> None:
+        """Drop the watch. What is open outlives it; see :meth:`_collapse_workspaces`."""
         if self._watch_source is not None:
             GLib.source_remove(self._watch_source)
             self._watch_source = None
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None
+
+    def _collapse_workspaces(self) -> None:
+        """Move what is on screen into the single slot a daemon without a watcher uses.
+
+        Without the watcher ``_workspace_key`` returns ``""``, so a view left under a workspace
+        name would be unreachable: Escape and hide would find nothing and the overlay would keep
+        the keyboard with no way out. Keeping the shown view -- with its mode and its draft --
+        under the new key separates the draft's lifetime from the connection's. The other
+        workspaces' views go, because nothing can say when to bring them back.
+        """
+        shown = self._open.get(self._shown_key) if self._shown_key is not None else None
         self._open.clear()
+        if shown is not None:
+            self._open[""] = shown
+            self._shown_key = ""
 
     def _workspace_key(self) -> str:
         """Key for the current workspace, or ``""`` when there is no workspace backend.
@@ -691,7 +767,9 @@ class Daemon:
     def _on_watch_fd(self, _fd, _condition) -> bool:
         if self._watcher is None or not self._watcher.dispatch():
             self._watch_source = None
+            log.warning("workspace watch lost: the overlay stops following workspace changes")
             self._stop_workspace_watch()
+            self._collapse_workspaces()
             return False
         return True
 
@@ -784,6 +862,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _load_gui()
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",

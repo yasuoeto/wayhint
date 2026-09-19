@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 import gi
 
@@ -165,10 +166,11 @@ class HintWindow(Gtk.Window):
         self._hints: list[Hint] = []
         self._mode = "normal"
         self._form: FormDraft | None = None
-        self._delete_pending: str | None = None
+        self._preedit = False  # an input method conversion is open in one of the fields
+        self._delete_pending: tuple[Path, str] | None = None
         self._filter: str | None = None
         self._completion: tuple[str, str] | None = None  # (typed prefix, candidate now shown)
-        self._selected_id: str | None = None
+        self._selected_id: tuple[Path, str] | None = None
         self._edges: frozenset[str] = frozenset({"top", "right"})  # set by _apply_placement
         self._drag_from: tuple[int, int] | None = None  # window size when the drag started
 
@@ -215,6 +217,7 @@ class HintWindow(Gtk.Window):
         self._search = Gtk.SearchEntry(hexpand=True, placeholder_text=self._tr("search hints…"))
         self._search.connect("search-changed", lambda *_: self._render_list())
         self._search.connect("stop-search", lambda *_: self.end_search())
+        self._watch_preedit(self._search)
         search_row.append(self._search)
         self._chip = Gtk.Label(visible=False)
         self._chip.add_css_class("wayhint-chip")
@@ -224,6 +227,10 @@ class HintWindow(Gtk.Window):
         self._list.connect("row-selected", self._on_row_selected)
         scroller = Gtk.ScrolledWindow(vexpand=True, child=self._list)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        # Not overlay scrollbars: the bar is how long the list is and where in it you are, and
+        # a bar that fades out cannot say that on an overlay that is only open for a moment.
+        scroller.set_overlay_scrolling(False)
+        self._scroller = scroller
         root.append(scroller)
         self._detail = Gtk.Label(xalign=0, wrap=True, selectable=True, visible=False)
         self._detail.add_css_class("wayhint-detail")
@@ -267,6 +274,7 @@ class HintWindow(Gtk.Window):
             # confirmed does not emit it, so this is the IME-safe way to save (the bubble
             # controller never sees Enter, because the entry consumes it).
             entry.connect("activate", lambda *_: self._save_form())
+            self._watch_preedit(entry)
             row.append(caption)
             row.append(entry)
             box.append(row)
@@ -424,6 +432,7 @@ class HintWindow(Gtk.Window):
         leaving = self._mode
         self._mode = mode
         self._delete_pending = None
+        self._search_btn.set_sensitive(mode != "edit")
         if mode != "search":
             self._search.set_text("")
             self._search_row.set_visible(False)
@@ -450,13 +459,16 @@ class HintWindow(Gtk.Window):
                 log.exception("refocus failed")
 
     def begin_search(self) -> None:
-        self.set_mode("search")
+        self._on_action(editmode.BEGIN_SEARCH, None)
 
     def end_search(self, refocus: bool = True) -> None:
-        self.set_mode("normal", refocus=refocus)
+        self._on_action(editmode.END_SEARCH, {"refocus": refocus})
 
     def _toggle_search(self) -> None:
-        self.set_mode("normal" if self._mode == "search" else "search")
+        if self._mode == "search":
+            self.end_search()
+        else:
+            self.begin_search()
 
     def _help_text(self) -> str:
         if self._form is not None:
@@ -464,6 +476,20 @@ class HintWindow(Gtk.Window):
         return self._tr(
             "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
         )
+
+    def _watch_preedit(self, entry: Gtk.Editable) -> None:
+        """Follow the input method's conversion state for :func:`editmode.capture_in_editable`.
+
+        ``GtkEntry`` delegates editing to an internal ``GtkText``, which is what carries
+        ``preedit-changed``. The flag is shared by every field: only one of them has the focus,
+        and the input method clears the preedit when the focus moves.
+        """
+        delegate = entry.get_delegate()
+        if isinstance(delegate, Gtk.Text):
+            delegate.connect("preedit-changed", self._on_preedit)
+
+    def _on_preedit(self, _text: Gtk.Text, preedit: str) -> None:
+        self._preedit = bool(preedit)
 
     def _on_key(self, _ctrl, keyval, _keycode, state) -> bool:
         name = Gdk.keyval_name(keyval) or ""
@@ -477,6 +503,8 @@ class HintWindow(Gtk.Window):
     def _search_key(self, name: str) -> bool:
         # Escape is left to the entry's ``stop-search``: an input method needs it first, to cancel
         # a conversion rather than the whole search.
+        if self._preedit:
+            return False  # Tab picks a candidate while a conversion is open
         if name in ("Tab", "ISO_Left_Tab"):
             self._cycle_filter(forward=name == "Tab")
             return True
@@ -499,7 +527,7 @@ class HintWindow(Gtk.Window):
             self._save_form()
             return True
         if action == editmode.FORM_CANCEL:
-            self.close_form()
+            self._on_action(editmode.FORM_CANCEL, None)
             return True
         return False
 
@@ -513,7 +541,7 @@ class HintWindow(Gtk.Window):
             editable=editable or self._form is not None,
             pending=bool(self._delete_pending),
         )
-        if editable and not editmode.capture_in_editable(action):
+        if editable and not editmode.capture_in_editable(action, preedit=self._preedit):
             return False  # let the input method have it; :meth:`_on_key_late` picks up the rest
         if editmode.cancels_delete(action) and self._delete_pending is not None:
             self._delete_pending = None
@@ -527,15 +555,14 @@ class HintWindow(Gtk.Window):
             self._save_form()
             return True
         if action == editmode.FORM_CANCEL:
-            self.close_form()
-            self._help.set_label(self._help_text())
+            self._on_action(editmode.FORM_CANCEL, None)
             return True
         if action == editmode.DELETE_CONFIRM:
             hint = self._selected()
             if hint is None:
                 self.show_message(f"⚠ {self._tr('no hint selected')}")
                 return True
-            self._delete_pending = hint.id
+            self._delete_pending = (hint.location.file, hint.id)
             self.show_message(self._tr("press d again to delete {title}").format(title=hint.title))
             return True
         payload = self._action_payload(action)
@@ -682,13 +709,35 @@ class HintWindow(Gtk.Window):
     def _restore_selection(self, previous_index: int | None) -> None:
         """After a re-render keep the same hint selected, or failing that the same row (D2)."""
         index = editmode.restore_index(
-            [h.id for h in self._hints], self._selected_id, previous_index
+            [(h.location.file, h.id) for h in self._hints], self._selected_id, previous_index
         )
-        if index is None:
-            return
-        row = self._list.get_row_at_index(index)
+        row = self._list.get_row_at_index(index) if index is not None else None
         if row is not None:
             self._list.select_row(row)
+        self._scroll_to(row or self._list.get_row_at_index(0))
+
+    def _scroll_to(self, row: Gtk.ListBoxRow | None) -> None:
+        """Bring ``row`` into view, or the top of the list when there is nothing to show.
+
+        Only the selected hint has to be visible again after a reload -- the pixel offset is not
+        worth keeping, because the list it belonged to is gone (DESIGN §8). The rows have not
+        been allocated yet at this point, so the scrolling waits for the next main-loop turn.
+        """
+        if row is None:
+            return
+        GLib.idle_add(self._do_scroll_to, row, priority=GLib.PRIORITY_DEFAULT_IDLE)
+
+    def _do_scroll_to(self, row: Gtk.ListBoxRow) -> bool:
+        adj = self._scroller.get_vadjustment()
+        ok, rect = row.compute_bounds(self._list)
+        if not ok or adj.get_page_size() <= 0:
+            return GLib.SOURCE_REMOVE
+        top, bottom = rect.origin.y, rect.origin.y + rect.size.height
+        if top < adj.get_value():
+            adj.set_value(top)
+        elif bottom > adj.get_value() + adj.get_page_size():
+            adj.set_value(bottom - adj.get_page_size())
+        return GLib.SOURCE_REMOVE
 
     def _category_order(self) -> list[str | None]:
         return editmode.category_order(
@@ -806,8 +855,9 @@ class HintWindow(Gtk.Window):
 
     def _on_row_selected(self, _list, row) -> None:
         hint = row.hint if isinstance(row, HintRow) else None
-        self._selected_id = hint.id if hint is not None else self._selected_id
-        if self._delete_pending is not None and (hint is None or hint.id != self._delete_pending):
+        selected = (hint.location.file, hint.id) if hint is not None else None
+        self._selected_id = selected if selected is not None else self._selected_id
+        if self._delete_pending is not None and selected != self._delete_pending:
             self._delete_pending = None  # moving the selection calls off a pending delete
         if hint is None:
             self._detail.set_visible(False)

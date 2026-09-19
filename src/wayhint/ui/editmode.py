@@ -10,7 +10,7 @@ Pure module: dataclasses and functions over plain values. No GTK, no compositor,
 
 from __future__ import annotations
 
-from collections.abc import Container, Iterable, Sequence
+from collections.abc import Container, Hashable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,6 +33,8 @@ FAVORITE = "favorite"
 MOVE_DOWN = "move-down"
 MOVE_UP = "move-up"
 EXIT_EDIT = "exit-edit"
+BEGIN_SEARCH = "begin-search"
+END_SEARCH = "end-search"
 FORM_SAVE = "form-save"
 FORM_CANCEL = "form-cancel"
 FORM_NEXT = "form-next"
@@ -50,6 +52,7 @@ class FormDraft:
 
     hint_id: str | None = None
     sheet_id: str | None = None
+    file: Path | None = None  # existing hint's owner; IDs are unique only within a sheet
     to_parent: bool = False
     fields: dict[str, str] = field(default_factory=dict)
     warning: str | None = None
@@ -103,6 +106,10 @@ def edit_action(
     ``editable`` is true while a text field has the focus: then only the form keys are taken and
     everything printable goes through, so typing "add" into a title does not delete a hint.
     Any action other than the two delete ones cancels a pending ``d`` (DESIGN §2).
+
+    In the list, a modifier means the key is not ours: ``Ctrl+d`` is the terminal's, and taking
+    it as "delete this hint" would act on a keystroke the user aimed somewhere else. Only
+    ``Ctrl+P`` in a form has a meaning here, and that one is spelled out below.
     """
     if editable:
         if key == "Return" or key == "KP_Enter":
@@ -115,6 +122,8 @@ def edit_action(
             return FORM_PREVIOUS
         if ctrl and key in ("p", "P"):
             return FORM_PARENT
+        return None
+    if ctrl:
         return None
     if key == "d":
         return DELETE_COMMIT if pending else DELETE_CONFIRM
@@ -131,14 +140,21 @@ def edit_action(
     return simple.get(key)
 
 
-def capture_in_editable(action: str | None) -> bool:
+def capture_in_editable(action: str | None, *, preedit: bool = False) -> bool:
     """May this action be taken *before* the input method sees the key, in a text field?
 
     Only the keys the input method never wants. ``Enter`` confirms a conversion and ``Esc``
     cancels one, so those two have to reach the IME first and are handled on the way back up
     (bubble) instead -- otherwise typing Japanese into the form is impossible: the key that
     confirms 「ペイン」 would save the form with the text still unconfirmed.
+
+    ``preedit`` says a conversion is open right now. While it is, even Tab and ``Ctrl+P`` are
+    the input method's: they pick and walk candidates. Field movement is worth having, but not
+    at the price of making the candidate list unusable, so nothing is taken early until the
+    conversion is confirmed or cancelled.
     """
+    if preedit:
+        return False
     return action in (FORM_NEXT, FORM_PREVIOUS, FORM_PARENT)
 
 
@@ -236,7 +252,9 @@ def next_completion(
     return found[(found.index(current) + (1 if forward else -1)) % len(found)]
 
 
-def restore_index(hint_ids: Sequence[str], hint_id: str | None, previous: int | None) -> int | None:
+def restore_index(
+    hint_ids: Sequence[Hashable], hint_id: Hashable | None, previous: int | None
+) -> int | None:
     """Where the selection goes after a reload: same hint if it is still there, else same row.
 
     The id is the stable handle; the index is the fallback for a hint that was renamed or removed
@@ -289,7 +307,7 @@ def draft_from_hint(hint: Hint, sheet_id: str | None) -> FormDraft:
         "category": hint.category or "",
         "remark": hint.remark or "",
     }
-    return FormDraft(hint_id=hint.id, sheet_id=sheet_id, fields=fields)
+    return FormDraft(hint_id=hint.id, sheet_id=sheet_id, file=hint.location.file, fields=fields)
 
 
 def draft_fields(draft: FormDraft) -> dict[str, object]:

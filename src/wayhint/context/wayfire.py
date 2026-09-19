@@ -43,10 +43,16 @@ class WayfireContextProvider:
             raise ContextError(f"Wayfire IPC unavailable: {e.__class__.__name__}") from e
 
     def snapshot(self) -> DesktopSnapshot:
+        """What is focused right now.
+
+        A call that fails is an error the user should see; a call that answers "nothing" is a
+        desktop with no focused window, which is a normal state the resolver falls back from
+        (設計書 §63). The two must not arrive here as the same ``None``.
+        """
         sock = self._connect()
         try:
-            view = _safe(sock.get_focused_view)
-            focused_output = _output_info(_safe(sock.get_focused_output))
+            view = _require(sock.get_focused_view, "get_focused_view")
+            focused_output = _output_info(_require(sock.get_focused_output, "get_focused_output"))
             output = None
             app_id = title = None
             view_ref = None
@@ -92,9 +98,32 @@ class WayfireContextProvider:
             _safe(sock.close)
 
 
-def _safe(fn):
+class _CallFailed:
+    """A call that did not come back. ``None`` means the compositor answered "nothing"."""
+
+    __slots__ = ("reason",)
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+
+
+def _call(fn, what: str) -> object:
     try:
         return fn()
-    except Exception as e:  # IPC errors are reported, never propagated into the UI
-        log.debug("wayfire ipc call failed: %s", e)
-        return None
+    except Exception as e:
+        log.debug("wayfire ipc %s failed: %s", what, e)
+        return _CallFailed(e.__class__.__name__)
+
+
+def _require(fn, what: str) -> object:
+    """A call the snapshot cannot do without: failure becomes a reported context error."""
+    result = _call(fn, what)
+    if isinstance(result, _CallFailed):
+        raise ContextError(f"Wayfire IPC failed: {what} ({result.reason})")
+    return result
+
+
+def _safe(fn):
+    """Best-effort call: the caller has a fallback, so a failure is just "nothing"."""
+    result = _call(fn, getattr(fn, "__name__", "call"))
+    return None if isinstance(result, _CallFailed) else result

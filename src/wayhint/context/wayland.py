@@ -23,21 +23,44 @@ log = logging.getLogger(__name__)
 MANAGER_IFACE = "zwlr_foreign_toplevel_manager_v1"
 STATE_ACTIVATED = 2  # zwlr_foreign_toplevel_handle_v1.state
 REF_SEP = "\t"
+MODE_CURRENT = 0x1  # wl_output.mode flags; the others are advertised, not in use
+ROTATED_TRANSFORMS = (1, 3, 5, 7)  # wl_output.transform 90 / 270 and their flipped forms
 
 
 @dataclass
 class _Output:
     proxy: object
     name: str | None = None
-    width: int = 0
+    width: int = 0  # the current mode, in physical pixels, as the monitor scans it out
     height: int = 0
     scale: int = 1
+    transform: int = 0
 
     def info(self) -> OutputInfo | None:
+        """The logical size the compositor lays windows out in, or ``None`` until it is known.
+
+        Two steps, both from the wl_output spec: a rotated output swaps the sides of its mode,
+        and the scale divides it. ``wl_output.scale`` is an integer, so a fractionally scaled
+        output reports the rounded-up scale and this stays an approximation; the exact logical
+        size needs ``xdg_output``, which this adapter does not bind.
+        """
         if self.name is None or not self.width or not self.height:
             return None
+        width, height = self.width, self.height
+        if self.transform in ROTATED_TRANSFORMS:
+            width, height = height, width
         s = max(self.scale, 1)
-        return OutputInfo(name=self.name, width=self.width // s, height=self.height // s)
+        return OutputInfo(name=self.name, width=width // s, height=height // s)
+
+
+def apply_mode(out: _Output, flags: int, width: int, height: int) -> None:
+    """Record a mode only while it is the current one; the rest are what the monitor could do."""
+    if flags & MODE_CURRENT:
+        out.width, out.height = width, height
+
+
+def apply_geometry(out: _Output, transform: int) -> None:
+    out.transform = transform
 
 
 @dataclass
@@ -72,10 +95,18 @@ def pick_active(toplevels: list[_Toplevel]) -> _Toplevel | None:
 
 
 def find_by_ref(toplevels: list[_Toplevel], ref: str) -> _Toplevel | None:
-    """Exact (app_id, title) match first; otherwise the app_id if it identifies one toplevel."""
+    """The one toplevel this ref identifies, or ``None``.
+
+    Exact ``(app_id, title)`` first, then the app_id when it identifies a single toplevel. A ref
+    is not a handle: two terminals showing the same title share it. Choosing one of them would
+    hand the keyboard to a window the user was not in, which is worse than not restoring focus,
+    so an ambiguous ref gives up and the caller logs it.
+    """
     exact = [t for t in toplevels if t.ref == ref]
-    if len(exact) >= 1:
+    if len(exact) == 1:
         return exact[0]
+    if exact:
+        return None
     app_id = ref.split(REF_SEP, 1)[0]
     same_app = [t for t in toplevels if (t.app_id or "") == app_id]
     return same_app[0] if len(same_app) == 1 else None
@@ -142,10 +173,13 @@ class _Session:
         elif iface == "wl_output":
             proxy = reg.bind(name, self._WlOutput, min(version, 4))
             out = self.outputs[id(proxy)] = _Output(proxy)
-            proxy.dispatcher["mode"] = lambda p, flags, w, h, refresh: _set(out, width=w, height=h)
+            proxy.dispatcher["mode"] = lambda p, flags, w, h, refresh: apply_mode(out, flags, w, h)
             proxy.dispatcher["scale"] = lambda p, s: _set(out, scale=s)
             proxy.dispatcher["name"] = lambda p, n: _set(out, name=n)
-            for ev in ("geometry", "done", "description"):
+            proxy.dispatcher["geometry"] = lambda p, x, y, pw, ph, sub, make, model, transform: (
+                apply_geometry(out, transform)
+            )
+            for ev in ("done", "description"):
                 proxy.dispatcher[ev] = _ignore
         elif iface == "wl_seat" and self.seat is None:
             self.seat = reg.bind(name, self._WlSeat, 1)

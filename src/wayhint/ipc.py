@@ -63,7 +63,14 @@ class DaemonUnavailable(RuntimeError):
     pass
 
 
-def send_command(cmd: str, path: Path | None = None, timeout: float = 2.0) -> dict[str, Any]:
+CLIENT_TIMEOUT = 2.0
+"""How long the CLI waits for a reply. Work the daemon does for one command has to fit in it,
+or the caller reports a failure for something that then happens anyway."""
+
+
+def send_command(
+    cmd: str, path: Path | None = None, timeout: float = CLIENT_TIMEOUT
+) -> dict[str, Any]:
     if cmd not in COMMANDS:
         raise ValueError(f"unknown command: {cmd!r}")
     path = path or socket_path()

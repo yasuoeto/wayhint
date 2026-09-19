@@ -61,6 +61,12 @@ class EditActionTest(unittest.TestCase):
         self.assertEqual(em.edit_action("Escape"), em.EXIT_EDIT)
         self.assertIsNone(em.edit_action("x"))
 
+    def test_a_modifier_makes_it_another_widgets_key(self) -> None:
+        """Ctrl+d is "close the terminal", not "delete this hint" (DESIGN 編集モード §2)."""
+        for key in ("a", "d", "u", "f", "J", "K", "Return"):
+            with self.subTest(key=key):
+                self.assertIsNone(em.edit_action(key, ctrl=True))
+
     def test_double_d(self) -> None:
         self.assertEqual(em.edit_action("d"), em.DELETE_CONFIRM)
         self.assertEqual(em.edit_action("d", pending=True), em.DELETE_COMMIT)
@@ -110,6 +116,15 @@ class ImeTest(unittest.TestCase):
 
     def test_plain_characters_are_never_captured(self) -> None:
         self.assertFalse(em.capture_in_editable(em.edit_action("a", editable=True)))
+
+    def test_nothing_is_taken_early_while_a_conversion_is_open(self) -> None:
+        # Tab picks a candidate and Ctrl+P walks the candidate list in the usual Japanese
+        # input methods, so during a preedit the field has to see them first.
+        for key, ctrl in (("Tab", False), ("ISO_Left_Tab", False), ("p", True)):
+            with self.subTest(key=key):
+                action = em.edit_action(key, ctrl=ctrl, editable=True)
+                self.assertFalse(em.capture_in_editable(action, preedit=True))
+                self.assertTrue(em.capture_in_editable(action), "and taken again once it is over")
 
 
 class SearchQueryTest(unittest.TestCase):
@@ -193,6 +208,10 @@ class CategoryCycleTest(unittest.TestCase):
 
 
 class RestoreSelectionTest(unittest.TestCase):
+    def test_same_id_in_different_files_keeps_the_selected_owner(self) -> None:
+        a, b = (Path("a.yaml"), "same"), (Path("b.yaml"), "same")
+        self.assertEqual(em.restore_index([a, b], b, 0), 1)
+
     def test_same_hint_wins(self) -> None:
         self.assertEqual(em.restore_index(["a", "b", "c"], "c", 0), 2)
 

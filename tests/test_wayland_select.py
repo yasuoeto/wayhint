@@ -4,7 +4,15 @@ import unittest
 from wayhint.config import ConfigError, parse_global_config
 from wayhint.context.base import ContextError, DesktopSnapshot
 from wayhint.context.select import AutoDesktopProvider, select_desktop_provider
-from wayhint.context.wayland import _Toplevel, decode_states, find_by_ref, pick_active
+from wayhint.context.wayland import (
+    _Output,
+    _Toplevel,
+    apply_geometry,
+    apply_mode,
+    decode_states,
+    find_by_ref,
+    pick_active,
+)
 from wayhint.models import OutputInfo
 
 OUT = OutputInfo("eDP-1", 2560, 1600)
@@ -33,6 +41,50 @@ class WaylandHelpersTest(unittest.TestCase):
         self.assertIs(find_by_ref(tls, "foot\tgone"), None)  # two foot windows: ambiguous
         self.assertIs(find_by_ref(tls, "firefox\tgone"), c)  # title changed, app unique
         self.assertIsNone(find_by_ref(tls, "chromium\t"))
+
+    def test_two_identical_windows_are_not_guessed_between(self) -> None:
+        # Two terminals with the same title: picking the first one would hand the keyboard to
+        # a window the user was not in. Say nothing instead and let the caller log it.
+        a, b = tl("foot", "~"), tl("foot", "~")
+        self.assertIsNone(find_by_ref([a, b], a.ref))
+        self.assertIs(find_by_ref([a], a.ref), a)
+
+
+class OutputSizeTest(unittest.TestCase):
+    """wl_output reports the mode in physical pixels; the overlay places itself in logical ones."""
+
+    def out(self, **kw) -> _Output:
+        return _Output(proxy=None, name="eDP-1", **kw)
+
+    def test_scale_divides_the_mode(self) -> None:
+        self.assertEqual(
+            self.out(width=2560, height=1600, scale=2).info(), OutputInfo("eDP-1", 1280, 800)
+        )
+
+    def test_a_rotated_output_swaps_the_sides(self) -> None:
+        # wl_output.transform 1/3 (90/270) and their flipped forms 5/7 rotate the mode.
+        for transform in (1, 3, 5, 7):
+            with self.subTest(transform=transform):
+                out = self.out(width=2560, height=1600, transform=transform)
+                self.assertEqual(out.info(), OutputInfo("eDP-1", 1600, 2560))
+        for transform in (0, 2, 4, 6):
+            with self.subTest(transform=transform):
+                out = self.out(width=2560, height=1600, transform=transform)
+                self.assertEqual(out.info(), OutputInfo("eDP-1", 2560, 1600))
+
+    def test_only_the_current_mode_is_taken(self) -> None:
+        out = self.out()
+        apply_mode(out, 0, 1920, 1080)  # advertised, not in use
+        self.assertIsNone(out.info())
+        apply_mode(out, 0x1, 2560, 1600)  # WL_OUTPUT_MODE_CURRENT
+        self.assertEqual(out.info(), OutputInfo("eDP-1", 2560, 1600))
+        apply_mode(out, 0x2, 1024, 768)  # preferred but not current
+        self.assertEqual(out.info(), OutputInfo("eDP-1", 2560, 1600))
+
+    def test_geometry_carries_the_transform(self) -> None:
+        out = self.out(width=2560, height=1600)
+        apply_geometry(out, 3)
+        self.assertEqual(out.info(), OutputInfo("eDP-1", 1600, 2560))
 
 
 class Fake:
