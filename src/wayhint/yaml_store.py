@@ -33,6 +33,7 @@ from wayhint.config import (
     parse_display,
     parse_global_config,
 )
+from wayhint.i18n import resolve_language
 from wayhint.matcher import GENERIC_PROCESS_NAMES, argv_basenames
 from wayhint.models import (
     HINT_KINDS,
@@ -432,6 +433,24 @@ def load_sheet(path: Path) -> tuple[HintSheet | None, list[Issue]]:
     return sheet, issues
 
 
+def hints_dir(
+    root: Path, language: str = "auto", environ: Mapping[str, str] | None = None
+) -> Path:
+    """Where the sheets for ``language`` live, under ``root`` (DECISIONS 0024).
+
+    One language, one directory: ``hints/<lang>/`` when it exists, else ``hints/en/``, else the
+    flat ``hints/`` of a single-language setup. The language is the one the interface uses, so
+    the hints and the labels around them can never be in different languages, and switching the
+    setting switches both. Directories that are not a language code are simply never asked for.
+    """
+    base = root / "hints"
+    for lang in (resolve_language(language, environ), "en"):
+        candidate = base / lang
+        if candidate.is_dir():
+            return candidate
+    return base
+
+
 def sheet_files(hints_dir: Path) -> list[Path]:
     if not hints_dir.is_dir():
         return []
@@ -478,9 +497,10 @@ def load_sheets(hints_dir: Path) -> LoadResult:
 
 
 def load_all(config_root: Path) -> LoadResult:
-    """``config.yaml`` + ``hints/*.yaml`` under ``config_root``."""
+    """``config.yaml`` + the sheets of the configured language under ``config_root`` (0024)."""
     result = load_config(config_root / "config.yaml")
-    sheets = load_sheets(config_root / "hints")
+    language = result.config.language if result.config is not None else "auto"
+    sheets = load_sheets(hints_dir(config_root, language))
     result.sheets = sheets.sheets
     result.issues.extend(sheets.issues)
     return result

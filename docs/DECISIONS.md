@@ -587,6 +587,29 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   overlay は editor の上に出たままなので、editor の窓が overlay と重なる位置にあると隠れる部分がある。
   気になる場合は hotkey で消す。`search` / `edit` から押すと編集モードは終わる（下書きは保持）。
 
+## 0024 — hint sheet は言語ごとのディレクトリに置き、UI と同じ言語のものだけを読む
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Context**: UI は `appearance.language`（`auto` は locale）で en / ja を切り替えるのに、hint は
+  1 つの `hints/` しか無く、日本語の sheet を置けば UI が英語でも日本語が出る。実際 repo の
+  `examples/hints/` は英語、実配置は日本語で、同じ id の sheet が別言語で二重化していた。
+  紹介動画のように en 版と ja 版を切り替えて見せたい場面もある。
+- **Decision**: `hints/<lang>/` を 1 言語 1 ディレクトリとし、**表示に使う言語のディレクトリだけを読む**。
+  解決順は `hints/<lang>/` → `hints/en/` → `hints/*.yaml`（フラット）。言語は UI と同じ
+  `resolve_language()`（設定 → locale → 未知なら en）で、UI と hint の言語がずれない。読み書きは
+  すべてこのディレクトリに対して行う（新規 sheet の作成、`wayhint format` の既定対象、file monitor）。
+  言語設定を変えたら config の reload で読み直し、監視も張り替える。`hints/` 自体も監視して、
+  あとから言語ディレクトリを作った場合に気付けるようにする。
+- **Alternatives**: `hints/*.yaml` に両言語を混ぜ、sheet の `lang:` で振り分ける（ファイル名 = id の
+  ルール 0020 と衝突する）; ベース + `hints/<lang>/` の上書きレイヤー（翻訳が無い sheet を自動で
+  補える代わりに、1 画面に 2 言語が混ざる）; hint 単位で `title: {ja:…, en:…}`（schema と編集
+  フォームが大きくなる）。フラットを廃止する案は、既存配置と 1 言語運用を壊すので採らない。
+- **Consequences**: 同じ sheet を言語ごとに書くことになる（翻訳の同期は仕組みとして持たない。
+  片方だけ編集してもずれたことは検出されない）。`examples/hints/` は `en/` と `ja/` に分けた。
+  実配置は `~/.config/wayhint/hints/ja/` へ移動済み。`id` = ファイル名のルール（0020）は
+  ディレクトリごとに成立するので、`ja/claude.yaml` と `en/claude.yaml` は衝突しない。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

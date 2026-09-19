@@ -50,7 +50,7 @@ def sheet_paths() -> list[Path]:
     """Every hint sheet the repository owns, plus the deliberately messy fixture."""
     return sorted(
         [
-            *(REPO / "examples" / "hints").glob("*.yaml"),
+            *(REPO / "examples" / "hints").rglob("*.yaml"),  # one directory per language
             *(REPO / "tests" / "fixtures" / "good" / "hints").glob("*.yaml"),
             *DIRTY.glob("*.yaml"),
         ]
@@ -131,10 +131,22 @@ class WriteDocumentTest(TmpSheetTest):
         # hints/ is watched as a directory: a *.yaml tmp would be loaded as a real sheet.
         target = self.copy(DIRTY / "messy.yaml")
         doc = self.doc(target)
-        doc["priority"] = "not an integer"
-        with self.assertRaises(SheetWriteError):
+        before = target.read_bytes()
+        replace = os.replace
+        observed = []
+
+        def inspect_then_replace(source, destination):
+            temporary = Path(source)
+            self.assertTrue(temporary.is_file())
+            self.assertNotIn(temporary.suffix, (".yaml", ".yml"))
+            self.assertEqual(temporary.parent, target.parent)
+            observed.append(temporary)
+            return replace(source, destination)
+
+        with mock.patch.object(yaml_store.os, "replace", side_effect=inspect_then_replace):
             write_document(target, doc)
-        self.assertFalse(list(self.dir.glob("*.tmp.yaml")))
+        self.assertTrue(observed, "inspect the temporary before it disappears")
+        self.assertEqual(target.read_bytes(), before)
 
     def test_missing_directory_is_not_created(self) -> None:
         with self.assertRaises(SheetWriteError):
@@ -324,7 +336,7 @@ class NormalizeTest(TmpSheetTest):
         self.assertIn("# first の直前コメント", path.read_text(), "comments survive format")
 
     def test_modeline_is_added_once(self) -> None:
-        path = self.copy(REPO / "examples" / "hints" / "herdr.yaml")
+        path = self.copy(REPO / "examples" / "hints" / "en" / "herdr.yaml")
         doc = self.doc(path)
         normalize_sheet(doc, "/home/u/.config/wayhint/schema.json")
         write_document(path, doc)

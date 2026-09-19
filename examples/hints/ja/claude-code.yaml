@@ -1,0 +1,25 @@
+# Herdr の中で動いている Claude Code。window ではなく foreground process で match する。
+id: claude-code
+title: Claude Code
+priority: 10
+match:
+  process:
+    argv_regex: ["^claude$"]
+hints:
+  - id: compact
+    title: 会話を圧縮する
+    kind: command
+    command: /compact
+    category: セッション
+    remark: 要約は残り、ツールの生出力が落ちる。
+  - id: model
+    title: モデルを切り替える
+    kind: command
+    command: /model
+    category: セッション
+  - id: shell-escape
+    title: セッション内でシェルコマンドを実行する
+    kind: tip
+    key: "! <command>"
+    category: 入力
+    copy: "! "

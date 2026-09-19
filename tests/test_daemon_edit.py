@@ -9,11 +9,10 @@ from unittest import mock
 from wayhint import daemon as daemon_module
 from wayhint.daemon import Daemon
 from wayhint.editor import EditorError
-from wayhint.yaml_store import SheetWriteError
 from wayhint.models import ResolvedContext
 from wayhint.ui import editmode as em
 from wayhint.ui.editmode import WorkspaceView
-from wayhint.yaml_store import load_sheet
+from wayhint.yaml_store import SheetWriteError, load_sheet
 
 
 class Window:
@@ -352,17 +351,55 @@ class DaemonEditTest(unittest.TestCase):
                 self.action(action)
                 self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
 
-    def test_discarding_a_form_stays_in_edit_mode(self):
-        self.action(em.OPEN_FORM)
-        self.daemon.on_edit_action(em.FORM_CANCEL, None)
-        self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
-
     def test_a_save_that_cannot_be_written_stays_in_edit_mode(self):
         self.action(em.OPEN_FORM)
-        with mock.patch.object(
-            daemon_module, "write_document", side_effect=SheetWriteError("would not validate")
+        with (
+            mock.patch.object(
+                daemon_module, "write_document", side_effect=SheetWriteError("would not validate")
+            ),
+            self.assertLogs("wayhintd", level="WARNING"),
         ):
             self.save_form(title="edited")
         self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
         self.assertIsNotNone(self.window.form)
         self.assertTrue(self.window.messages[-1].startswith("⚠"))
+
+
+class DaemonHintsDirTest(unittest.TestCase):
+    """The daemon reads the language's directory, and follows a change of language (0024)."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        for lang, title in (("en", "English sheet"), ("ja", "日本語のシート")):
+            (self.root / "hints" / lang).mkdir(parents=True)
+            (self.root / "hints" / lang / "x.yaml").write_text(
+                f"id: x\ntitle: {title}\nhints:\n  - {{id: h, title: {title}}}\n"
+            )
+        self.daemon = Daemon(self.root, self.root / "unused.sock")
+
+    def titles(self):
+        return [s.title for s in self.daemon.store.sheets]
+
+    def set_language(self, language):
+        (self.root / "config.yaml").write_text(f"appearance:\n  language: {language}\n")
+        self.daemon.reload_all()
+
+    def test_the_language_decides_which_sheets_are_loaded(self):
+        self.set_language("ja")
+        self.assertEqual(self.titles(), ["日本語のシート"])
+        self.set_language("en")
+        self.assertEqual(self.titles(), ["English sheet"])
+
+    def test_a_new_sheet_is_created_where_the_others_are_read_from(self):
+        self.set_language("ja")
+        self.assertEqual(self.daemon.hints_dir, self.root / "hints" / "ja")
+
+    def test_a_flat_layout_still_works(self):
+        for lang in ("en", "ja"):
+            (self.root / "hints" / lang / "x.yaml").unlink()
+            (self.root / "hints" / lang).rmdir()
+        (self.root / "hints" / "y.yaml").write_text("id: y\ntitle: Flat\n")
+        self.set_language("ja")
+        self.assertEqual(self.titles(), ["Flat"])

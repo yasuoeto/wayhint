@@ -48,6 +48,7 @@ from wayhint.yaml_store import (  # noqa: E402
     append_hint,
     build_hint,
     create_sheet,
+    hints_dir,
     delete_hint,
     load_config,
     match_rule_for_context,
@@ -96,7 +97,7 @@ class Daemon:
         self.socket_file = socket_file
         self.config = GlobalConfig()
         self.config_issues: list[Issue] = []
-        self.store = SheetStore(root / "hints")
+        self.store = SheetStore(hints_dir(root, self.config.language))
         self.desktop = select_desktop_provider(self.config.context_backend)
         self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
         self._backend = self.config.context_backend
@@ -145,6 +146,11 @@ class Daemon:
 
     # --- config / sheets -------------------------------------------------------------------
 
+    @property
+    def hints_dir(self) -> Path:
+        """The directory the sheets are read from and written to (0024)."""
+        return self.store.hints_dir
+
     def reload_all(self) -> None:
         self._reload_config()
         self.store.load_all()
@@ -160,6 +166,15 @@ class Daemon:
             self._backend = self.config.context_backend
             self.desktop = select_desktop_provider(self._backend)
             self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
+        wanted = hints_dir(self.root, self.config.language)
+        if wanted != self.store.hints_dir:
+            # Changing the language changes which sheets exist, so the store is re-read from the
+            # new directory and the monitor is moved with it (0024).
+            log.info("hints directory: %s", wanted)
+            self.store.hints_dir = wanted
+            self.store.load_all()
+            if self._monitors:
+                self._watch_files()
 
     def _after_reload(self) -> None:
         if self.window is None:
@@ -178,12 +193,24 @@ class Daemon:
         return [*self.config_issues, *self.store.issues]
 
     def _watch_files(self) -> None:
-        hints_dir = self.root / "hints"
-        hints_dir.mkdir(parents=True, exist_ok=True)
+        """Watch config.yaml, the sheets in use, and ``hints/`` itself.
+
+        ``hints/`` is watched as well as the language directory inside it: a monitor is not
+        recursive, and the directory for a language can be created after the daemon started.
+        """
+        for monitor in self._monitors:
+            monitor.cancel()
+        self._monitors.clear()
+        self.store.hints_dir.mkdir(parents=True, exist_ok=True)
+        seen: set[Path] = set()
         for target, flag in (
-            (hints_dir, Gio.FileMonitorFlags.WATCH_MOVES),
+            (self.store.hints_dir, Gio.FileMonitorFlags.WATCH_MOVES),
+            (self.root / "hints", Gio.FileMonitorFlags.WATCH_MOVES),
             (self.root / "config.yaml", Gio.FileMonitorFlags.NONE),
         ):
+            if target in seen:
+                continue
+            seen.add(target)
             gfile = Gio.File.new_for_path(str(target))
             try:
                 mon = gfile.monitor(flag, None)
@@ -208,7 +235,7 @@ class Daemon:
         self._pending_reload.pop(path, None)
         if path == self.root / "config.yaml":
             self._reload_config()
-        elif path.parent == self.root / "hints":
+        elif path.parent == self.store.hints_dir:
             ok = self.store.reload(path)
             log.info("reloaded %s: %s", path.name, "ok" if ok else "kept last-known-good")
         self._after_reload()
@@ -549,7 +576,7 @@ class Daemon:
             view.context,
             build_hint(fields),
             self.config,
-            hints_dir=self.root / "hints",
+            hints_dir=self.store.hints_dir,
             existing_ids=[s.id for s in self.store.sheets],
         )
         write_document(path, doc)

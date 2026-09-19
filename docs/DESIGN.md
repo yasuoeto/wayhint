@@ -80,7 +80,7 @@ src/wayhint/
   `view_ref`(検索後の focus 復帰先。backend 固有の不透明文字列), `parent_context`(親sheet id),
   `foreground_process: ProcessInfo | None`, `active_sheet`, `error`(desktop context 取得不可時の表示文)。
 - `ProcessInfo`: `pid`, `name`, `argv`, `cmdline`, `cwd`。
-- 設定ファイル: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/*.yaml`(`.yml` も可、
+- 設定ファイル: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/<lang>/*.yaml`(`.yml` も可、
   ファイル名順に読む)。schema は設計書 §21, §43 を元に Phase 1 で確定(DECISIONS 0006)。
 
 ### config.yaml(実装: `config.py`)
@@ -106,7 +106,13 @@ logging:    {level: warning}
 - `editor.schema_path`: モードラインの `$schema=` に書く path。`wayhint schema --write` の
   既定出力先。
 
-### hints/*.yaml(実装: `yaml_store.py`)
+### hints/<lang>/*.yaml(実装: `yaml_store.py`)
+
+置き場所は言語ごとに 1 ディレクトリ(DECISIONS 0024)。`hints/<lang>/` → `hints/en/` →
+`hints/*.yaml`(フラット、単一言語や移行前の配置)の順に**最初に見つかった 1 つだけ**を読む。
+`<lang>` は UI と同じ `resolve_language()`(設定 `appearance.language` → locale → 未知なら `en`)。
+読み書き・新規作成・監視はすべてそのディレクトリに対して行い、言語設定を変えると読み直す。
+
 
 ```yaml
 version: 1              # 任意、1 のみ
@@ -304,7 +310,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 
 ### 7. sheet の新規作成
 
-- path: `~/.config/wayhint/hints/<slug>.yaml`。slug は app 名 / process 名から。sheet id 衝突時 `-2`。
+- path: `~/.config/wayhint/hints/<lang>/<slug>.yaml`(表示中の言語のディレクトリ、0024)。slug は app 名 / process 名から。sheet id 衝突時 `-2`。
 - 内容: 先頭コメント（生成日時、`desktop_app`、`parent_context`、`foreground_process.name`、採用した regex）、`editor.schema_modeline` が true なら、先頭に `# yaml-language-server: $schema=<editor.schema_path を展開した絶対 path>` を付ける、`id` `title` `priority`（既定）`match` `hints: [first_hint]`。
 - `match` の生成:
   - `parent_context is None` → app_id 一致
@@ -365,7 +371,7 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 ### 13. テスト
 
 純粋関数（`./scripts/check`）:
-- golden: リポジトリ内の sheet 全部（`examples/hints/*.yaml`、`tests/fixtures/good/*.yaml`）+ 汚い fixture（key 順バラバラ、hint 直前 / 直後コメント、行末コメント、hint 間空行、quote 混在、flow style の tags と match、値なし `remark:`）で load → dump byte 一致。加えて、環境変数 `WAYHINT_GOLDEN_EXTRA_DIR` が指すディレクトリの `*.yaml` も対象にする任意テスト（未設定なら skip、CI では未設定）
+- golden: リポジトリ内の sheet 全部（`examples/hints/<lang>/*.yaml`、`tests/fixtures/good/*.yaml`）+ 汚い fixture（key 順バラバラ、hint 直前 / 直後コメント、行末コメント、hint 間空行、quote 混在、flow style の tags と match、値なし `remark:`）で load → dump byte 一致。加えて、環境変数 `WAYHINT_GOLDEN_EXTRA_DIR` が指すディレクトリの `*.yaml` も対象にする任意テスト（未設定なら skip、CI では未設定）
 - `swap_hints`: コメント付き hint の移動でコメントが追随する
 - `delete_hint`: 直前コメントが消え、直後コメントが残る
 - `build_hint` / `update_hint`: canonical 順、null 表記、flow style tags
@@ -446,6 +452,9 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
 - T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と
   id の不一致が出る **(2026-09-19 確認済)**
+- T30 `appearance.language` を `ja` / `en` で切り替える（または `LANG` を変えて daemon を起動）
+  → UI の文言と一緒に `hints/ja/` と `hints/en/` が切り替わる。片方しか無い言語では `en` に
+  落ち、どちらも無ければ `hints/*.yaml` が読まれる
 - T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
 - T25 角 / 辺の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き
   直しても、daemon を再起動しても同じサイズ **(2026-09-18 確認済)**

@@ -1,0 +1,16 @@
+# Codex CLI — `node /path/to/codex` として起動されることが多い。argv の basename で match するので
+# "^codex$" が wrapper と直接起動の両方を拾う。
+id: codex
+title: Codex
+priority: 10
+match:
+  process:
+    argv_regex: ["^codex$"]
+    cmdline_regex: ["node .*/codex"]
+inherit:
+  parent_tags: [terminal]
+hints:
+  - id: approve
+    title: 保留中の操作を承認する
+    key: y
+    category: レビュー

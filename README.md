@@ -6,7 +6,7 @@ Wayland(wlroots 系 compositor: labwc / Wayfire など)上で hotkey 一発、�
 中身は YAML で自分で書いて育てる。
 
 - 通常表示中は keyboard focus を奪わない(検索を明示的に開始したときだけ入力を受ける)
-- hint は `~/.config/wayhint/hints/*.yaml`。overlay の編集ボタンから外部 editor で該当行を開く
+- hint は `~/.config/wayhint/hints/<言語>/*.yaml`(日本語なら `hints/ja/`)。overlay の編集ボタンから外部 editor で該当行を開く
 - YAML 内の command は表示・copy のみ。実行はしない
 
 要件は `docs/PRODUCT.md`、構造は `docs/DESIGN.md`、経緯は `docs/DECISIONS.md`、進捗は `STATUS.md`。
@@ -36,7 +36,7 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 | `config.yaml` | overlay 位置・サイズ、editor、parent tags 等。無ければ全て既定値 |
 | UI 言語 | ボタン等の文字はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)から自動選択。`appearance.language: en\|ja` で固定。日英以外は英語 |
 | `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`)。雛形 `examples/style.css` は labwc のテーマ(Syscrash)に合わせた配色 |
-| `hints/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む。**`id` はファイル名（拡張子を除く部分）と同じにする**。違うものは読み込まず ⚠ に理由が出る(バックアップの `claude-backup.yaml` が `claude` を名乗っても二重に効かない) |
+| `hints/<言語>/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む。**`id` はファイル名（拡張子を除く部分）と同じにする**。違うものは読み込まず ⚠ に理由が出る(バックアップの `claude-backup.yaml` が `claude` を名乗っても二重に効かない)。言語ディレクトリについては下の「言語ごとの hint」 |
 
 雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる
 (`style.css` も入る。アプリ既定の配色で使うなら消す)。schema は
@@ -146,7 +146,7 @@ hotkey に割り当てるのは `toggle`。
 | `toggle` | 表示、表示中なら非表示 |
 | `show` / `hide` | 明示的に表示 / 非表示 |
 | `refresh` | 表示中なら context を取り直す |
-| `reload` | `config.yaml` と `hints/*.yaml` を読み直す |
+| `reload` | `config.yaml` と使用中の `hints/<言語>/*.yaml` を読み直す |
 | `ping` | daemon の生死確認。pid と読み込み済み sheet 数を返す |
 | `validate` | YAML を検証する。daemon を必要としない唯一の command。問題があれば exit 1 |
 | `edit-mode` | 編集モードに入る(表示中でなければ表示してから)。編集モード中に呼ぶと抜ける |
@@ -170,13 +170,13 @@ wayhint edit ID [--title S] [--kind K] [--key S | --command S] [--category S] [-
 wayhint remove ID [--sheet ID]
 wayhint favorite ID [--off] [--sheet ID]
 wayhint move ID up|down [--sheet ID]
-wayhint format [--modeline] [PATH...]        # PATH 省略時は hints/*.yaml 全部
+wayhint format [--modeline] [PATH...]        # PATH 省略時は使用中の hints/<言語>/*.yaml 全部
 wayhint schema [--write PATH]
 ```
 
 ### daemon を再起動する
 
-`reload` が読み直すのは `config.yaml` と `hints/*.yaml` だけで、Python 側を変えたときは daemon を
+`reload` が読み直すのは `config.yaml` と使用中の `hints/<言語>/*.yaml` だけで、Python 側を変えたときは daemon を
 入れ替える。頻度は低いので専用の script や panel 項目は用意しない。次の 1 行で止めて起動し直す:
 
 ```sh
@@ -201,7 +201,7 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 
 ## hint を書く
 
-1. `hints/` に新しい YAML を置く(または既存の sheet に hint を足す)。
+1. `hints/<言語>/` に新しい YAML を置く(または既存の sheet に hint を足す)。
 2. daemon は保存を検知して自動 reload する(overlay を閉じる必要はない)。壊れた YAML のときは
    直前の正常版を表示し続け、overlay 上部に `⚠ YAML error file:line: message` が出る。
 3. 追加・修正・削除は overlay の **編集**(編集モード)で完結する。フォームを保存すると編集モードは
@@ -210,6 +210,25 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
    editor が該当ファイル・該当行を開く。
 
 全 key の一覧と制約は `docs/DESIGN.md` の Data model。ここでは書くときに迷う点だけ挙げる。
+
+### 言語ごとの hint
+
+sheet は言語ごとのディレクトリに置く。**表示に使う言語のディレクトリだけ**が読まれる。
+
+```
+~/.config/wayhint/hints/
+  ja/   claude-code.yaml  herdr.yaml   # 日本語環境ではこちらだけ
+  en/   claude-code.yaml  herdr.yaml
+```
+
+- 言語は UI と同じ決め方(`appearance.language`、`auto` なら `LC_ALL` / `LC_MESSAGES` / `LANG`)。
+  UI が日本語なら hint も日本語になり、両者がずれない
+- 探す順は `hints/<言語>/` → `hints/en/` → `hints/*.yaml`(フラット)。1 言語だけで使うならフラットの
+  ままでよい
+- 同じ id の sheet を言語ごとに置ける(同時に読まれないため衝突しない)。翻訳の同期は自動では
+  行われない
+- 切り替えは `appearance.language` を書き換えるだけ(daemon の再起動は不要)。`LANG=en_US.UTF-8`
+  で daemon を起動しても同じ。雛形は `examples/hints/en/` と `examples/hints/ja/`
 
 ### どの sheet が選ばれるか
 

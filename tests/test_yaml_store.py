@@ -10,6 +10,7 @@ from wayhint.cli import main
 from wayhint.models import Margin, Size
 from wayhint.yaml_store import (
     SheetStore,
+    hints_dir,
     load_all,
     load_config,
     load_sheet,
@@ -241,6 +242,56 @@ class ConfigValidationTest(unittest.TestCase):
             p.write_text("overlay:\n  margin: 8\n", encoding="utf-8")
             cfg = load_config(p).config
         self.assertEqual(cfg.display.margin, Margin(8, 8, 8, 8))
+
+
+class HintsDirTest(unittest.TestCase):
+    """One language, one directory: the sheets follow the language the UI is in (0024)."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="wayhint-hintsdir-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        (self.root / "hints").mkdir()
+
+    def make(self, *names: str) -> None:
+        for name in names:
+            (self.root / "hints" / name).mkdir()
+
+    def test_the_language_directory_wins(self) -> None:
+        self.make("en", "ja")
+        self.assertEqual(hints_dir(self.root, "ja"), self.root / "hints" / "ja")
+        self.assertEqual(hints_dir(self.root, "en"), self.root / "hints" / "en")
+
+    def test_english_is_the_fallback_for_a_language_without_a_directory(self) -> None:
+        self.make("en")
+        self.assertEqual(hints_dir(self.root, "ja"), self.root / "hints" / "en")
+
+    def test_without_any_language_directory_the_flat_layout_is_used(self) -> None:
+        self.assertEqual(hints_dir(self.root, "ja"), self.root / "hints")
+
+    def test_auto_follows_the_locale_like_the_interface_does(self) -> None:
+        self.make("en", "ja")
+        self.assertEqual(
+            hints_dir(self.root, "auto", environ={"LANG": "ja_JP.UTF-8"}),
+            self.root / "hints" / "ja",
+        )
+        self.assertEqual(
+            hints_dir(self.root, "auto", environ={"LANG": "C"}), self.root / "hints" / "en"
+        )
+        self.assertEqual(hints_dir(self.root, "auto", environ={}), self.root / "hints" / "en")
+
+    def test_a_directory_that_is_not_a_language_is_never_picked(self) -> None:
+        self.make("en", "old")
+        self.assertEqual(
+            hints_dir(self.root, "auto", environ={"LANG": "old_OLD.UTF-8"}),
+            self.root / "hints" / "en",
+        )
+
+    def test_an_empty_language_directory_is_still_the_one_in_use(self) -> None:
+        # Making the directory is the statement "sheets live here"; falling back to another
+        # language would quietly mix languages while a translation is being written.
+        self.make("en", "ja")
+        (self.root / "hints" / "en" / "x.yaml").write_text("id: x\ntitle: X\n")
+        self.assertEqual(load_sheets(hints_dir(self.root, "ja")).sheets, [])
 
 
 class SheetFileNameTest(unittest.TestCase):

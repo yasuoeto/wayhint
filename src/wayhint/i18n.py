@@ -123,9 +123,19 @@ def detect_language(environ: Mapping[str, str] | None = None) -> str:
     return "en"
 
 
-def translator(language: str = "auto", environ: Mapping[str, str] | None = None) -> Translator:
+def resolve_language(language: str = "auto", environ: Mapping[str, str] | None = None) -> str:
+    """The language actually used: the setting, or the locale, falling back to ``en``.
+
+    A locale the application has no catalog for is English as far as the interface goes, so it
+    has to be English for everything else that follows the language too (hint sheets, 0024).
+    """
     lang = detect_language(environ) if language == "auto" else language
-    catalog = CATALOGS.get(lang, EN)
+    return lang if lang in CATALOGS else "en"
+
+
+def translator(language: str = "auto", environ: Mapping[str, str] | None = None) -> Translator:
+    lang = resolve_language(language, environ)
+    catalog = CATALOGS[lang]
 
     def tr(key: str) -> str:
         return catalog.get(key) or EN.get(key, key)

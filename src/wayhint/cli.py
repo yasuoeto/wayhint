@@ -39,6 +39,7 @@ from wayhint.yaml_store import (
     normalize_sheet,
     read_document,
     set_favorite,
+    hints_dir,
     sheet_files,
     slug,
     swap_hints,
@@ -213,7 +214,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         context,
         build_hint(fields),
         config,
-        hints_dir=config_dir() / "hints",
+        hints_dir=hints_dir(config_dir(), config.language),
         existing_ids=[s.id for s in result.sheets],
     )
     _match, warning = match_rule_for_context(context)
@@ -286,9 +287,10 @@ def cmd_move(args: argparse.Namespace) -> int:
 
 def cmd_format(args: argparse.Namespace) -> int:
     root, _result, config = _load()
-    paths = [Path(p) for p in args.paths] if args.paths else sheet_files(root / "hints")
+    directory = hints_dir(root, config.language)
+    paths = [Path(p) for p in args.paths] if args.paths else sheet_files(directory)
     if not paths:
-        raise CommandError(f"no sheets in {root / 'hints'}")
+        raise CommandError(f"no sheets in {directory}")
     modeline = str(Path(config.editor.schema_path).expanduser()) if args.modeline else None
     for path in paths:
         before = path.read_bytes()
