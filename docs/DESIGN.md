@@ -201,7 +201,19 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 - モード変更とフォームのキャンセルは daemon を経由し、UI はその状態を描画する。復帰先にフォームが
   無い場合も明示的に閉じ、他 workspace のフォームを残さない。編集中は検索ボタンを無効にし、
   編集を終了してから検索する。非表示の編集画面への `edit-mode` は保持した下書きを再表示する。
-- 保存後も `edit` に留まる。
+- **保存後の状態は操作で分ける**(DECISIONS 0021)。
+
+  | 操作 | 完了後 |
+  |---|---|
+  | quick add フォーム（`a` → Enter） | `normal`（keyboard_mode NONE、前の view へ focus 復帰） |
+  | 編集フォーム（Enter → Enter） | `normal`（同上） |
+  | `f` / `J` `K` / `d` `d` / `u` | `edit` に留まる |
+  | フォームの `Esc`（入力破棄） | `edit` に留まる |
+  | validation 失敗 | フォームを開いたまま `edit` に留まる |
+
+  フォーム保存の処理順は、ファイル書き込み成功 → mode を `normal` に変更 → `_sync_keyboard_mode()`
+  → focus 復帰（search 終了と同じ経路）。書き込みに失敗したら mode は変えない。§7 の sheet 新規作成を
+  伴う quick add も同じく `normal` に戻る。「保存して留まる」別キーや config 項目は作らない。
 
 ### 2. key 割当（edit 中）
 
@@ -241,7 +253,9 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
 
 - 編集フォームは既存値を prefill。`id` は表示のみ。
 - 保存時の自動設定（quick add のみ）: `id`（title の slug、衝突 `-2`…、空なら `q-YYYYMMDD-HHMMSS`）、`learned`（当日）、`favorite: false`、他は null。親 sheet 指定時は `effective_parent_tags` を `tags` に付与。
-- 保存前に validation。失敗時はフォーム内にエラーを出し書かない。
+- 保存前に validation。失敗時はフォーム内にエラーを出し書かない（`edit` のまま、フォームも開いたまま）。
+- 保存に成功したらフォームを閉じ、`edit` を抜けて `normal` に戻る（§1 の表）。続けて追加するときは
+  もう一度 `wayhint edit-mode` → `a`。
 - 追加先: active sheet。無ければ §7 で新規作成。混入 hint の編集は所属 sheet に書く。
 
 ### 4. 書き戻し（yaml_store）
@@ -414,9 +428,11 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
 - T15 edit 中の hotkey → hide / show、入力が残る
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
-  一覧へ出る(次の hotkey を待たない)。続けて quick add すると同じ sheet に追記される
-- T17 保存 → reload で overlay が閉じず、選択位置が保たれる。選択中の hint が画面外に出ていたら
-  見える位置までスクロールする。一覧が画面に収まらないときスクロールバーが出ている
+  一覧へ出る(次の hotkey を待たない)。保存すると overlay は表示されたまま `normal` に戻り、
+  元アプリへ入力できる。続けて追加するときは再度 `wayhint edit-mode` → `a`（同じ sheet に追記される）
+- T17 `f` / `J` `K` など `edit` に留まる操作 → reload で overlay が閉じず、選択位置が保たれる。
+  選択中の hint が画面外に出ていたら見える位置までスクロールする。一覧が画面に収まらないとき
+  スクロールバーが出ている。フォーム保存の場合は `normal` に戻った一覧で同じことを確認する
 - T18 gvim で開いたまま GUI 保存 → gvim に W11
 - T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない
 - T20 `#` 途中入力 + Tab → 補完

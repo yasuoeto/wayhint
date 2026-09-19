@@ -513,8 +513,11 @@ class Daemon:
             saved_id = self._append_new(view, draft, fields)
             if saved_id is None:
                 return
-        view.form = None
-        self.window.close_form()
+        # A form is the "looked it up, wrote it down, back to work" case: the job is finished at
+        # the save, and staying in edit would hold the keyboard (EXCLUSIVE) for nothing. So the
+        # save leaves edit mode and hands the focus back, exactly as ending a search does
+        # (DECISIONS 0021). The single-key operations come in batches and stay.
+        self._exit_edit_mode(view)
         self.window.show_message(tr("saved {id}").format(id=saved_id))
 
     def _append_new(self, view: WorkspaceView, draft: FormDraft, fields: dict) -> str | None:

@@ -472,7 +472,9 @@ class HintWindow(Gtk.Window):
 
     def _help_text(self) -> str:
         if self._form is not None:
-            return self._tr("Enter save · Esc discard · Tab next field · Ctrl+P parent sheet")
+            return self._tr(
+                "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet"
+            )
         return self._tr(
             "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
         )

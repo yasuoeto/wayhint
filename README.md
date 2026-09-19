@@ -111,7 +111,7 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 | 検索 | 検索欄を開く。もう一度押すか `Esc` で終了。編集中は無効なので、編集を終了してから検索する |
 | コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
 | エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用。検索中・編集モード中に押したときは overlay を隠す(keyboard を editor に渡すため。下書きは残り、次に出したとき戻る) |
-| 編集 | 編集モードに入る。hint の追加・修正・削除・並べ替えを overlay の中で行う(キー割当は `docs/DESIGN.md` の「編集モード」。`wayhint edit-mode` でも入れる) |
+| 編集 | 編集モードに入る。hint の追加・修正・削除・並べ替えを overlay の中で行う(キー割当は `docs/DESIGN.md` の「編集モード」。`wayhint edit-mode` でも入れる)。**フォームを保存すると編集モードは終わり**、keyboard が元のアプリに戻る(favorite・並べ替え・削除・取消は編集モードのまま続けられる) |
 | 閉じる | overlay を隠す |
 
 検索は空白区切りの語をすべて含む hint に絞る。大文字小文字は区別しない。対象は title、`key`、
@@ -204,8 +204,10 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 1. `hints/` に新しい YAML を置く(または既存の sheet に hint を足す)。
 2. daemon は保存を検知して自動 reload する(overlay を閉じる必要はない)。壊れた YAML のときは
    直前の正常版を表示し続け、overlay 上部に `⚠ YAML error file:line: message` が出る。
-3. 追加・修正・削除は overlay の **編集**(編集モード)で完結する。sheet 全体を見直すときは
-   **エディタで編集** で editor が該当ファイル・該当行を開く。
+3. 追加・修正・削除は overlay の **編集**(編集モード)で完結する。フォームを保存すると編集モードは
+   終わり、keyboard が元のアプリに戻る(1 件書いて作業に戻る流れのため)。favorite・並べ替え・削除・
+   取消はまとめて行う操作なので編集モードのまま続く。sheet 全体を見直すときは **エディタで編集** で
+   editor が該当ファイル・該当行を開く。
 
 全 key の一覧と制約は `docs/DESIGN.md` の Data model。ここでは書くときに迷う点だけ挙げる。
 

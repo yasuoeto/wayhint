@@ -523,6 +523,29 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   変えるときは `id` も一緒に変える必要がある。Wayfire の IPC 失敗は今後 error として見えるようになる
   （従来は無言で空の context）。
 
+## 0021 — フォームの保存で編集モードを終える（単打キー操作は留まる）
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Amends**: 0014（DESIGN「編集モード」§1 の「保存後も `edit` に留まる」を上書きする。0014 自体は
+  そのまま残し、ここを参照する）
+- **Context**: `edit` は EXCLUSIVE grab なので、留まっている時間はそのまま元アプリを邪魔する時間に
+  なる（設計書 §81）。典型的な流れは「操作を忘れた → 調べた → 1 件書く → 作業に戻る」で、保存した
+  瞬間に用は済んでいる。一方、favorite / 並べ替え / 削除 / undo は「何件かまとめて整える」操作で、
+  `u` は `edit` 中でなければ押せない。
+- **Decision**: フォーム（quick add と編集）の保存に成功したら `normal` に戻し、keyboard_mode を
+  NONE にして前の view へ focus を返す。処理順は「書き込み成功 → mode 変更 → `_sync_keyboard_mode()`
+  → focus 復帰」で、search 終了と同じ経路を使う。書き込みに失敗したとき、validation に失敗したとき、
+  `Esc` で破棄したときは mode を変えない。単打キー操作（`f` / `J` `K` / `d` `d` / `u`）は従来どおり
+  `edit` に留まる。§7 の sheet 新規作成を伴う quick add も `normal` に戻る。
+- **Alternatives**: 全操作で留まる（現状。1 件書くだけでも Esc を押す必要があり、忘れると grab が
+  残ったままになる）; 全操作で抜ける（`u` が押せなくなり、まとめて整える操作が成立しない）;
+  「保存して留まる」を別キー（`Ctrl+Enter`）や config で選べるようにする（まず単純な形で使い、
+  必要が出てから判断する）。
+- **Consequences**: 続けて追加するときは `wayhint edit-mode` → `a` をもう一度押す。200ms 後の
+  自己書き込み reload は `normal` の一覧に対して走るが、`_after_reload` の選択復元はそのままでよい。
+  フォーム下部のヘルプを「Enter 保存して終了」に変える（en/ja）。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

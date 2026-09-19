@@ -42,8 +42,8 @@ EN: dict[str, str] = {
     "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
         "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
     ),
-    "Enter save · Esc discard · Tab next field · Ctrl+P parent sheet": (
-        "Enter save · Esc discard · Tab next field · Ctrl+P parent sheet"
+    "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet": (
+        "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet"
     ),
     "press d again to delete {title}": "press d again to delete {title}",
     "deleted {id}": "deleted {id}",
@@ -89,8 +89,8 @@ JA: dict[str, str] = {
     "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
         "a 追加 · Enter 編集 · dd 削除 · u 取消 · f お気に入り · J/K 並び替え · Esc 終了"
     ),
-    "Enter save · Esc discard · Tab next field · Ctrl+P parent sheet": (
-        "Enter 保存 · Esc 破棄 · Tab 次の欄 · Ctrl+P 親シート"
+    "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet": (
+        "Enter 保存して終了 · Esc 破棄 · Tab 次の欄 · Ctrl+P 親シート"
     ),
     "press d again to delete {title}": "もう一度 d で「{title}」を削除",
     "deleted {id}": "{id} を削除しました",

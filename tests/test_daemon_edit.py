@@ -9,6 +9,7 @@ from unittest import mock
 from wayhint import daemon as daemon_module
 from wayhint.daemon import Daemon
 from wayhint.editor import EditorError
+from wayhint.yaml_store import SheetWriteError
 from wayhint.models import ResolvedContext
 from wayhint.ui import editmode as em
 from wayhint.ui.editmode import WorkspaceView
@@ -289,3 +290,44 @@ class DaemonEditTest(unittest.TestCase):
             self.action(em.OPEN_FORM)
         self.assertEqual(self.window.form.value("title"), "changed on disk")
         self.assertEqual(self.daemon._pending_reload, {})
+
+    def save_form(self, **fields):
+        self.window.form.fields.update(fields)
+        self.daemon.on_edit_action(em.FORM_SAVE, {"draft": self.window.form})
+
+    def test_saving_a_quick_add_leaves_edit_mode(self):
+        # edit holds the keyboard; once the hint is written the user wants the app back (0021).
+        self.daemon.on_edit_action(em.ADD, None)
+        self.save_form(title="a new hint")
+        self.assertEqual((self.view.mode, self.window.mode), ("normal", "normal"))
+        self.assertIsNone(self.view.form)
+        self.assertIsNone(self.window.form)
+
+    def test_saving_an_edited_hint_leaves_edit_mode(self):
+        self.action(em.OPEN_FORM)
+        self.save_form(title="edited")
+        self.assertEqual((self.view.mode, self.window.mode), ("normal", "normal"))
+        self.assertEqual(self.sheet(self.paths[1]).hints[0].title, "edited")
+
+    def test_single_key_operations_stay_in_edit_mode(self):
+        for action in (em.FAVORITE, em.MOVE_DOWN, em.DELETE_CONFIRM, em.DELETE_COMMIT, em.UNDO):
+            with self.subTest(action=action):
+                self.view.mode = "edit"
+                self.window.set_mode("edit")
+                self.action(action)
+                self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
+
+    def test_discarding_a_form_stays_in_edit_mode(self):
+        self.action(em.OPEN_FORM)
+        self.daemon.on_edit_action(em.FORM_CANCEL, None)
+        self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
+
+    def test_a_save_that_cannot_be_written_stays_in_edit_mode(self):
+        self.action(em.OPEN_FORM)
+        with mock.patch.object(
+            daemon_module, "write_document", side_effect=SheetWriteError("would not validate")
+        ):
+            self.save_form(title="edited")
+        self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
+        self.assertIsNotNone(self.window.form)
+        self.assertTrue(self.window.messages[-1].startswith("⚠"))
