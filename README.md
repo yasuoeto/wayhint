@@ -211,6 +211,37 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 
 全 key の一覧と制約は `docs/DESIGN.md` の Data model。ここでは書くときに迷う点だけ挙げる。
 
+### 他の sheet を混ぜる(`include`)
+
+共通の hint（WM 操作、IME、自分のツール）を 1 枚にまとめ、各 sheet から混ぜられる。
+
+```yaml
+# hints/ja/wm.yaml — match が無いので単独では表示されない。混ぜられるためだけの sheet
+id: wm
+title: ウィンドウマネージャ
+hints:
+  - {id: close-window, title: ウィンドウを閉じる, key: Super+Shift+Q}
+```
+
+```yaml
+# hints/ja/claude-code.yaml
+id: claude-code
+include: [wm]          # この sheet の一覧の末尾に wm の hint が並ぶ
+```
+
+```yaml
+# config.yaml — include を書いていない sheet 全部に効く既定
+include: [wm]
+```
+
+- sheet に `include:` があれば config の既定を**置き換える**（足し算ではない）。`include: []` と
+  書けば「この sheet には何も混ぜない」
+- 混ぜた hint はタグで絞らず全部出る。量を抑えたいときは共通 sheet を小さく分ける
+- 混ぜた先の `include` は辿らない（1 段だけ）
+- 存在しない id を書いても sheet は表示され、⚠ と `wayhint validate` に警告が出る（終了コードは 0）
+- 混ざった hint を編集・削除すると**その hint の所属ファイル**が変わる。詳細欄の `ファイル:` が
+  書き換え先の目安
+
 ### 言語ごとの hint
 
 sheet は言語ごとのディレクトリに置く。**表示に使う言語のディレクトリだけ**が読まれる。

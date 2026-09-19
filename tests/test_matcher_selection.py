@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from wayhint.matcher import match_app, match_process
@@ -12,17 +13,24 @@ def hint(id_, **kw) -> Hint:
     return Hint(id=id_, title=kw.pop("title", id_.title()), location=LOC, **kw)
 
 
-def sheet(id_, priority=0, app=(), argv=(), cmdline=(), hints=(), parent_tags=None) -> HintSheet:
+def sheet(
+    id_, priority=0, app=(), argv=(), cmdline=(), hints=(), parent_tags=None, include=()
+) -> HintSheet:
+    path = Path(f"{id_}.yaml")
     return HintSheet(
         id=id_,
         title=id_,
-        path=Path(f"{id_}.yaml"),
+        path=path,
         priority=priority,
         match=MatchRule(
             app_id_regex=tuple(app), argv_regex=tuple(argv), cmdline_regex=tuple(cmdline)
         ),
         parent_tags=parent_tags,
-        hints=tuple(hints),
+        include=tuple(include),
+        # A hint knows the file it lives in; that is what tells two sheets' hints apart.
+        hints=tuple(
+            replace(h, location=SourceLocation(path, i + 1)) for i, h in enumerate(hints)
+        ),
     )
 
 
@@ -113,6 +121,67 @@ class VisibleHintsTest(unittest.TestCase):
     def test_parent_only_when_process_unknown(self) -> None:
         self.assertEqual(len(visible_hints(None, self.herdr, ["terminal"])), 3)
         self.assertEqual(visible_hints(None, None, ["terminal"]), [])
+
+
+class SheetWithoutMatchTest(unittest.TestCase):
+    """A sheet with no ``match`` exists to be included, never to be picked (0026)."""
+
+    def test_it_is_never_the_active_sheet(self) -> None:
+        common = sheet("wm", hints=[hint("close")])
+        sheets = [common, sheet("foot", app=["^foot$"])]
+        self.assertEqual(match_app(sheets, "foot").id, "foot")
+        self.assertIsNone(match_app([common], "foot"))
+        self.assertIsNone(match_app([common], "wm"))  # not even by its own name
+        self.assertIsNone(match_process([common], proc(["wm"])))
+
+    def test_it_can_still_be_mixed_in(self) -> None:
+        common = sheet("wm", hints=[hint("close")])
+        active = sheet("foot", app=["^foot$"], hints=[hint("split")], include=["wm"])
+        ids = [h.id for h in visible_hints(active, None, [], [common])]
+        self.assertEqual(ids, ["split", "close"])
+
+
+class IncludeTest(unittest.TestCase):
+    """Sheets named by ``include`` are mixed in after the parent (DECISIONS 0026)."""
+
+    def setUp(self) -> None:
+        self.git = sheet("git", hints=[hint("commit"), hint("push")])
+        self.wm = sheet("wm", hints=[hint("close")])
+        self.claude = sheet("claude", hints=[hint("compact")], include=["git", "wm"])
+        self.herdr = sheet("herdr", hints=[hint("split", tags=["terminal"]), hint("theme")])
+
+    def ids(self, *args, **kw):
+        return [h.id for h in visible_hints(*args, **kw)]
+
+    def test_included_hints_follow_the_active_sheet_in_the_listed_order(self) -> None:
+        self.assertEqual(
+            self.ids(self.claude, None, [], [self.git, self.wm]),
+            ["compact", "commit", "push", "close"],
+        )
+
+    def test_the_parent_comes_before_anything_included(self) -> None:
+        self.assertEqual(
+            self.ids(self.claude, self.herdr, ["terminal"], [self.git]),
+            ["compact", "split", "commit", "push"],
+        )
+
+    def test_a_sheet_that_is_both_parent_and_included_is_listed_once(self) -> None:
+        self.assertEqual(
+            self.ids(self.claude, self.herdr, ["terminal"], [self.herdr]),
+            ["compact", "split", "theme"],
+        )
+
+    def test_the_same_sheet_included_twice_is_listed_once(self) -> None:
+        self.assertEqual(
+            self.ids(self.claude, None, [], [self.git, self.git]),
+            ["compact", "commit", "push"],
+        )
+
+    def test_including_the_active_sheet_changes_nothing(self) -> None:
+        self.assertEqual(self.ids(self.claude, None, [], [self.claude]), ["compact"])
+
+    def test_nothing_included_is_the_old_behaviour(self) -> None:
+        self.assertEqual(self.ids(self.claude, None, [], []), ["compact"])
 
 
 class SortSearchTest(unittest.TestCase):

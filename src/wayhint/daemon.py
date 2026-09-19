@@ -97,7 +97,7 @@ class Daemon:
         self.socket_file = socket_file
         self.config = GlobalConfig()
         self.config_issues: list[Issue] = []
-        self.store = SheetStore(hints_dir(root, self.config.language))
+        self.store = SheetStore(hints_dir(root, self.config.language), self.config.include)
         self.desktop = select_desktop_provider(self.config.context_backend)
         self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
         self._backend = self.config.context_backend
@@ -146,6 +146,10 @@ class Daemon:
 
     # --- config / sheets -------------------------------------------------------------------
 
+    def _includes_for(self, ctx: ResolvedContext) -> list[HintSheet]:
+        """The sheets mixed into the one this context shows (0026)."""
+        return self.store.includes_for(self._sheet_by_id(ctx.active_sheet))
+
     @property
     def hints_dir(self) -> Path:
         """The directory the sheets are read from and written to (0024)."""
@@ -166,6 +170,9 @@ class Daemon:
             self._backend = self.config.context_backend
             self.desktop = select_desktop_provider(self._backend)
             self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
+        if self.store.global_include != self.config.include:
+            self.store.global_include = self.config.include
+            self.store.resolve()
         wanted = hints_dir(self.root, self.config.language)
         if wanted != self.store.hints_dir:
             # Changing the language changes which sheets exist, so the store is re-read from the
@@ -185,7 +192,9 @@ class Daemon:
         view = self._open.get(self._shown_key) if self._shown_key is not None else None
         ctx = view.context if view is not None else self.window.context
         if self.window.is_shown() and ctx is not None:
-            self.window.present_context(ctx, self.store.sheets, self.config)
+            self.window.present_context(
+                ctx, self.store.sheets, self.config, self._includes_for(ctx)
+            )
         self.window.show_issues(self.issues)
 
     @property
@@ -309,7 +318,9 @@ class Daemon:
         self._shown_key = key
         # Apply absence as well as presence; an edit list must not inherit the previous form.
         self.window.close_form()
-        self.window.present_context(view.context, self.store.sheets, self.config)
+        self.window.present_context(
+            view.context, self.store.sheets, self.config, self._includes_for(view.context)
+        )
         self.window.show_issues(self.issues)
         self.window.set_mode(view.mode, refocus=False)
         if view.form is not None:
@@ -344,6 +355,8 @@ class Daemon:
             "process": (
                 {"name": proc.name, "argv_basenames": argv_basenames(proc.argv)} if proc else None
             ),
+            # Which sheets are mixed into this one, so the CLI can say where a hint came from.
+            "include": [s.id for s in self.store.includes_for(self._sheet_by_id(ctx.active_sheet))],
             "error": ctx.error,  # why there is no sheet, when there is none
         }
 
@@ -645,6 +658,7 @@ class Daemon:
                 self._sheet_by_id(self._current_sheet_id()),
                 self._sheet_by_id(self._current_parent_id()),
                 self.config.parent_tags,
+                self.store.includes_for(self._sheet_by_id(self._current_sheet_id())),
             )
         )
         index = next(

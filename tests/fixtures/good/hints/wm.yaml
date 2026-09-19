@@ -1,0 +1,12 @@
+# A sheet with no `match`: it is never the active sheet, it is only ever included.
+id: wm
+title: Window manager
+hints:
+  - id: close-window
+    title: Close the focused window
+    key: Super+Shift+Q
+    category: windows
+  - id: lock
+    title: Lock the screen
+    key: Super+Ctrl+L
+    category: session

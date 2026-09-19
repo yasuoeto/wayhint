@@ -46,7 +46,17 @@ from wayhint.models import (
 
 SHEET_VERSION = 1
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_SHEET_KEYS = {"version", "id", "title", "priority", "match", "display", "inherit", "hints"}
+_SHEET_KEYS = {
+    "version",
+    "id",
+    "title",
+    "priority",
+    "match",
+    "include",
+    "display",
+    "inherit",
+    "hints",
+}
 _HINT_KEYS = {
     "id",
     "title",
@@ -68,10 +78,18 @@ class Issue:
     file: Path
     line: int | None
     message: str
+    severity: str = "error"
+    """``error`` keeps the sheet out; ``warning`` is reported but the sheet is still used.
+
+    Everything that makes a document unreadable is an error. A warning is for something the
+    user should fix that does not stop the rest from working -- an ``include`` naming a sheet
+    that is not there (0026).
+    """
 
     def __str__(self) -> str:
         where = f"{self.file}:{self.line}" if self.line else str(self.file)
-        return f"{where}: {self.message}"
+        prefix = "" if self.severity == "error" else f"{self.severity}: "
+        return f"{where}: {prefix}{self.message}"
 
 
 @dataclass
@@ -79,10 +97,19 @@ class LoadResult:
     sheets: list[HintSheet] = field(default_factory=list)
     config: GlobalConfig | None = None
     issues: list[Issue] = field(default_factory=list)
+    includes: dict[Path, list[HintSheet]] = field(default_factory=dict)
+    """Per sheet (by file), the sheets its ``include`` resolved to, in the order written."""
 
     @property
     def ok(self) -> bool:
-        return not self.issues
+        return not self.errors
+
+    @property
+    def errors(self) -> list[Issue]:
+        return [i for i in self.issues if i.severity == "error"]
+
+    def includes_for(self, sheet: HintSheet) -> list[HintSheet]:
+        return self.includes.get(sheet.path, [])
 
 
 class _Ctx:
@@ -283,6 +310,23 @@ def _req_title(ctx: _Ctx, node: Mapping, where: str) -> str | None:
     return value
 
 
+def _sheet_ids(ctx: _Ctx, node: Mapping, key: str, where: str) -> tuple[str, ...] | None:
+    """A list of sheet ids, or ``None`` when the key is absent (which means "use the default")."""
+    value = node.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        ctx.error(f"{where}.{key} must be a list of sheet ids", node, key)
+        return None
+    out = []
+    for i, item in enumerate(value):
+        if not isinstance(item, str) or not _ID_RE.match(item):
+            ctx.error(f"{where}.{key}[{i}] must match {_ID_RE.pattern}", value, i)
+            continue
+        out.append(item)
+    return tuple(out)
+
+
 def _tags(ctx: _Ctx, node: Mapping, key: str, where: str) -> tuple[str, ...] | None:
     value = node.get(key)
     if value is None:
@@ -360,6 +404,7 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
         ctx.error(str(e), data, "display")
         display = parse_display(None, "display")
 
+    include = _sheet_ids(ctx, data, "include", "sheet")
     parent_tags = None
     inherit = data.get("inherit")
     if inherit is not None:
@@ -406,6 +451,7 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
             match=match,
             display=display,
             parent_tags=parent_tags,
+            include=include,
             hints=tuple(hints),
         ),
         [],
@@ -482,7 +528,45 @@ def unique_sheet_ids(sheets: Sequence[HintSheet]) -> tuple[list[HintSheet], list
     return kept, issues
 
 
-def load_sheets(hints_dir: Path) -> LoadResult:
+def resolve_includes(
+    sheets: Sequence[HintSheet], global_include: Sequence[str] = ()
+) -> tuple[dict[Path, list[HintSheet]], list[Issue]]:
+    """Turn every sheet's ``include`` into the sheets it names (DECISIONS 0026).
+
+    A sheet without ``include`` uses ``global_include`` from config.yaml; writing ``include`` in
+    the sheet replaces that default rather than adding to it, the way ``inherit.parent_tags``
+    replaces ``nested.parent_tags``. A name that is not there, and a sheet naming itself, are
+    warnings: the sheet is still shown, only that one name is dropped. The second level is not
+    followed -- what a sheet includes is what it says, not what its includes say.
+    """
+    by_id = {sheet.id: sheet for sheet in sheets}
+    resolved: dict[Path, list[HintSheet]] = {}
+    issues: list[Issue] = []
+    for sheet in sheets:
+        own = sheet.include is not None
+        wanted = sheet.include if own else tuple(global_include)
+        found: list[HintSheet] = []
+        for name in wanted:
+            if name == sheet.id:
+                # The global default names every sheet, this one included; only a sheet that
+                # writes its own name is saying something wrong.
+                if own:
+                    issues.append(
+                        Issue(sheet.path, 1, f"include: {name!r} is this sheet", "warning")
+                    )
+                continue
+            other = by_id.get(name)
+            if other is None:
+                issues.append(
+                    Issue(sheet.path, 1, f"include: no sheet with id {name!r}", "warning")
+                )
+                continue
+            found.append(other)
+        resolved[sheet.path] = found
+    return resolved, issues
+
+
+def load_sheets(hints_dir: Path, global_include: Sequence[str] = ()) -> LoadResult:
     result = LoadResult()
     for path in sheet_files(hints_dir):
         sheet, issues = load_sheet(path)
@@ -491,6 +575,8 @@ def load_sheets(hints_dir: Path) -> LoadResult:
             result.sheets.append(sheet)
     result.sheets, duplicates = unique_sheet_ids(result.sheets)
     result.issues.extend(duplicates)
+    result.includes, include_issues = resolve_includes(result.sheets, global_include)
+    result.issues.extend(include_issues)
     return result
 
 
@@ -498,8 +584,10 @@ def load_all(config_root: Path) -> LoadResult:
     """``config.yaml`` + the sheets of the configured language under ``config_root`` (0024)."""
     result = load_config(config_root / "config.yaml")
     language = result.config.language if result.config is not None else "auto"
-    sheets = load_sheets(hints_dir(config_root, language))
+    include = result.config.include if result.config is not None else ()
+    sheets = load_sheets(hints_dir(config_root, language), include)
     result.sheets = sheets.sheets
+    result.includes = sheets.includes
     result.issues.extend(sheets.issues)
     return result
 
@@ -515,10 +603,13 @@ class SheetStore:
     succeeds (or the file is removed).
     """
 
-    def __init__(self, hints_dir: Path) -> None:
+    def __init__(self, hints_dir: Path, global_include: Sequence[str] = ()) -> None:
         self.hints_dir = hints_dir
+        self.global_include = tuple(global_include)
         self._sheets: dict[Path, HintSheet] = {}
         self.errors: dict[Path, list[Issue]] = {}
+        self._includes: dict[Path, list[HintSheet]] = {}
+        self._include_issues: list[Issue] = []
 
     def load_all(self) -> None:
         """Re-read the directory, including what is no longer in it.
@@ -534,6 +625,7 @@ class SheetStore:
                 self.errors.pop(path, None)
         for path in found:
             self.reload(path)
+        self.resolve()
 
     def reload(self, path: Path) -> bool:
         if not path.exists():
@@ -546,7 +638,15 @@ class SheetStore:
             return False
         self._sheets[path] = sheet
         self.errors.pop(path, None)
+        self.resolve()
         return True
+
+    def resolve(self) -> None:
+        """Re-resolve every sheet's ``include``; called after the sheets change (0026)."""
+        self._includes, self._include_issues = resolve_includes(self.sheets, self.global_include)
+
+    def includes_for(self, sheet: HintSheet | None) -> list[HintSheet]:
+        return self._includes.get(sheet.path, []) if sheet is not None else []
 
     @property
     def sheets(self) -> list[HintSheet]:
@@ -557,6 +657,7 @@ class SheetStore:
     def issues(self) -> list[Issue]:
         out = [i for issues in self.errors.values() for i in issues]
         out.extend(unique_sheet_ids([self._sheets[p] for p in sorted(self._sheets)])[1])
+        out.extend(self._include_issues)
         return out
 
 

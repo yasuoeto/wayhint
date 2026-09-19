@@ -285,6 +285,7 @@ class IpcCommandTest(unittest.TestCase):
                 "parent_context": "herdr",
                 "desktop_app": "foot",
                 "process": {"name": "node", "argv_basenames": ["node", "codex"]},
+                "include": [],
                 "error": None,
             },
         )
@@ -299,6 +300,7 @@ class IpcCommandTest(unittest.TestCase):
                 "parent_context": None,
                 "desktop_app": None,
                 "process": None,
+                "include": [],
                 "error": "desktop context unavailable",
             },
         )

@@ -166,6 +166,7 @@ class HintWindow(Gtk.Window):
         self._hints: list[Hint] = []
         self._mode = "normal"
         self._form: FormDraft | None = None
+        self._included: list[HintSheet] = []
         self._preedit = False  # an input method conversion is open in one of the fields
         self._delete_pending: tuple[Path, str] | None = None
         self._filter: str | None = None
@@ -354,11 +355,16 @@ class HintWindow(Gtk.Window):
         return self._ctx
 
     def present_context(
-        self, ctx: ResolvedContext, sheets: Sequence[HintSheet], config: GlobalConfig
+        self,
+        ctx: ResolvedContext,
+        sheets: Sequence[HintSheet],
+        config: GlobalConfig,
+        includes: Sequence[HintSheet] = (),
     ) -> None:
         self._ctx = ctx
         self._sheets = {s.id: s for s in sheets}
         self._config = config
+        self._included = list(includes)  # sheets mixed into the active one (0026)
         self._apply_placement()
         self._render_header()
         self._render_list()
@@ -689,7 +695,12 @@ class HintWindow(Gtk.Window):
     def _render_list(self) -> None:
         previous_index = self._selected_index()
         hints = sort_hints(
-            visible_hints(self._active_sheet(), self._parent_sheet(), self._config.parent_tags)
+            visible_hints(
+                self._active_sheet(),
+                self._parent_sheet(),
+                self._config.parent_tags,
+                self._included,
+            )
         )
         if self._mode == "search":
             query = editmode.parse_search(self._search.get_text())
@@ -749,7 +760,12 @@ class HintWindow(Gtk.Window):
     def _category_order(self) -> list[str | None]:
         return editmode.category_order(
             sort_hints(
-                visible_hints(self._active_sheet(), self._parent_sheet(), self._config.parent_tags)
+                visible_hints(
+                    self._active_sheet(),
+                    self._parent_sheet(),
+                    self._config.parent_tags,
+                    self._included,
+                )
             )
         )
 
@@ -886,6 +902,9 @@ class HintWindow(Gtk.Window):
             lines.append(f"{self._tr('source')}: {hint.source}")
         if hint.learned:
             lines.append(f"{self._tr('learned')}: {hint.learned}")
+        # Which file a change would touch. The list mixes in the parent sheet and whatever the
+        # sheet includes, so "this hint" and "this sheet" are not the same thing (0026).
+        lines.append(f"{self._tr('file')}: {hint.location.file.name}")
         self._detail.set_label("\n".join(lines))
         self._detail.set_visible(bool(lines))
         self._copy_btn.set_sensitive(hint.copy_text() is not None)

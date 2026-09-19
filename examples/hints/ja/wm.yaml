@@ -1,0 +1,21 @@
+# `match` を持たない sheet: window に対して選ばれることはなく、他の sheet に混ぜてだけ使う。
+# sheet の `include:` に並べるか、config.yaml の `include:` に書けば全 sheet に出る。
+id: wm
+title: ウィンドウマネージャ
+hints:
+  - id: hints
+    title: この overlay の表示 / 非表示
+    key: Super+H
+    category: wayhint
+  - id: edit-mode
+    title: overlay 上で hint を編集する
+    key: Super+Ctrl+H
+    category: wayhint
+  - id: close-window
+    title: フォーカス中のウィンドウを閉じる
+    key: Super+Shift+Q
+    category: ウィンドウ
+  - id: lock
+    title: 画面をロックする
+    key: Super+Ctrl+L
+    category: セッション

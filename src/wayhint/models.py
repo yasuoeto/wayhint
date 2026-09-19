@@ -133,6 +133,7 @@ class HintSheet:
     match: MatchRule = field(default_factory=MatchRule)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     parent_tags: tuple[str, ...] | None = None  # None → use global nested.parent_tags
+    include: tuple[str, ...] | None = None  # sheet ids mixed in; None → use global include
     hints: tuple[Hint, ...] = ()
 
 

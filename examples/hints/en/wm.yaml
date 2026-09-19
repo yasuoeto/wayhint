@@ -1,0 +1,21 @@
+# A sheet with no `match`: it is never chosen for a window, it is only mixed into other sheets.
+# List it in a sheet's `include:`, or in `include:` in config.yaml to get it everywhere.
+id: wm
+title: Window manager
+hints:
+  - id: hints
+    title: Show or hide this overlay
+    key: Super+H
+    category: wayhint
+  - id: edit-mode
+    title: Edit hints in the overlay
+    key: Super+Ctrl+H
+    category: wayhint
+  - id: close-window
+    title: Close the focused window
+    key: Super+Shift+Q
+    category: windows
+  - id: lock
+    title: Lock the screen
+    key: Super+Ctrl+L
+    category: session

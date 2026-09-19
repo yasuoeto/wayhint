@@ -87,6 +87,12 @@ def json_schema() -> dict[str, Any]:
         "title": {"type": "string", "minLength": 1},
         "priority": {"type": "integer"},
         "match": _match_schema(),
+        # A sheet with no match is never the active one; it exists to be included (0026).
+        "include": {
+            "title": "sheet ids mixed into this sheet's list",
+            "type": ["array", "null"],
+            "items": {"type": "string", "pattern": _ID_RE.pattern},
+        },
         "display": {
             "type": ["object", "null"],
             "properties": {

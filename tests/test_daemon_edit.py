@@ -23,6 +23,7 @@ class Window:
         self.form = None
         self.messages = []
         self.context = None
+        self.includes = []
         self.visible = True
 
     def open_form(self, draft):
@@ -46,8 +47,9 @@ class Window:
     def hide_overlay(self):
         self.visible = False
 
-    def present_context(self, context, sheets, config):
+    def present_context(self, context, sheets, config, includes=()):
         self.context = context
+        self.includes = list(includes)
         self.visible = True
 
     def show_issues(self, issues):

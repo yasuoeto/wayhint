@@ -26,6 +26,7 @@ EN: dict[str, str] = {
     "tags": "tags",
     "source": "source",
     "learned": "learned",
+    "file": "file",
     # --- edit mode (Phase 7c) ---
     "Edit": "Edit",
     "Save": "Save",
@@ -73,6 +74,7 @@ JA: dict[str, str] = {
     "tags": "タグ",
     "source": "出典",
     "learned": "習得日",
+    "file": "ファイル",
     # --- 編集モード (Phase 7c) ---
     "Edit": "編集",
     "Save": "保存",

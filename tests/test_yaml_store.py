@@ -4,11 +4,13 @@ import shutil
 import tempfile
 import textwrap
 import unittest
+from collections.abc import Sequence
 from pathlib import Path
 
 from wayhint.cli import main
 from wayhint.models import Margin, Size
 from wayhint.yaml_store import (
+    LoadResult,
     SheetStore,
     hints_dir,
     load_all,
@@ -100,7 +102,11 @@ class GoodFixtureTest(unittest.TestCase):
         result = load_sheets(GOOD / "hints")
         self.assertEqual(result.issues, [])
         by_id = {s.id: s for s in result.sheets}
-        self.assertEqual(set(by_id), {"herdr", "claude"})
+        self.assertEqual(set(by_id), {"herdr", "claude", "wm"})
+        self.assertEqual(by_id["claude"].include, ("wm",))
+        self.assertEqual([s.id for s in result.includes_for(by_id["claude"])], ["wm"])
+        self.assertTrue(by_id["wm"].match.is_empty(), "an included-only sheet has no match")
+        self.assertIsNone(by_id["herdr"].include, "no include means: use the global default")
         herdr = by_id["herdr"]
         self.assertEqual([h.id for h in herdr.hints], ["new-pane", "kill-pane"])
         self.assertEqual(herdr.hints[0].location.line, 8)
@@ -242,6 +248,79 @@ class ConfigValidationTest(unittest.TestCase):
             p.write_text("overlay:\n  margin: 8\n", encoding="utf-8")
             cfg = load_config(p).config
         self.assertEqual(cfg.display.margin, Margin(8, 8, 8, 8))
+
+
+class IncludeTest(unittest.TestCase):
+    """``include`` names other sheets; unresolved names are a warning, not a rejection (0026)."""
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp(prefix="wayhint-include-"))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def write(self, name: str, body: str) -> Path:
+        path = self.dir / f"{name}.yaml"
+        path.write_text(textwrap.dedent(body).lstrip(), encoding="utf-8")
+        return path
+
+    def load(self, include: Sequence[str] = ()) -> LoadResult:
+        self.write("wm", "id: wm\ntitle: WM\nhints:\n  - {id: close, title: Close}\n")
+        return load_sheets(self.dir, global_include=include)
+
+    def test_a_sheet_lists_the_sheets_it_mixes_in(self) -> None:
+        self.write("a", "id: a\ntitle: A\ninclude: [wm]\nhints:\n  - {id: x, title: X}\n")
+        result = self.load()
+        sheet = next(s for s in result.sheets if s.id == "a")
+        self.assertEqual(sheet.include, ("wm",))
+        self.assertEqual([s.id for s in result.includes_for(sheet)], ["wm"])
+        self.assertEqual(result.issues, [])
+
+    def test_the_global_default_applies_to_a_sheet_without_include(self) -> None:
+        self.write("a", "id: a\ntitle: A\nhints:\n  - {id: x, title: X}\n")
+        result = self.load(include=["wm"])
+        sheet = next(s for s in result.sheets if s.id == "a")
+        self.assertEqual([s.id for s in result.includes_for(sheet)], ["wm"])
+
+    def test_a_sheet_with_include_replaces_the_global_default(self) -> None:
+        self.write("a", "id: a\ntitle: A\ninclude: []\nhints:\n  - {id: x, title: X}\n")
+        result = self.load(include=["wm"])
+        sheet = next(s for s in result.sheets if s.id == "a")
+        self.assertEqual(result.includes_for(sheet), [])
+
+    def test_an_unknown_name_is_a_warning_and_the_sheet_still_loads(self) -> None:
+        self.write("a", "id: a\ntitle: A\ninclude: [wm, nope]\nhints:\n  - {id: x, title: X}\n")
+        result = self.load()
+        sheet = next(s for s in result.sheets if s.id == "a")
+        self.assertEqual([s.id for s in result.includes_for(sheet)], ["wm"])
+        self.assertEqual([i.severity for i in result.issues], ["warning"])
+        self.assertIn("nope", result.issues[0].message)
+
+    def test_the_global_default_does_not_make_a_sheet_include_itself(self) -> None:
+        # ``include: [wm]`` in config.yaml names every sheet, wm included; that is not a mistake
+        # the user made, so it is dropped quietly.
+        result = self.load(include=["wm"])
+        wm = next(s for s in result.sheets if s.id == "wm")
+        self.assertEqual(result.includes_for(wm), [])
+        self.assertEqual(result.issues, [])
+
+    def test_including_itself_is_a_warning_and_is_dropped(self) -> None:
+        self.write("a", "id: a\ntitle: A\ninclude: [a]\nhints:\n  - {id: x, title: X}\n")
+        result = self.load()
+        sheet = next(s for s in result.sheets if s.id == "a")
+        self.assertEqual(result.includes_for(sheet), [])
+        self.assertEqual([i.severity for i in result.issues], ["warning"])
+
+    def test_a_second_level_of_include_is_not_followed(self) -> None:
+        self.write("a", "id: a\ntitle: A\ninclude: [b]\nhints:\n  - {id: x, title: X}\n")
+        self.write("b", "id: b\ntitle: B\ninclude: [wm]\nhints:\n  - {id: y, title: Y}\n")
+        result = self.load()
+        sheet = next(s for s in result.sheets if s.id == "a")
+        self.assertEqual([s.id for s in result.includes_for(sheet)], ["b"])
+
+    def test_include_must_be_a_list_of_sheet_ids(self) -> None:
+        self.write("a", "id: a\ntitle: A\ninclude: wm\n")
+        self.assertTrue(any("include" in i.message for i in load_sheets(self.dir).issues))
+        self.write("a", "id: a\ntitle: A\ninclude: ['not an id!']\n")
+        self.assertTrue(any("include" in i.message for i in load_sheets(self.dir).issues))
 
 
 class HintsDirTest(unittest.TestCase):

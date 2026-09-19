@@ -628,6 +628,32 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: 親 sheet の hint を見ながら `a` を押すと親 sheet に入る。active sheet に入れたい
   ときは、その sheet の hint を選んでから押すか、一覧の選択を外す。見出しを見れば分かる。
 
+## 0026 — 他の sheet の hint を混ぜる手段は sheet 側の `include` 1 本にする
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Context**: 表示は active sheet と nested 親 sheet の 2 枚に固定で、無関係な sheet を混ぜる手段が
+  無かった。要望は 3 つ——(A) WM 操作や IME のような共通 hint を全 sheet に、(B) 特定の組み合わせ
+  (claude を見るときは git も)、(C) 役割の束(terminal 系の共通部分)。混ざった hint の配管は既に
+  ある(`(ファイル, id)` で識別 0019、編集は所属ファイル 0014 D9、`J`/`K` はファイルを跨がない D8、
+  表示順 D7)ので、足りないのは「どれを混ぜるか」の指定だけだった。
+- **Decision**: sheet に `include: [sheet-id, ...]` を足し、この 1 本で 3 つとも表す。
+  config.yaml のトップレベル `include: []` は、`include` を書かない sheet の既定
+  (`inherit.parent_tags` と `nested.parent_tags` の関係と同じで、**足し算ではなく置き換え**)。
+  include 先の hint は tag で絞らず全部入れ、量は共通 sheet を小さく作る運用で抑える。多段は
+  辿らない。重複は `(ファイル, id)` で落とす。`match` の無い sheet を許可し、それは active には
+  ならず include 経由でだけ出る。解決できない id と自己参照は **warning**(`Issue.severity`)で、
+  その id だけ無視して sheet は表示する。表示は今の親 hint と同じ無印。IPC `context` の応答に
+  解決済みの `include` を足す。詳細欄に所属ファイル名を出す(どのファイルが書き換わるかの目印)。
+- **Alternatives**: 提供側に書く `applies_to`(画面から逆引きしづらい); tag ベースの
+  `always_tags`(どの hint が全画面に出るか一覧しづらく、混入経路が 2 本になる); include 要素の
+  tag 絞り `{sheet: x, tags: [...]}`(記法が重い。共通 sheet を分ければ足りる); 多段 include
+  (循環検出が要る割に用途が無い); include 由来 hint の専用ヘッダー(親 hint と扱いを変える理由が無い)。
+- **Consequences**: 一覧が長くなりやすい(件数上限は入れない)。編集モードの規則は変えないので、
+  include 由来 hint の編集・削除・favorite は所属ファイルに書き、`J`/`K` はファイルを跨がず、
+  quick add の追加先は選択中の hint の sheet(0025)のまま。`Issue` に severity が入ったので、
+  `wayhint validate` は error のときだけ exit 1 になる。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

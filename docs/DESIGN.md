@@ -95,6 +95,7 @@ context:    {live_update: false, backend: auto, workspace: current}  # backend: 
                                                                      # workspace: current|all
 search:     {max_results: 50}
 logging:    {level: warning}
+include:    []          # 既定で全 sheet に混ぜる sheet id(DECISIONS 0026)。sheet 側 include が勝つ
 ```
 
 - 全項目任意、ファイル自体も無くてよい(上記が既定値)。未知の section / key は error。
@@ -119,9 +120,10 @@ version: 1              # 任意、1 のみ
 id: claude              # 必須 ^[A-Za-z0-9][A-Za-z0-9._-]*$、ファイル名(stem)と同じ、全 sheet で一意
 title: Claude Code      # 必須
 priority: 10            # 任意 int、既定 0
-match:
+match:                                                 # 省略可。無い sheet は active にならない
   wayland: {app_id_regex: [...]}                       # 旧綴り wayfire: も同義
   process: {argv_regex: [...], cmdline_regex: [...]}   # Python re でコンパイルできること
+include: [wm, ime]                                     # 混ぜる sheet id。省略時は global include
 display: {anchor, width, height, margin, output}       # 部分指定、global overlay から継承
 inherit: {parent_tags: [terminal, ai]}                 # 省略時は global nested.parent_tags
 hints:
@@ -130,6 +132,15 @@ hints:
      copy, remark, source, learned}
 ```
 
+- **`include`**(DECISIONS 0026): ここに並べた sheet の hint を、この sheet の一覧に混ぜる。tag では
+  絞らず全部入る。書かなければ config の `include` が既定として使われ、書けば**置き換える**
+  (`inherit.parent_tags` と `nested.parent_tags` の関係と同じ)。include 先の include は辿らない。
+  解決できない id と自分自身の id は warning で、その id だけ無視する(sheet は表示される。
+  ただし config 既定由来の自己参照は黙って外す)。
+- **`match` は省略可**。`match` の無い sheet はどの context でも active にならず、`include` からだけ
+  一覧に出る(共通 hint 用)。`match` があっても include 対象にはできる。
+- 一覧の連結順は active → 親 sheet(tag 一致分) → include(記述順)で、その後 D7 のソートを掛ける。
+  同じ hint が 2 経路から来たときは `(ファイル, id)` で 1 件に落とす(0019)。
 - `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで canonical 順
   (`id` `title` `kind` `key` `command` `category` `tags` `favorite` `copy` `remark` `source`
   `learned`)に出力する。読み込む際は key の順序と省略を問わない(DECISIONS 0014 D2)。
@@ -356,7 +367,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 
 | cmd | 応答 |
 |---|---|
-| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, error}`。argv 全体は載せない。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
+| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
@@ -394,6 +405,7 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 | Herdr 不可 / pane 取得失敗 | desktop context(Herdr sheet)まで fallback |
 | foreground process 不明 | Herdr hints のみ。screen scraping で推測しない |
 | sheet YAML が invalid | last-known-good を表示し続け `⚠ YAML error`(file/line/error)を表示。修正で自動復帰 |
+| `include` が解決できない id / 自己参照 | その id だけ無視して sheet は表示する。`Issue(severity="warning")` として overlay と `wayhint validate` に出すが、validate の exit code は 0 のまま |
 | editor 不在 / 起動失敗 | GUI で error 表示 |
 | 検索終了時 focus 復帰失敗 | それでも keyboard_mode は必ず none に戻す(grab 残留禁止) |
 | 復帰先の window が一意に決まらない(app_id と title が同じ window が複数) | focus 復帰を諦めて log に残す。別 window を掴まない |
@@ -460,6 +472,14 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T30 `appearance.language` を `ja` / `en` で切り替える（または `LANG` を変えて daemon を起動）
   → UI の文言と一緒に `hints/ja/` と `hints/en/` が切り替わる。片方しか無い言語では `en` に
   落ち、どちらも無ければ `hints/*.yaml` が読まれる
+- T31 sheet の `include` で他 sheet の hint が一覧の末尾に出る。それを編集すると所属ファイルが
+  更新される（詳細欄の `ファイル:` が書き換え先）
+- T32 config の `include` が `include` を書いていない sheet 全部に効き、`include:` を書いた sheet では
+  置き換わる（`include: []` なら何も混ざらない）
+- T33 `match` の無い sheet は単独では表示されず、`include` 経由でだけ出る
+- T34 解決できない id を `include` に書いても sheet は表示され、overlay の ⚠ と
+  `wayhint validate` に warning が出る（validate の終了コードは 0）
+- T35 `wayhint context` の応答に `include` が含まれる
 - T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
 - T25 角 / 辺の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き
   直しても、daemon を再起動しても同じサイズ **(2026-09-18 確認済)**

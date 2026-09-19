@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 
 from wayhint.models import Hint, HintSheet
 
@@ -37,19 +38,42 @@ def visible_hints(
     active: HintSheet | None,
     parent: HintSheet | None,
     global_parent_tags: Sequence[str],
+    includes: Sequence[HintSheet] = (),
 ) -> list[Hint]:
     """Hints for the overlay before sorting.
 
     Without a nested context (``parent`` is None) this is simply the active sheet's hints. With
     one, the active (child) sheet's hints come first and the tag-filtered parent hints follow.
     When only the parent is known (foreground process unmatched) all parent hints are shown.
+
+    ``includes`` are the sheets the active one names in ``include`` (or the global default),
+    already resolved and in the order they were written. Their hints come last, whole -- no tag
+    filter -- and a hint already on the list is not added again: the same sheet can be both the
+    nested parent and an include, and two sheets can include the same one (DECISIONS 0026).
     """
     if active is None:
-        return list(parent.hints) if parent is not None else []
-    if parent is None or parent is active:
-        return list(active.hints)
-    tags = effective_parent_tags(active, global_parent_tags)
-    return list(active.hints) + parent_hints_for(parent, tags)
+        out = list(parent.hints) if parent is not None else []
+    elif parent is None or parent is active:
+        out = list(active.hints)
+    else:
+        tags = effective_parent_tags(active, global_parent_tags)
+        out = list(active.hints) + parent_hints_for(parent, tags)
+    for sheet in includes:
+        out.extend(sheet.hints)
+    return _unique(out)
+
+
+def _unique(hints: Sequence[Hint]) -> list[Hint]:
+    """First occurrence wins; a hint is the pair (file it lives in, id) -- 0019."""
+    seen: set[tuple[Path, str]] = set()
+    out = []
+    for hint in hints:
+        key = (hint.location.file, hint.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(hint)
+    return out
 
 
 def sheet_for_hint(sheets: Iterable[HintSheet], hint: Hint | None) -> HintSheet | None:

@@ -10,6 +10,7 @@ display:
   width: 50%
 inherit:
   parent_tags: [terminal, ai]
+include: [wm]
 hints:
   - id: compact
     title: Compact context

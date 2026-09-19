@@ -5,6 +5,7 @@ priority: 10
 match:
   process:
     argv_regex: ["^claude$"]
+include: [wm]
 hints:
   - id: compact
     title: Compact the conversation

@@ -10,6 +10,9 @@ editor:
   command: [gvim, --remote-silent, "+{line}", "{file}"]
 nested:
   parent_tags: [terminal]
+# include を書かない sheet すべてに混ぜる sheet。sheet 側に include: があればそちらが優先
+# (足し算ではなく置き換え)。ここを [] にすれば「既定では何も混ぜない」。
+include: [wm]
 search:
   max_results: 30
 logging:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,6 +59,7 @@ class GlobalConfig:
     workspace_scope: str = "current"  # current = 呼び出した workspace だけ | all
     max_results: int = 50
     log_level: str = "warning"
+    include: tuple[str, ...] = ()  # sheet ids mixed into every sheet that has no include of its own
 
 
 class ConfigError(ValueError):
@@ -85,6 +86,23 @@ def _mapping(node: object, key: str, allowed: Collection[str] | None = None) -> 
         if unknown:
             raise ConfigError(key, f"unknown key(s): {', '.join(unknown)}")
     return node
+
+
+SHEET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _sheet_ids(node: object, key: str) -> tuple[str, ...]:
+    """Sheet ids for the global ``include`` (DECISIONS 0026); same shape as a sheet's own list."""
+    if node is None:
+        return ()
+    if isinstance(node, str) or not isinstance(node, Sequence):
+        raise ConfigError(key, "must be a list of sheet ids")
+    out = []
+    for i, item in enumerate(node):
+        if not isinstance(item, str) or not SHEET_ID_RE.match(item):
+            raise ConfigError(f"{key}[{i}]", f"must match {SHEET_ID_RE.pattern}")
+        out.append(item)
+    return tuple(out)
 
 
 def _str_list(node: object, key: str) -> tuple[str, ...]:
@@ -189,7 +207,16 @@ def parse_global_config(data: object) -> GlobalConfig:
     """Build a :class:`GlobalConfig` from a parsed YAML document. Raise :class:`ConfigError`."""
     root = _mapping(data, "config")
     defaults = GlobalConfig()
-    known = {"overlay", "appearance", "editor", "nested", "context", "search", "logging"}
+    known = {
+        "overlay",
+        "appearance",
+        "editor",
+        "nested",
+        "context",
+        "search",
+        "logging",
+        "include",
+    }
     unknown = set(map(str, root)) - known
     if unknown:
         raise ConfigError("config", f"unknown section(s): {', '.join(sorted(unknown))}")
@@ -254,4 +281,5 @@ def parse_global_config(data: object) -> GlobalConfig:
         workspace_scope=scope,
         max_results=_int(search.get("max_results"), "search.max_results", 50, minimum=1),
         log_level=level.lower(),
+        include=_sheet_ids(root.get("include"), "include"),
     )

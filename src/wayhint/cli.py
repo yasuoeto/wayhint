@@ -57,11 +57,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
     result = load_all(root)
     for issue in result.issues:
         print(str(issue), file=sys.stderr)
-    if result.issues:
-        print(f"validate: {len(result.issues)} problem(s) in {root}", file=sys.stderr)
+    errors = result.errors
+    if errors:
+        print(f"validate: {len(errors)} problem(s) in {root}", file=sys.stderr)
         return 1
     hints = sum(len(s.hints) for s in result.sheets)
-    print(f"validate: ok ({len(result.sheets)} sheet(s), {hints} hint(s)) in {root}")
+    # Warnings (an ``include`` that names nothing, say) are printed but do not fail the run:
+    # everything still loads, and the exit code is what scripts act on (DECISIONS 0026).
+    warned = len(result.issues)
+    suffix = f", {warned} warning(s)" if warned else ""
+    print(f"validate: ok ({len(result.sheets)} sheet(s), {hints} hint(s){suffix}) in {root}")
     return 0
 
 
