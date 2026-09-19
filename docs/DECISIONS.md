@@ -610,6 +610,24 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   実配置は `~/.config/wayhint/hints/ja/` へ移動済み。`id` = ファイル名のルール（0020）は
   ディレクトリごとに成立するので、`ja/claude.yaml` と `en/claude.yaml` は衝突しない。
 
+## 0025 — quick add は選択中の hint の sheet に書く
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Amends**: 0014（DESIGN「編集モード」§3 の「追加先: active sheet」）
+- **Context**: `nested.parent_tags` があると、一覧には active sheet の hint と親 sheet の hint が
+  混ざって並ぶ。その状態で親 sheet の hint にカーソルを置いて `a` を押すと、見ているものとは別の
+  sheet（active sheet）に追加されていた。編集・削除・favorite・並べ替えは既に「選択中の hint の
+  所属ファイル」に対して行う（0019）ので、追加だけが違う基準で動いていたことになる。
+- **Decision**: quick add の追加先は**選択中の hint の所属 sheet**。未選択、または所属ファイルが
+  消えているときは active sheet、それも無ければ従来どおり保存時に sheet を新規作成する（0014 D6）。
+  どこに入るのかが選択によって変わるので、フォームの見出しに追加先の sheet 名を出す
+  （`Ctrl+P` で親 sheet に切り替えたときも見出しが変わる）。
+- **Alternatives**: active sheet のまま（他の編集操作と基準が食い違う）; 追加先を選ぶ UI を出す
+  （1 件足すだけの操作に選択肢を増やしたくない）。
+- **Consequences**: 親 sheet の hint を見ながら `a` を押すと親 sheet に入る。active sheet に入れたい
+  ときは、その sheet の hint を選んでから押すか、一覧の選択を外す。見出しを見れば分かる。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

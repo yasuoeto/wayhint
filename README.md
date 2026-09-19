@@ -204,7 +204,7 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 1. `hints/<言語>/` に新しい YAML を置く(または既存の sheet に hint を足す)。
 2. daemon は保存を検知して自動 reload する(overlay を閉じる必要はない)。壊れた YAML のときは
    直前の正常版を表示し続け、overlay 上部に `⚠ YAML error file:line: message` が出る。
-3. 追加・修正・削除は overlay の **編集**(編集モード)で完結する。フォームを保存すると編集モードは
+3. 追加・修正・削除は overlay の **編集**(編集モード)で完結する。`a` での追加先は**選択中の hint と同じ sheet**(親 sheet の hint を選んでいれば親 sheet)。フォームの見出しに追加先が出る。フォームを保存すると編集モードは
    終わり、keyboard が元のアプリに戻る(1 件書いて作業に戻る流れのため)。favorite・並べ替え・削除・
    取消はまとめて行う操作なので編集モードのまま続く。sheet 全体を見直すときは **エディタで編集** で
    editor が該当ファイル・該当行を開く。

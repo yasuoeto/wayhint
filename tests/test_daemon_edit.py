@@ -329,6 +329,28 @@ class DaemonEditTest(unittest.TestCase):
         self.window.form.fields.update(fields)
         self.daemon.on_edit_action(em.FORM_SAVE, {"draft": self.window.form})
 
+    def quick_add(self, path=None):
+        payload = {"file": str(path)} if path is not None else {}
+        self.daemon.on_edit_action(em.ADD, payload)
+
+    def test_quick_add_goes_into_the_sheet_of_the_hint_under_the_cursor(self):
+        # The list mixes in the parent sheet's hints, so "this sheet" is the selected hint's.
+        self.quick_add(self.paths[0])
+        self.assertEqual(self.window.form.sheet_id, "a")
+        self.save_form(title="from the parent sheet")
+        titles = [h.title for h in self.sheet(self.paths[0]).hints]
+        self.assertEqual(titles[-1], "from the parent sheet")
+
+    def test_quick_add_without_a_selection_uses_the_active_sheet(self):
+        self.quick_add()
+        self.assertEqual(self.window.form.sheet_id, "b")
+
+    def test_quick_add_falls_back_when_the_selected_sheet_is_gone(self):
+        self.paths[0].unlink()
+        self.daemon.store.reload(self.paths[0])
+        self.quick_add(self.paths[0])
+        self.assertEqual(self.window.form.sheet_id, "b")
+
     def test_saving_a_quick_add_leaves_edit_mode(self):
         # edit holds the keyboard; once the hint is written the user wants the app back (0021).
         self.daemon.on_edit_action(em.ADD, None)

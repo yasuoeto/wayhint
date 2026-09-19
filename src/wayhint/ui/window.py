@@ -575,7 +575,12 @@ class HintWindow(Gtk.Window):
 
     def _action_payload(self, action: str) -> dict | None:
         """Everything the daemon needs to act, taken from the selection (never from the file)."""
-        if action in (editmode.UNDO, editmode.EXIT_EDIT, editmode.ADD, editmode.FORM_PARENT):
+        if action == editmode.ADD:
+            # Where a new hint goes is decided by what the cursor is on (0025), and an empty
+            # list is still a fine place to press "a" from.
+            hint = self._selected()
+            return {} if hint is None else {"file": str(hint.location.file)}
+        if action in (editmode.UNDO, editmode.EXIT_EDIT, editmode.FORM_PARENT):
             return {}
         hint = self._selected()
         if hint is None:
@@ -786,11 +791,7 @@ class HintWindow(Gtk.Window):
     def open_form(self, draft: FormDraft) -> None:
         """Show the form for ``draft``: quick add when it has no ``hint_id``, else an edit."""
         self._form = draft
-        self._form_title.set_label(
-            self._tr("New hint")
-            if draft.hint_id is None
-            else f"{self._tr('Edit')}: {draft.hint_id}"
-        )
+        self._form_title.set_label(self._form_title_text(draft))
         for name, entry in self._entries.items():
             entry.set_text(draft.value(name))
         kind = draft.value("kind") or "shortcut"
@@ -846,10 +847,19 @@ class HintWindow(Gtk.Window):
     def toggle_form_parent(self) -> None:
         if self._form is not None and self._form.hint_id is None:
             self._form.to_parent = not self._form.to_parent
-            self._form_title.set_label(
-                f"{self._tr('New hint')}"
-                + (f" ({self._tr('to parent sheet')})" if self._form.to_parent else "")
-            )
+            self._form_title.set_label(self._form_title_text(self._form))
+
+    def _form_title_text(self, draft: FormDraft) -> str:
+        """Which hint is being edited, or which sheet a new one is about to land in.
+
+        Quick add writes into the sheet of the hint the cursor was on (0025) and ``Ctrl+P`` moves
+        it to the parent, so the target is worth saying out loud rather than leaving to memory.
+        """
+        if draft.hint_id is not None:
+            return f"{self._tr('Edit')}: {draft.hint_id}"
+        sheet_id = editmode.target_sheet_id(draft, self._ctx) if self._ctx else draft.sheet_id
+        sheet = self._sheets.get(sheet_id) if sheet_id else None
+        return f"{self._tr('New hint')} → {sheet.title if sheet else self._tr('a new sheet')}"
 
     def _selected(self) -> Hint | None:
         row = self._list.get_selected_row()

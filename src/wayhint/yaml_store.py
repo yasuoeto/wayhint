@@ -433,9 +433,7 @@ def load_sheet(path: Path) -> tuple[HintSheet | None, list[Issue]]:
     return sheet, issues
 
 
-def hints_dir(
-    root: Path, language: str = "auto", environ: Mapping[str, str] | None = None
-) -> Path:
+def hints_dir(root: Path, language: str = "auto", environ: Mapping[str, str] | None = None) -> Path:
     """Where the sheets for ``language`` live, under ``root`` (DECISIONS 0024).
 
     One language, one directory: ``hints/<lang>/`` when it exists, else ``hints/en/``, else the

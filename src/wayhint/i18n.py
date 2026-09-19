@@ -38,7 +38,7 @@ EN: dict[str, str] = {
     "Remark": "Remark",
     "New hint": "New hint",
     "inbox": "inbox",
-    "to parent sheet": "to parent sheet",
+    "a new sheet": "a new sheet",
     "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
         "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
     ),
@@ -85,7 +85,7 @@ JA: dict[str, str] = {
     "Remark": "補足",
     "New hint": "新しいヒント",
     "inbox": "未定義",
-    "to parent sheet": "親シートに追加",
+    "a new sheet": "新しいシート",
     "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
         "a 追加 · Enter 編集 · dd 削除 · u 取消 · f お気に入り · J/K 並び替え · Esc 終了"
     ),

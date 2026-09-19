@@ -226,7 +226,7 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 
 | key | 動作 |
 |---|---|
-| `a` | quick add フォームを開く |
+| `a` | quick add フォームを開く（追加先は選択中の hint の sheet、§3） |
 | `Enter` | 選択 hint の編集フォームを開く |
 | `d` `d` | 選択 hint を削除（1 回目で確認表示、2 回目で確定。他の key で取り消し） |
 | `u` | 直前に削除した 1 件を元の sheet 末尾に戻す（メモリ保持は 1 件、セッション限り） |
@@ -263,7 +263,10 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
 - 保存前に validation。失敗時はフォーム内にエラーを出し書かない（`edit` のまま、フォームも開いたまま）。
 - 保存に成功したらフォームを閉じ、`edit` を抜けて `normal` に戻る（§1 の表）。続けて追加するときは
   もう一度 `wayhint edit-mode` → `a`。
-- 追加先: active sheet。無ければ §7 で新規作成。混入 hint の編集は所属 sheet に書く。
+- 追加先: **選択中の hint の所属 sheet**（DECISIONS 0025）。一覧には親 sheet の hint が混ざるため、
+  見ているものと同じ sheet に入れる。未選択、または所属ファイルが消えていれば active sheet、
+  それも無ければ §7 で新規作成。`Ctrl+P` は追加先を親 sheet に切り替える。フォームの見出しに
+  追加先の sheet 名を出す。混入 hint の編集は所属 sheet に書く（0014 D9）。
 
 ### 4. 書き戻し（yaml_store）
 
@@ -450,6 +453,8 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T22b `f` を続けて 2 回 → favorite が付いて外れる。`J` を続けて 2 回 → 2 つ下まで動く
   **(2026-09-19 確認済)**
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
+- T23c 混入 hint（親 sheet）を選んで `a` → フォームの見出しが親 sheet になり、保存すると
+  親 sheet ファイルに追記される。未選択で `a` を押すと active sheet が追加先になる
 - T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と
   id の不一致が出る **(2026-09-19 確認済)**
 - T30 `appearance.language` を `ja` / `en` で切り替える（または `LANG` を変えて daemon を起動）

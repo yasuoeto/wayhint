@@ -48,8 +48,8 @@ from wayhint.yaml_store import (  # noqa: E402
     append_hint,
     build_hint,
     create_sheet,
-    hints_dir,
     delete_hint,
+    hints_dir,
     load_config,
     match_rule_for_context,
     read_document,
@@ -428,7 +428,7 @@ class Daemon:
             self.window.close_form()
             return
         if action == editmode.ADD:
-            self._open_quick_add(view)
+            self._open_quick_add(view, payload)
             return
         if action == editmode.OPEN_FORM:
             self._open_edit_form(view, payload)
@@ -489,6 +489,11 @@ class Daemon:
     def _sheet_by_id(self, sheet_id: str | None) -> HintSheet | None:
         return next((s for s in self.store.sheets if s.id == sheet_id), None)
 
+    def _sheet_by_path(self, file: Path | str | None) -> HintSheet | None:
+        if file is None:
+            return None
+        return next((s for s in self.store.sheets if s.path == Path(file)), None)
+
     def _stale_sheet(self, sheet_id: str | None) -> Path | None:
         """The sheet's path when it is shown as last-known-good, else ``None``."""
         sheet = self._sheet_by_id(sheet_id)
@@ -509,11 +514,19 @@ class Daemon:
         self.window.show_form_error(message)
         return stale is not None
 
-    def _open_quick_add(self, view: WorkspaceView) -> None:
-        """Quick add works even when the context has no sheet: the sheet is made on save."""
+    def _open_quick_add(self, view: WorkspaceView, payload: dict) -> None:
+        """Quick add writes into the sheet of the hint under the cursor (DECISIONS 0025).
+
+        The list mixes in hints from the parent sheet, so the sheet the user is looking at is the
+        selected hint's, not the context's active sheet. With nothing selected -- or a selection
+        whose file is gone -- it falls back to the active sheet, and a context with no sheet at
+        all still gets one made on save (§7).
+        """
         assert self.window is not None
         warning = None
-        sheet = self._sheet_by_id(view.context.active_sheet)
+        sheet = self._sheet_by_path(payload.get("file")) or self._sheet_by_id(
+            view.context.active_sheet
+        )
         if sheet is None:
             _match, warning = match_rule_for_context(view.context)
         draft = FormDraft(sheet_id=sheet.id if sheet else None, fields={"kind": "shortcut"})
