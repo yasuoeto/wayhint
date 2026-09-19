@@ -252,6 +252,12 @@ class Daemon:
             shown is not None, shown is not None and shown.target_key() == ctx.target_key()
         )
         if action == "hide":
+            if not self.window.is_shown():
+                # Recorded as open but off screen (a lost workspace watch, say). One press
+                # brings it back, the next one closes it, like any other show / hide pair.
+                log.info("hotkey on a hidden view: showing what was open again")
+                self._present(key, shown)
+                return {"visible": True, "sheet": shown.context.active_sheet}
             return self.hide()
         if action == "replace":
             log.info(
@@ -351,6 +357,8 @@ class Daemon:
             return {"ok": False, "error": message}
         view.mode = "edit"
         self.window.set_mode("edit")
+        if view.form is not None:  # a draft kept across an editor start (0023)
+            self.window.open_form(view.form)
         return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
 
     # --- edit mode actions -----------------------------------------------------------------
@@ -693,20 +701,24 @@ class Daemon:
         self._release_for_editor()
 
     def _release_for_editor(self) -> None:
-        """Get out of the way of the editor that was just started.
+        """Let the editor have the keyboard, and keep the hints on screen (0023).
 
-        ``search`` and ``edit`` hold the keyboard (EXCLUSIVE), so the editor would come up with
-        no way to type in it. Hiding drops the grab and keeps the mode and the draft, exactly as
-        the hotkey does during an edit (0014 D4): the overlay comes back unchanged. ``normal``
-        holds nothing, so the list stays on screen.
+        The editor is opened to curate a sheet, which is exactly when the result is worth
+        watching: the file monitor reloads what was written and the overlay shows it straight
+        away. So nothing is hidden. What has to go is the grab -- ``search`` and ``edit`` hold
+        the keyboard (EXCLUSIVE) and the editor would come up with no way to type in it -- so
+        those two end like Escape does, focus included. A draft that was open is kept and comes
+        back with the next ``edit-mode``. ``normal`` holds nothing, so it is left alone.
         """
         assert self.window is not None
         view = self._current_view()
         if view is None or view.mode == "normal" or not self.window.is_shown():
             return
-        self._sync_shown()
-        log.info("editor started: hiding the overlay so it can have the keyboard")
-        self.window.hide_overlay()
+        self._sync_shown()  # the window holds the live draft; keep it across the mode change
+        draft = view.form
+        log.info("editor started: leaving %s so it can have the keyboard", view.mode)
+        self._exit_edit_mode(view)
+        view.form = draft
 
     # --- workspace scoping -----------------------------------------------------------------
 

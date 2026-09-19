@@ -110,7 +110,7 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 |---|---|
 | 検索 | 検索欄を開く。もう一度押すか `Esc` で終了。編集中は無効なので、編集を終了してから検索する |
 | コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
-| エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用。検索中・編集モード中に押したときは overlay を隠す(keyboard を editor に渡すため。下書きは残り、次に出したとき戻る) |
+| エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用。overlay は出たままなので、editor で保存するたびに一覧が更新される(検索中・編集モード中に押すとそれらは終了する。keyboard を editor に渡すため。下書きは残り、次に編集モードへ入ると戻る) |
 | 編集 | 編集モードに入る。hint の追加・修正・削除・並べ替えを overlay の中で行う(キー割当は `docs/DESIGN.md` の「編集モード」。`wayhint edit-mode` でも入れる)。**フォームを保存すると編集モードは終わり**、keyboard が元のアプリに戻る(favorite・並べ替え・削除・取消は編集モードのまま続けられる) |
 | 閉じる | overlay を隠す |
 

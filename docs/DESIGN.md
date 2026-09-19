@@ -193,10 +193,11 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
   渡さず、検索ボタンを押しただけでは入力が下のアプリへ行ってしまう（labwc 0.20.2 で確認）。
 - `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
 - `edit` 中の hotkey は hide / show（0013 の例外）。
-- エディタ起動（`edit` / `search` 中の「エディタで編集」）は、起動に成功したら overlay を hide する。
-  EXCLUSIVE のままではエディタに入力できないため。モードと下書きは hide のときと同じく保持し、
-  次の show でそのまま戻る。起動に失敗したときは何も隠さずエラーを表示する。`normal` からの起動は
-  keyboard を持っていないので一覧を出したままにする。
+- エディタ起動（「エディタで編集」）では overlay を隠さない（DECISIONS 0023）。editor でキュレーション
+  した結果を、保存のたびに reload で見たいため。`edit` / `search` のときは Escape と同じ経路で `normal`
+  に戻し（keyboard_mode NONE、前の view へ focus 復帰）、editor が入力を受けられるようにする。`normal`
+  のときは何もしない。開いていた下書きは view に残し、次の `edit-mode` で開き直す。起動に失敗したときは
+  モードも変えずエラーを表示する。
 - 編集状態（モード、開いているフォーム、フォームの入力値、対象 hint id、追加先 sheet）は workspace ごとの context dict と同じ粒度で保持する。メモリのみ。
 - モード変更とフォームのキャンセルは daemon を経由し、UI はその状態を描画する。復帰先にフォームが
   無い場合も明示的に閉じ、他 workspace のフォームを残さない。編集中は検索ボタンを無効にし、
@@ -430,17 +431,21 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
   一覧へ出る(次の hotkey を待たない)。保存すると overlay は表示されたまま `normal` に戻り、
   元アプリへ入力できる。続けて追加するときは再度 `wayhint edit-mode` → `a`（同じ sheet に追記される）
+  **(2026-09-19 確認済)**
 - T17 `f` / `J` `K` など `edit` に留まる操作 → reload で overlay が閉じず、選択位置が保たれる。
   選択中の hint が画面外に出ていたら見える位置までスクロールする。一覧が画面に収まらないとき
   スクロールバーが出ている。フォーム保存の場合は `normal` に戻った一覧で同じことを確認する
+  **(2026-09-19 確認済)**
 - T18 gvim で開いたまま GUI 保存 → gvim に W11
 - T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない
 - T20 `#` 途中入力 + Tab → 補完
 - T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
 - T22 `d` `d` → 削除、`u` → 復帰
 - T22b `f` を続けて 2 回 → favorite が付いて外れる。`J` を続けて 2 回 → 2 つ下まで動く
+  **(2026-09-19 確認済)**
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
-- T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と id の不一致が出る
+- T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と
+  id の不一致が出る **(2026-09-19 確認済)**
 - T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
 - T25 角 / 辺の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き
   直しても、daemon を再起動しても同じサイズ **(2026-09-18 確認済)**
@@ -448,9 +453,10 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   1 行のほうが行の高さの中央に来る(overlay の幅を grip で変えて title を折り返させる)
   **(2026-09-18 確認済)**
 - T27 IME で変換中に `Tab` / `Ctrl+P` → 候補操作が効き、欄移動や親 sheet toggle に取られない。
-  確定後は従来どおり欄移動になる
-- T28 `edit` / `search` 中に「エディタで編集」→ overlay が隠れ、エディタで入力できる。
-  hotkey で戻すと下書きがそのまま残っている。エディタが起動できないときは隠れずエラーが出る
+  確定後は従来どおり欄移動になる **(2026-09-19 確認済)**
+- T28 「エディタで編集」→ overlay は出たまま、エディタに入力できる（`edit` / `search` から押した
+  ときは `normal` に戻る）。エディタで保存すると overlay の一覧がその場で更新される。開いていた
+  下書きは次の `wayhint edit-mode` で戻る。エディタが起動できないときはモードも変わらずエラーが出る
 - T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
   (回転できるモニタが要るため未実施)
 

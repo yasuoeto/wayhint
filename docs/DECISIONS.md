@@ -546,6 +546,47 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   自己書き込み reload は `normal` の一覧に対して走るが、`_after_reload` の選択復元はそのままでよい。
   フォーム下部のヘルプを「Enter 保存して終了」に変える（en/ja）。
 
+## 0022 — 「エディタで編集」はどのモードでも overlay を隠す
+
+- **Date**: 2026-09-19
+- **Status**: superseded by 0023
+- **Context**: F9 の修正で `edit` / `search` のときだけ overlay を隠すようにしたが（EXCLUSIVE grab の
+  ままではエディタに入力できないため）、`normal` では出したままだった。実機で使うと、同じボタンが
+  押したときのモード次第で違う動きをするのが分かりにくい。エディタを開くのは「このファイルを見に行く」
+  という操作で、overlay がエディタの上に残る必然性もない。
+- **Decision**: 起動に成功したら、どのモードでも overlay を hide する。モードと下書きは保持し、次の
+  hotkey で戻す。戻すときは同じ context なら開いていたものをそのまま再表示し、別 window から押された
+  ときは 0013 のとおり差し替える（hide 中に hotkey が来たら閉じるのではなく開く、を全モードに広げた）。
+  起動に失敗したときは隠さずエラーを表示する。
+- **Alternatives**: `normal` だけ出したままにする（現状。ボタンの意味がモードで変わる）; hide せず
+  grab だけ外す（`edit` / `search` でエディタに入力はできるが、overlay がエディタに被さったままになる）。
+- **Consequences**: エディタを閉じたあと hint を見るには hotkey を 1 回押す。**エディタの終了を検知して
+  自動で戻すことは、今の editor 設定（`gvim --remote-silent`）では実装できない**: すでに gvim が動いて
+  いれば起動したプロセスは即終了し、動いていなければそのプロセスが gvim 本体になるため、子プロセスの
+  終了は「エディタを閉じた」を意味しない。自動復帰が要るなら別の合図（保存による file monitor の
+  イベントなど）を選ぶ必要があり、未決のまま残す。
+
+## 0023 — 「エディタで編集」でも overlay は消さない（grab だけ外す）
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Supersedes**: 0022（および F9 で入れた「`edit` / `search` のときだけ hide する」挙動）
+- **Context**: 実機で使ってみると、外部 editor を開くのはほぼ sheet 全体のキュレーション作業で、
+  書き換えた結果をその場で確かめたい。overlay が消えていると、保存 → hotkey → 確認 → また editor、と
+  往復が増える。file monitor は保存を検知して reload するので、overlay が出てさえいれば結果は即座に
+  画面に出る。
+- **Decision**: 「エディタで編集」で overlay は隠さない。`search` / `edit` のときは Escape と同じ経路で
+  `normal` に戻し（keyboard_mode を NONE にして前の view へ focus を返す）、editor が入力を受けられる
+  ようにする。`normal` のときは何もしない。開いていた下書きは view に残し、次の `edit-mode` で開き直す。
+  シートが更新されたら（editor の保存を file monitor が拾ったら）表示中の overlay をその場で更新する
+  ——これは既存の reload 経路のままで、追加の仕組みは要らない。
+- **Alternatives**: 全モードで hide（0022。キュレーション中に結果が見えない）; hide したうえで editor の
+  終了を検知して戻す（`gvim --remote-silent` では子プロセスの終了が「editor を閉じた」を意味しないため
+  作れない。0022 の Consequences 参照）; grab を保ったまま出しっぱなし（editor に入力できない。F9）。
+- **Consequences**: editor で保存するたびに overlay の一覧が更新される（200ms の debounce のあと）。
+  overlay は editor の上に出たままなので、editor の窓が overlay と重なる位置にあると隠れる部分がある。
+  気になる場合は hotkey で消す。`search` / `edit` から押すと編集モードは終わる（下書きは保持）。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

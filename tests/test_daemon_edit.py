@@ -245,13 +245,33 @@ class DaemonEditTest(unittest.TestCase):
             self.daemon.edit(sheet, sheet.hints[0])
         return spawn
 
-    def test_starting_the_editor_frees_the_keyboard_and_keeps_the_draft(self):
+    def test_starting_the_editor_frees_the_keyboard_without_hiding_the_hints(self):
+        # Curating in the editor is when the result is worth watching, so the overlay stays;
+        # only the grab goes, or the editor would come up with no way to type in it (0023).
         self.action(em.OPEN_FORM)
         self.window.form.fields["title"] = "unsaved"
         self.open_the_editor()
-        self.assertFalse(self.window.visible)  # EXCLUSIVE would leave the editor unusable
-        self.assertEqual(self.view.mode, "edit")
-        self.assertEqual(self.view.form.value("title"), "unsaved")
+        self.assertTrue(self.window.visible)
+        self.assertEqual((self.view.mode, self.window.mode), ("normal", "normal"))
+
+    def test_a_draft_that_was_open_comes_back_with_edit_mode(self):
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.open_the_editor()
+        self.assertIsNone(self.window.form)
+        self.daemon.enter_edit_mode()
+        self.assertEqual(self.window.form.value("title"), "unsaved")
+
+    def test_what_the_editor_writes_shows_up_on_the_visible_overlay(self):
+        self.view.mode = "normal"
+        self.window.set_mode("normal")
+        self.paths[1].write_text(
+            "id: b\ntitle: b\nhints:\n  - {id: same, title: curated in the editor}\n"
+        )
+        self.daemon._debounced_reload(self.paths[1])
+        self.assertTrue(self.window.visible)
+        self.assertEqual(self.sheet(self.paths[1]).hints[0].title, "curated in the editor")
+        self.assertEqual([s.id for s in self.daemon.store.sheets], ["a", "b"])
 
     def test_an_editor_that_cannot_start_leaves_the_overlay_as_it_was(self):
         self.action(em.OPEN_FORM)
@@ -260,11 +280,26 @@ class DaemonEditTest(unittest.TestCase):
         self.assertTrue(self.window.messages[-1].startswith("⚠"))
         self.assertIsNotNone(self.window.form)
 
-    def test_the_normal_list_stays_on_screen_when_the_editor_starts(self):
+    def test_the_plain_list_is_left_alone_when_the_editor_starts(self):
         self.view.mode = "normal"
         self.window.set_mode("normal")
         self.open_the_editor()
         self.assertTrue(self.window.visible)
+        self.assertEqual(self.view.mode, "normal")
+
+    def test_a_hidden_view_is_brought_back_by_the_hotkey_rather_than_closed(self):
+        # Hidden but still recorded (the workspace watch was lost): one press shows it again.
+        class SameWindow:
+            def resolve(self, sheets, config):
+                return ResolvedContext(active_sheet="b")
+
+        self.daemon.resolver = SameWindow()
+        self.view.mode = "normal"
+        self.window.set_mode("normal")
+        self.window.hide_overlay()
+        self.daemon.toggle()
+        self.assertTrue(self.window.visible)
+        self.assertEqual(self.window.context.active_sheet, "b")
 
     def test_a_resize_that_cannot_be_written_is_reported_not_raised(self):
         # The drag ends inside a GTK callback: an OSError from the write would be a traceback
