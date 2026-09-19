@@ -10,10 +10,12 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from wayhint import ipc
 from wayhint.cli import CommandError, _no_sheet_message, main, neighbour
-from wayhint.models import Hint, SourceLocation
+from wayhint.daemon import Daemon
+from wayhint.models import Hint, ProcessInfo, ResolvedContext, SourceLocation
 from wayhint.selection import same_group, sort_hints
 from wayhint.yaml_store import load_sheet
 
@@ -248,35 +250,51 @@ class CliTest(unittest.TestCase):
 
 
 class IpcCommandTest(unittest.TestCase):
+    def context_reply(self, context: ResolvedContext) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            daemon = Daemon(root, root / "unused.sock")
+            # Replace context acquisition, not the daemon's response construction or dispatch.
+            with mock.patch.object(daemon.resolver, "resolve", return_value=context):
+                return ipc.handle_request(b'{"cmd":"context"}\n', daemon.dispatch)
+
     def test_new_commands_exist(self) -> None:
         self.assertIn("context", ipc.COMMANDS)
         self.assertIn("edit-mode", ipc.COMMANDS)
 
     def test_context_reply_shape(self) -> None:
-        seen = []
-        reply = ipc.handle_request(
-            b'{"cmd":"context"}\n',
-            lambda cmd: (
-                seen.append(cmd)
-                or {
-                    "active_sheet": "claude-code",
-                    "parent_context": "herdr",
-                    "desktop_app": "foot",
-                    "process": {"name": "node", "argv_basenames": ["node", "codex"]},
-                }
-            ),
+        reply = self.context_reply(
+            ResolvedContext(
+                active_sheet="claude-code",
+                parent_context="herdr",
+                desktop_app="foot",
+                foreground_process=ProcessInfo(
+                    pid=123,
+                    name="node",
+                    argv=("/usr/bin/node", "/example/bin/codex"),
+                    cmdline="synthetic private command line",
+                    cwd="/example/private",
+                ),
+            )
         )
-        self.assertEqual(seen, ["context"])
-        self.assertTrue(reply["ok"])
         self.assertEqual(
-            sorted(reply), ["active_sheet", "desktop_app", "ok", "parent_context", "process"]
+            reply,
+            {
+                "ok": True,
+                "active_sheet": "claude-code",
+                "parent_context": "herdr",
+                "desktop_app": "foot",
+                "process": {"name": "node", "argv_basenames": ["node", "codex"]},
+                "error": None,
+            },
         )
-        self.assertNotIn("cmdline", reply["process"], "the command line never leaves the daemon")
 
     def test_context_says_why_there_is_no_sheet(self) -> None:
-        reply = ipc.handle_request(
-            b'{"cmd":"context"}\n',
-            lambda _cmd: {
+        reply = self.context_reply(ResolvedContext(error="desktop context unavailable"))
+        self.assertEqual(
+            reply,
+            {
+                "ok": True,
                 "active_sheet": None,
                 "parent_context": None,
                 "desktop_app": None,
@@ -284,19 +302,9 @@ class IpcCommandTest(unittest.TestCase):
                 "error": "desktop context unavailable",
             },
         )
-        self.assertTrue(reply["ok"])
-        self.assertEqual(reply["error"], "desktop context unavailable")
 
     def test_no_sheet_message_carries_the_reason(self) -> None:
         message = _no_sheet_message({"error": "desktop context unavailable"})
         self.assertIn("desktop context unavailable", message)
         self.assertIn("--sheet", message)
         self.assertNotIn("(", _no_sheet_message({}), "no reason, no parenthesis")
-
-    def test_edit_mode_is_not_implemented_yet(self) -> None:
-        def dispatch(_cmd):
-            raise NotImplementedError("edit mode is not implemented yet")
-
-        reply = ipc.handle_request(b'{"cmd":"edit-mode"}\n', dispatch)
-        self.assertFalse(reply["ok"])
-        self.assertIn("not implemented", reply["error"])

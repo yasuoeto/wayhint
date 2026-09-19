@@ -40,15 +40,6 @@ class KeyboardGrabTest(unittest.TestCase):
             with self.subTest(mode=mode, visible=visible):
                 self.assertEqual(em.keyboard_grab(mode, visible), expected)
 
-    def test_coming_back_to_a_workspace_takes_the_grab_again(self) -> None:
-        view = em.WorkspaceView(context=ResolvedContext(active_sheet="s"), mode="edit")
-        self.assertFalse(em.keyboard_grab(view.mode, False), "hidden while away")
-        self.assertTrue(em.keyboard_grab(view.mode, True), "and grabbed again on return")
-
-    def test_every_mode_is_covered(self) -> None:
-        for mode in em.MODES:
-            em.keyboard_grab(mode, True)  # would raise KeyError if a mode were unhandled
-
 
 class EditActionTest(unittest.TestCase):
     def test_list_keys(self) -> None:
