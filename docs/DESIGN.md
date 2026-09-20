@@ -450,8 +450,17 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   (bash/claude/codex/`node /path/to/codex`)。nested: Herdr+Claude → Claude sheet + tag 交差の
   Herdr hints。favorite は影響しない。
 - **実機**(§69–§73): 自動化しない。下の手動チェックリストで確認する。
+- **contract tests**: resolver と**実物の** provider を繋ぐ。fake だけで固めていると、provider の
+  signature が resolver の呼び出しと食い違っても全部通ってしまう(resolver の `except Exception` が
+  `TypeError` を飲むため、実機では黙って答えなくなるだけになる)。nested 側は
+  `tests/test_context.py` の `RealProviderContractTest`、desktop 側は
+  `tests/test_desktop_providers.py`。
+- **adapter tests**(`tests/test_desktop_providers.py`): signature と「compositor が無いときに
+  `ContextError` になること」はヘッドレスで常に走る。compositor があるセッションでは、実際に
+  接続して snapshot / `find_output` の形と、GTK + gtk4-layer-shell の typelib が DECISIONS 0009 の
+  順で読めること(子プロセスで `_load_gui()`)まで確認する。無ければ skip する。
 - `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
-  テストから分離し、ヘッドレスでも通るようにする。
+  テストから分離し、ヘッドレスでも通るようにする(実機が要るものは skip。上の adapter tests)。
 - daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の
   境界を fake にし、実際の daemon / SheetStore / YAML 保存を通して対象ファイルと編集状態を検証する。
 
