@@ -165,6 +165,7 @@ class ResolvedContext:
     foreground_process: ProcessInfo | None = None
     active_sheet: str | None = None
     error: str | None = None  # e.g. desktop context unavailable; shown in the overlay
+    chain: tuple[str, ...] = ()  # nested providers consulted, in order; for `wayhint context`
 
     def target_key(self) -> tuple:
         """What the overlay ends up showing, for deciding whether a new context replaces it.

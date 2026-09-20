@@ -28,9 +28,7 @@ def sheet(
         parent_tags=parent_tags,
         include=tuple(include),
         # A hint knows the file it lives in; that is what tells two sheets' hints apart.
-        hints=tuple(
-            replace(h, location=SourceLocation(path, i + 1)) for i, h in enumerate(hints)
-        ),
+        hints=tuple(replace(h, location=SourceLocation(path, i + 1)) for i, h in enumerate(hints)),
     )
 
 

@@ -14,7 +14,7 @@ compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
                                                         │ show/refresh
                                                         ▼
                                               ContextResolver
-                     WaylandContextProvider(foreign-toplevel)→ HerdrContextProvider
+                     WaylandContextProvider(foreign-toplevel)→ ProcAdapter / HerdrContextProvider
                      (fallback: WayfireContextProvider)
                                                         │ ResolvedContext
                                                         ▼
@@ -31,7 +31,24 @@ compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
   V1では常に false。
 - **event-driven**: idle polling なし。file 監視は Gio.FileMonitor。
 - **plugin system は作らない**: `NestedContextProvider` interface だけ用意し、V1 実装は
-  `HerdrContextProvider` のみ。将来 Tmux/SSH/EditorMode を同 interface で追加できる。
+  `ProcAdapter` と `HerdrContextProvider` の 2 つ。判定材料で 2 群に分かれる —
+  **terminal introspection**(app_id を見て自分で foreground process を探す: `ProcAdapter`)と
+  **nested resolver**(host application に聞く: `HerdrContextProvider`)— が interface は共通で、
+  ContextResolver は登録順に `applies_to` を問い、最初に当たった 1 つに `foreground_process(app_id)`
+  を聞く。登録順を決める場所は `daemon._nested_providers()` の 1 か所。多段解決
+  (terminal → multiplexer → command)は DECISIONS 0027 で見送った。将来 Tmux/SSH/EditorMode を
+  同 interface で追加できる。
+- **窓 → プロセスは app_id の接尾辞で解く**: Wayland の protocol も labwc も toplevel の pid を
+  client に渡さないので、同じ端末の窓が 2 枚あると `/proc` だけでは区別できない。窓の側が
+  `--app-id foot.p<pid>` と名乗る規約にして、compositor が返す app_id から pid を読み戻す
+  (`matcher.strip_pid_suffix`、DECISIONS 0027)。接尾辞が無い app_id では、その端末の
+  プロセスが 1 つのときだけ答える。sheet の照合・生成と overlay の表示は接尾辞を外した base を
+  使い、`ResolvedContext.desktop_app` には接尾辞付きのまま入れる(窓が違えば context も違う)。
+  sheet の照合は `app_specificity` が app_id と base の**両方**を候補にする(接尾辞付きの窓が
+  `^foot$` の sheet に当たる。base だけにしないのは、たまたま `.p<数字>` で終わる app_id 向けの
+  rule を壊さないため)。前面プロセスは **pty ごとに 1 つ**存在するので、端末の子孫に複数の tty が
+  見つかったら(tab / split / tmux)深さや PID で推測せず**無判定**にする。
+  端末と launcher の設定手順は `docs/TERMINALS.md`。
 
 ## Modules
 
@@ -57,6 +74,7 @@ src/wayhint/
   context/workspace.py            pywayland 隔離: ext-workspace-v1 で active workspace 監視、toggle/切替の判定
   models.py の ResolvedContext.target_key()  overlay が何を出しているかの比較キー(title は含めない)
   context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
+  context/proc.py                 /proc 隔離: terminal の子孫から foreground process(pgrp == tpgid)
   context/process.py              ProcessInfo 正規化
   ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決、
                                   resize_delta(掴んだ角の drag → 新サイズ)(純粋、テスト対象)
@@ -175,7 +193,11 @@ hints:
   呼び、その workspace の entry を落とす。`HintWindow.hide_overlay` は surface を隠すだけで、
   workspace 切り替えで隠すときに使う。
 - **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
-  し、adapter 内部で吸収する。
+  し、adapter 内部で吸収する。**前提**: adapter が選ばれるのは app_id が `app_id_pattern`
+  (既定 `herdr`、部分一致)に当たる窓だけで、これは config ではなく `HerdrContextProvider` の
+  既定値。`herdr.yaml` の `app_id_regex` と対になっており、どちらも満たさない窓
+  (素の kitty で `herdr` を起動した、など)は `/proc` 経路に落ちて「`herdr` というプロセスが
+  動いている」までしか分からない。その状態は `proc.SELF_REPORTING` の判定で INFO ログに出す。
 - **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。開く場所は
   `edit_target(sheet, hint)`(純粋、テスト対象)が決める。**hint を選んでいるときは hint の
   `location` が sheet より優先する**: nested 表示では親 sheet の hint が一覧に混ざるため、active
@@ -327,8 +349,9 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 - path: `~/.config/wayhint/hints/<lang>/<slug>.yaml`(表示中の言語のディレクトリ、0024)。slug は app 名 / process 名から。sheet id 衝突時 `-2`。
 - 内容: 先頭コメント（生成日時、`desktop_app`、`parent_context`、`foreground_process.name`、採用した regex）、`editor.schema_modeline` が true なら、先頭に `# yaml-language-server: $schema=<editor.schema_path を展開した絶対 path>` を付ける、`id` `title` `priority`（既定）`match` `hints: [first_hint]`。
 - `match` の生成:
-  - `parent_context is None` → app_id 一致
-  - `parent_context` あり、`active_sheet` が親と異なる状況で process により子を作る → `process.argv_regex: ["^<name>$"]`
+  - `foreground_process is None` → app_id 一致
+  - `foreground_process` あり → `process.argv_regex: ["^<name>$"]`。判定材料は `parent_context` ではなく foreground process:
+    terminal は自分用の sheet を持たないのが普通で（`parent_context` が `null`）、その app_id から作った rule はその terminal で動かす全コマンドに当たってしまう（0027）
   - `name` が汎用名（定数 `GENERIC_PROCESS_NAMES`。`matcher.py` に置く）→ `argv[1:]` の basename を候補にする（候補生成は matcher の `process_candidates` / `argv_basenames` と同じ規則）。`-` で始まる引数（オプション）は候補から除く。非汎用の候補が無ければフォームに警告
   - app_id 一致の regex は `re.escape` した完全一致（例 `^org\.inkscape\.Inkscape$`）
   - 警告は `match_rule_for_context` の戻り値で返し、UI / CLI がそれを表示する
@@ -367,7 +390,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 
 | cmd | 応答 |
 |---|---|
-| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
+| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
@@ -494,6 +517,14 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   **(2026-09-19 確認済)**
 - T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
   (回転できるモニタが要るため未実施)
+- T36 `foot.p$$` で起動した foot 上で `vi` 実行中に hotkey → vi 用 sheet が選ばれ、
+  `wayhint context` の `chain` に `ProcAdapter`、process name に `vi` が出る。foot 窓を 2 枚開いても
+  フォーカス中の窓の process が取れる。`desktop_app` は `foot.p<pid>`、overlay の context ラベルは
+  接尾辞の無い `foot`。foot 用 sheet は書かなくてよい(`parent_context` は `null`)
+- T37 wrapper を通さず起動した端末の窓が 2 枚以上あるとき → `chain` に `ProcAdapter` は入るが
+  process は `null`（無判定）。1 枚だけのときは解決する。
+  **foot では確認できない**: Herdr の窓を `foot --app-id=foot-herdr` で動かしている限り foot の
+  プロセスは常に 2 つ以上あり、「1 枚だけ」の状態を作れない。別の端末（ghostty 等）で確認する
 
 ## Known limits and future work
 

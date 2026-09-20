@@ -84,7 +84,8 @@ class HerdrContextProvider:
         pane_id = pane.get("pane_id") if isinstance(pane, Mapping) else None
         return pane_id if isinstance(pane_id, str) and pane_id else None
 
-    def foreground_process(self) -> ProcessInfo | None:
+    def foreground_process(self, app_id: str | None = None) -> ProcessInfo | None:
+        # ``app_id`` only picks the provider; Herdr answers for its own focused pane.
         pane_id = self.focused_pane_id()
         if pane_id is None:
             return None

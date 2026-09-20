@@ -21,7 +21,9 @@ from pathlib import Path
 
 from wayhint import ipc  # noqa: E402
 from wayhint.config import GlobalConfig, config_dir  # noqa: E402
+from wayhint.context.base import NestedContextProvider  # noqa: E402
 from wayhint.context.herdr import HerdrContextProvider  # noqa: E402
+from wayhint.context.proc import ProcAdapter  # noqa: E402
 from wayhint.context.resolver import ContextResolver  # noqa: E402
 from wayhint.context.select import select_desktop_provider  # noqa: E402
 from wayhint.context.workspace import (  # noqa: E402
@@ -66,6 +68,18 @@ log = logging.getLogger("wayhintd")
 DEBOUNCE_MS = 200
 
 
+def _nested_providers() -> list[NestedContextProvider]:
+    """The nested providers, in the order the resolver asks them. The only place that order lives.
+
+    Two groups, one interface (``context/base.py``). The first one whose ``applies_to`` answers
+    for the active ``app_id`` decides, so the more specific entry comes first:
+
+    * terminal introspection (finds the foreground process itself): ``ProcAdapter``
+    * nested resolver (asks the host application): ``HerdrContextProvider``
+    """
+    return [ProcAdapter(), HerdrContextProvider()]
+
+
 def _load_gui() -> None:
     """Load GUI dependencies only when starting the application, not the controller tests."""
     global Gio, GLib, GLibUnix, Gtk, LayerShell, HintWindow, style
@@ -99,7 +113,7 @@ class Daemon:
         self.config_issues: list[Issue] = []
         self.store = SheetStore(hints_dir(root, self.config.language), self.config.include)
         self.desktop = select_desktop_provider(self.config.context_backend)
-        self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
+        self.resolver = ContextResolver(self.desktop, _nested_providers())
         self._backend = self.config.context_backend
         self.window: HintWindow | None = None
         self._watcher: WorkspaceWatcher | None = None
@@ -169,7 +183,7 @@ class Daemon:
         if self.config.context_backend != self._backend:
             self._backend = self.config.context_backend
             self.desktop = select_desktop_provider(self._backend)
-            self.resolver = ContextResolver(self.desktop, [HerdrContextProvider()])
+            self.resolver = ContextResolver(self.desktop, _nested_providers())
         if self.store.global_include != self.config.include:
             self.store.global_include = self.config.include
             self.store.resolve()
@@ -357,6 +371,8 @@ class Daemon:
             ),
             # Which sheets are mixed into this one, so the CLI can say where a hint came from.
             "include": [s.id for s in self.store.includes_for(self._sheet_by_id(ctx.active_sheet))],
+            # Which nested providers were asked, in order: how the process above was arrived at.
+            "chain": list(ctx.chain),
             "error": ctx.error,  # why there is no sheet, when there is none
         }
 

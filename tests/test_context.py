@@ -69,9 +69,23 @@ class FakeHerdr:
     def applies_to(self, app_id):
         return app_id == self.applies
 
-    def foreground_process(self):
+    def foreground_process(self, app_id=None):
         if self.raise_:
             raise RuntimeError("boom")
+        return self.proc
+
+
+class FakeProc:
+    """Stands in for ProcAdapter: a terminal app_id, and the command running in it."""
+
+    def __init__(self, proc, applies="foot"):
+        self.proc, self.applies = proc, applies
+
+    def applies_to(self, app_id):
+        return app_id == self.applies
+
+    def foreground_process(self, app_id=None):
+        self.seen = app_id  # the resolver hands over what applies_to was asked about
         return self.proc
 
 
@@ -138,6 +152,52 @@ class ResolverTest(unittest.TestCase):
             FakeDesktop(snap("org.inkscape.Inkscape")), [FakeHerdr(proc(["claude"]))]
         )
         self.assertEqual(r.resolve(SHEETS, self.cfg).active_sheet, "inkscape")
+
+    def test_a_terminal_without_a_sheet_still_resolves_its_foreground_process(self) -> None:
+        """foot has no sheet of its own; the command running in it is what the user wants (0027).
+
+        The nested provider is asked because the ``app_id`` says a terminal is in front, not
+        because somebody wrote hints for that terminal.
+        """
+        vi = sheet("vi", argv=["^vi$"])
+        provider = FakeProc(proc(["vi", "notes.txt"]), applies="foot.p42")
+        ctx = ContextResolver(FakeDesktop(snap("foot.p42")), [provider]).resolve(
+            [*SHEETS, vi], self.cfg
+        )
+        self.assertEqual(provider.seen, "foot.p42")  # the app_id carries the window's pid (0027)
+        self.assertEqual(ctx.active_sheet, "vi")
+        self.assertIsNone(ctx.parent_context)  # no desktop sheet means no parent to filter by
+        self.assertEqual(ctx.chain, ("FakeProc",))
+        self.assertEqual(ctx.foreground_process.name, "vi")
+
+    def test_a_window_with_a_pid_suffix_matches_the_terminals_own_sheet(self) -> None:
+        """``docs/TERMINALS.md`` promises ``app_id_regex: ["^foot$"]`` keeps working (0027).
+
+        The suffix identifies the window, so it stays in ``desktop_app``; it is not part of what
+        the sheet is written against, so it must not reach the match.
+        """
+        foot = sheet("foot", app=["^foot$"])
+        vi = sheet("vi", argv=["^vi$"])
+        sheets = [*SHEETS, foot, vi]
+
+        ctx = ContextResolver(FakeDesktop(snap("foot.p42"))).resolve(sheets, self.cfg)
+        self.assertEqual(ctx.active_sheet, "foot")
+        self.assertEqual(ctx.desktop_app, "foot.p42")
+
+        provider = FakeProc(proc(["vi"]), applies="foot.p42")
+        nested = ContextResolver(FakeDesktop(snap("foot.p42")), [provider]).resolve(
+            sheets, self.cfg
+        )
+        self.assertEqual((nested.active_sheet, nested.parent_context), ("vi", "foot"))
+
+    def test_the_chain_records_the_provider_that_was_asked(self) -> None:
+        """Including one that answered nothing: the chain says where to look, not what was found."""
+        providers = [FakeProc(None), FakeHerdr(proc(["claude"]))]
+        ctx = ContextResolver(FakeDesktop(snap("foot")), providers).resolve(SHEETS, self.cfg)
+        self.assertEqual(ctx.chain, ("FakeProc",))  # the first match decides; Herdr is not asked
+        self.assertIsNone(ctx.active_sheet)
+        bare = ContextResolver(FakeDesktop(snap("foot"))).resolve(SHEETS, self.cfg)
+        self.assertEqual(bare.chain, ())
 
     def test_output_fallback_chain(self) -> None:
         r = ContextResolver(FakeDesktop(snap("foot", output=None, focused=DP2)))

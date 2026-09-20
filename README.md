@@ -94,6 +94,33 @@ wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
 手動で試すときは `wayhintd -v`(前景、info ログ。選ばれた backend が `desktop backend:` で出る)。
 `wayhint ping` で応答を確認する。
 
+## Terminal の複数窓
+
+端末の窓が 2 枚以上あるとき、wayhint は**どの窓が前面か**を知る必要がある。ところが Wayland の
+protocol にも labwc にも「この窓を描いているのはどのプロセスか」を答える口が無い。そこで
+**窓の側が app_id で名乗る**規約にしている ―― app_id の末尾が `.p<pid>` なら、wayhint はその
+数字を端末プロセスの PID として使う。
+
+```sh
+#!/bin/sh
+# ~/.local/bin/foot-wayhint
+exec /usr/bin/foot --app-id "foot.p$$" "$@"
+```
+
+この wrapper を作り、**端末を起動している経路すべて**(compositor の keybind、bar の
+ショートカット、ルートメニュー、`.desktop`)をそこに向ける。接尾辞は wayhint が外してから扱う
+ので、sheet の `app_id_regex` は `["^foot$"]` のままでよい。
+
+対応端末は foot / kitty / Ghostty(それぞれ条件あり)と Herdr(**窓の app_id に `herdr` を
+含めること**。`foot --app-id=foot-herdr` のような起動が前提)。WezTerm は窓ごとに
+app_id を変えられないため対象外。wrapper を通さない窓でも、その端末のプロセスが 1 つだけなら
+従来どおり解決する。
+
+
+bar や compositor の設定だけは表示するだけで書き換えない(手で保守しているファイルのため)。
+**端末ごとの条件、launcher の配線、効いているかの確認方法は
+[`docs/TERMINALS.md`](docs/TERMINALS.md)。**
+
 ## overlay の使い方
 
 hotkey は「いま見ているものの hint」を意味する。押すと表示し、同じ hint が出ている状態でもう一度
@@ -149,6 +176,7 @@ hotkey に割り当てるのは `toggle`。
 | `reload` | `config.yaml` と使用中の `hints/<言語>/*.yaml` を読み直す |
 | `ping` | daemon の生死確認。pid と読み込み済み sheet 数を返す |
 | `validate` | YAML を検証する。daemon を必要としない唯一の command。問題があれば exit 1 |
+| `context` | daemon が今どう context を解決するかを表示する(下の例) |
 | `edit-mode` | 編集モードに入る(表示中でなければ表示してから)。編集モード中に呼ぶと抜ける |
 | `add TITLE` | hint の追加 |
 | `edit ID` | hint の編集 |
@@ -160,6 +188,24 @@ hotkey に割り当てるのは `toggle`。
 
 `validate` は `--config-dir`、それ以外は `--socket` で既定の場所を上書きできる。
 daemon 側は `wayhintd -v` で info ログを前景に出す。
+
+`context` は「なぜこの sheet が出たのか」を確かめるためのもの。値の入っている項目だけを
+`key=value` で並べる。foot 上で vi を動かしているときはこうなる:
+
+```
+$ wayhint context
+active_sheet=vi desktop_app=foot.p12345 chain=['ProcAdapter'] \
+  process={'name': 'vi', 'argv_basenames': ['vi', 'notes.txt']}
+```
+
+(実際は 1 行で出る。空の項目 — この例では `parent_context` や `include` — は省かれる)
+
+`chain` は foreground process を探すのに使った adapter の並び。terminal 用の sheet を書いて
+いなくても(`parent_context` が `null`)、その中で動いているコマンドの sheet が選ばれる。
+`chain` が空なら adapter は 1 つも当たっていない(その app は terminal とみなされていない)、
+`chain` はあるのに `process` が `null` なら adapter が答えを出せなかった(「Terminal の複数窓」の
+規約に乗っていない窓が複数あるなど、確実に決められないときは黙る)。`desktop_app` の
+`.p12345` は窓の識別子で、sheet の照合や overlay の表示には使われない。
 
 hint を書き換える command は daemon を経由せず自分でファイルに書く。`--sheet ID` を省略すると
 現在の context の sheet が対象になる。
@@ -264,12 +310,21 @@ sheet は言語ごとのディレクトリに置く。**表示に使う言語の
 ### どの sheet が選ばれるか
 
 sheet は `match` で選ぶ。`match.wayland.app_id_regex` は window の app_id に、
-`match.process.argv_regex` と `cmdline_regex` は Herdr の focused pane の foreground process に
+`match.process.argv_regex` と `cmdline_regex` は terminal の中で動いている foreground process に
 当たる。どれも Python の正規表現で、部分一致。
 
+foreground process を誰が答えるかは window の app_id で決まる。Herdr は自分で答えるが、
+そのためには**窓の app_id に `herdr` が含まれている必要がある**(`herdr.yaml` の `app_id_regex` と
+同じ前提。詳細は「Terminal の複数窓」から辿る `docs/TERMINALS.md`)。foot / footclient は
+答えないので wayhint が `/proc` を辿り、
+端末の子孫のうち tty の前面に居るプロセスを採る。**端末の窓が 2 枚以上あるときは
+「Terminal の複数窓」の起動規約が要る**。規約に乗っていない窓が複数あるときは、どれか
+決められないので何も答えない(間違った sheet を出すより出さない)。
+
 複数の sheet が当たったときは `priority` の大きい方、同じなら当たった pattern の数が多い方、
-それも同じならファイル名順。app_id が分かる window の中で Herdr のように別プロセスが動いている
-場合は、window の sheet が親、process の sheet が子になる。
+それも同じならファイル名順。window の sheet と process の sheet が両方当たった場合は、window の
+sheet が親、process の sheet が子になる。terminal 用の sheet を書いていなくてもよく、その場合は
+親が無いのでコマンドの sheet の hint だけが出る。
 
 ### 親 sheet の hint を混ぜる
 
@@ -354,6 +409,7 @@ editor:
 | `docs/PRODUCT.md` | 要件 |
 | `docs/DESIGN.md` | 設計 |
 | `docs/DECISIONS.md` | 決定の記録 |
+| `docs/TERMINALS.md` | terminal emulator と launcher の設定 |
 | `examples/` | config.yaml と sheet の雛形 |
 | `scripts/` | `setup`、`check`、この repository 専用の agent hook |
 | `.agents/skills/` | agent 間で共有する skill |

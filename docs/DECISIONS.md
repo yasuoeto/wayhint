@@ -654,6 +654,127 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   quick add の追加先は選択中の hint の sheet(0025)のまま。`Issue` に severity が入ったので、
   `wayhint validate` は error のときだけ exit 1 になる。
 
+## 0027 — terminal の foreground process は `/proc` から取り、nested 解決は desktop sheet の有無から切り離す
+
+- **Date**: 2026-09-19
+- **Status**: accepted
+- **Context**: nested context を答えられるのは Herdr だけで、foot のような素の terminal
+  emulator では「端末の窓」以上のことが分からなかった。端末は自分が何を動かしているかを
+  外に教えないが、`/proc` には答えがある——端末の子孫のうち、tty の foreground process group
+  (`pgrp == tpgid`)に居るものが、まさにユーザーが今触っているコマンドである。
+  同時に 2 つの前提が表面化した。(1) `ContextResolver` は **desktop sheet がある時しか**
+  nested provider を呼んでいなかった。Herdr には `herdr.yaml` が必ずあるので今まで当たらなかった
+  制約だが、terminal 用の sheet を書く人はまずいないので ProcAdapter は一度も走らないことになる。
+  (2) `match_rule_for_context` が `parent_context is None` を「app_id で決まった」の判定に
+  使っていたため、foot 上で quick add すると foot の app_id に一致する sheet が生成されてしまう。
+- **Decision**: `context/proc.py` に `ProcAdapter` を足す(現行の `NestedContextProvider`
+  interface のまま。`applies_to` は `TERMINAL_APP_IDS = {"foot", "footclient"}` の定数、
+  `foreground_process` は `/proc` を pathlib で直読みし、subprocess は使わない)。
+  nested 解決は **app_id が何かだけで決める**——`ContextResolver` から
+  「desktop sheet がある時だけ」の条件を外し、`parent_context` は desktop sheet がある時だけ
+  入るようにする。`match_rule_for_context` と `create_sheet` の判定材料を `parent_context` から
+  `foreground_process` に変える。登録順を決める場所は `daemon.nested_providers()` の 1 か所に
+  まとめ、2 群(terminal introspection / nested resolver)をそこにコメントで書く。
+  IPC `context` に `chain`(問い合わせた provider のクラス名、順番どおり)を足す。
+  `/proc` を読むのはこの 1 module だけ(AGENTS.md の隔離規則に追記)。
+- **Alternatives**: **`NestedContextProvider` を `supports(ctx)` / `resolve(ctx)` に作り替え、
+  resolver を深さ付きループにする**——`foot → tmux → herdr → claude` のような多段を将来
+  まかなえるが、今要る 2 つの provider はどちらも「app_id を見て foreground process を返す」
+  だけで現行の契約に収まり、多段の要求はまだ無い。interface の作り替えは実際に多段が必要に
+  なった時点で行う(それまでは 1 段固定、`chain` は 0 か 1 要素)。
+  **terminal ごとの専用 adapter**(WezTerm / Kitty / foot の control protocol)——`/proc` で
+  足りるかを実機で見てから判断する。
+  **ShellIntegration による title 解釈**——title は将来の tie-break 用途に留める。
+  **Tmux / Ssh resolver**——多段 interface が要るので上と同じ理由で見送り。
+  **`HerdrContextProvider.applies_to` を foreground process 名でも真にする**——多段が前提の
+  変更なので今回は入れない。2026-09-20 の実機確認でこれが効く場面が出た: 素の kitty / Ghostty で
+  `herdr` を起動すると app_id が `herdr` を含まないので Herdr 経路に乗らず、`/proc` 経路が
+  「`herdr` というプロセスが動いている」までしか答えない。当面は**窓の app_id 側に `herdr` を
+  入れる運用**で回避し(`docs/TERMINALS.md` の Herdr 節)、気づけるように
+  `proc.SELF_REPORTING` で INFO ログを 1 行出すだけにした。多段を入れても Herdr の
+  `focused: true` はセッション全体で 1 つなので、窓が 2 枚あるときに正しくなる保証は無い
+  (0028 の `[要判断]`)。そこを測ってから判断する。
+  **`TERMINAL_APP_IDS` を config 化**——項目の条件は「子孫としてコマンドを動かす terminal
+  emulator である」という program の性質で、好みではない。
+  **foot の server モード(1 プロセス多窓)で窓を絞り込む**——`/proc` だけでは窓とプロセスを
+  対応付けられない。同名プロセスが 2 つ以上あれば**無判定**(`None`)で返す。誤った sheet は
+  sheet が出ないことより悪い。窓の絞り込みが要るなら terminal 専用 adapter とセットで再考する。
+  **examples に foot 用 sheet を置いて guard を残す**——sheet を書いたかどうかで context の
+  判定が変わるのは原則(context は正しく判定する)に反する。
+- **Decision(追記 2026-09-20、実機確認を受けて)**: 当初の「同名 process が 1 つでなければ無判定」は
+  実機で一度も発火しなかった。作者の機械では foot の窓が常時 3〜4 枚あり、Herdr の窓も
+  `--app-id=foot-herdr` の foot なので `comm` は同じ `foot` になる。terminal は複数窓が前提である、
+  が正しい前提だった。調査した結果、**labwc では focus 中の toplevel の pid を知る手段が無い**
+  ことが確定した——`zwlr_foreign_toplevel_manager_v1`(v3) にも `ext_foreign_toplevel_list_v1` にも
+  pid は無く(実機の `wayland-info` で確認)、labwc 0.20.2 に IPC は無く(`--help` / man で確認)、
+  foot にも問い合わせ口が無い。そこで **窓の側が名乗る規約**にする:
+  launcher が `exec foot --app-id "foot.p$$"` の形で起動し、adapter は compositor が返す app_id から
+  `\.p(\d+)$` で pid を読み戻す(`matcher.APP_ID_PID_RE` / `strip_pid_suffix`。純粋なので
+  `yaml_store` からも使える)。読み戻した pid は `comm` と照合してから使う——窓が閉じれば app_id は
+  誰のものでもなくなり、その番号は別のプロセスに再利用されるため。照合規則は
+  「base そのもの、または base の最後のドット要素」の 1 つにまとめ(`_is_process_of`)、接尾辞が
+  無い app_id のときの「その端末の process が 1 つだけか」の判定にも同じ関数を使う
+  (`com.mitchellh.ghostty` の `comm` は `ghostty`。`comm` は 15 文字で切れるので reverse-DNS 形は
+  そもそも全体一致しない)。`NestedContextProvider.foreground_process` に
+  `app_id: str | None = None` を足す(既定値付きなので既存の呼び出しは無変更)。
+  `ResolvedContext.desktop_app` には接尾辞付きのまま入れ(窓が違えば context も違う)、
+  **sheet の生成と overlay の表示は base を使う**——`^foot\.p12345$` の rule はその窓 1 枚にしか
+  当たらず、context ラベルに launcher の内部事情を出す意味も無い。
+  process の `name` は `exe` ではなく **`argv[0]` の basename** を優先する(login shell の先頭 `-` は
+  落とす。argv が空なら `exe` → `comm`)。Debian の alternatives 経由だと `exe` は
+  `/usr/bin/vim.gtk3` になり、ユーザーが打った `vi` で sheet を書けなくなる。実体名で当てたい
+  ケースは `cmdline_regex` がある。
+- **Alternatives(追記)**: **title で窓の中身を判別する**——`vim` / `neovim` は OSC で title を
+  出すが `top` / `htop` / `less` / `more` は出さない。一番欲しいところで落ちるので採らない。
+  title は将来 tie-break 用途に留める。
+  **shell の preexec / PROMPT_COMMAND で title に実行中のコマンドを通知させる**——上の穴は
+  埋まるが、title を出す TUI(`vim` 等)が起動直後にそれを上書きするので、今度はそちらが取れなく
+  なる。shell 側の設定も要る。採らない。
+  **対応端末を「自分で答えられるもの」に絞る**(kitty の `kitty @ ls`、WezTerm の
+  `wezterm cli list-clients` → `tty_name`)——実機で両方とも動くことを確認した。kitty は
+  `foreground_processes` を pid ごと直接返すので `/proc` すら要らないが、`allow_remote_control` /
+  `listen_on` / `single_instance` の 3 行を kitty.conf に足す必要がある(2 つ目の kitty プロセスは
+  同じ socket に bind できず `@ ls` から見えない)。Ghostty 1.3.1 には問い合わせ口が無い
+  (man 全文で IPC の記述は `new-window` の 1 行のみ、D-Bus service も起動用)。
+  app_id 規約なら端末を選ばず 1 本で済むので、今回はそちらを採る——kitty も `--class` で
+  app_id を窓ごとに変えられる(既定で 1 窓 1 プロセス)ので規約に乗り、`kitty @ ls` も
+  `allow_remote_control` / `listen_on` も、それを指す config 項目も要らなくなった。
+  **WezTerm を今回の対象に含める**——WezTerm は窓ごとに app_id を変えられないので規約に乗らない。
+  次に手を入れるときは `wezterm cli list-clients` → pane の `tty_name` → `/proc` の経路にする
+  (実機で `/dev/pts/30 → vim` まで確認済み、端末側の設定は不要)。Lua の
+  `pane:get_foreground_process_name()` は設定 Lua の中でしか呼べず、title に埋める方式は端末側の
+  設定が要るので採らない。
+- **Decision(追記 2026-09-20、レビュー指摘を受けて)**: 独立レビューで 3 点。
+  (1) **1 つの端末の下に pty が複数あると誤答していた**。前面プロセスは pty ごとに存在するので、
+  端末の PID が分かっても tab / split / `tmux` / `ssh -t` のどれが画面に出ているかは `/proc` から
+  分からない。子孫から「最深・最大 PID」を採る実装は、外側の pty の `vi` より内側の pty の `top` を
+  選んでしまう(fake `/proc` で再現)。**複数の tty が見つかったら無判定**にする。あわせて root 自身は
+  候補から外す——別の端末から前景で起動された端末は*その*端末の前面プロセス群に居るだけで、
+  自分が何を動かしているかとは無関係。
+  (2) **接尾辞付き app_id が端末自身の sheet に一致していなかった**。
+  `match_app([^foot$], "foot.p12345")` が `None`(再現済み)。sheet 生成と UI 表示では base を
+  使っていたが、照合では生の app_id を渡していた。`app_specificity` が app_id と base の**両方**を
+  候補にするようにする——base だけに正規化しないのは、たまたま `.p<数字>` で終わる app_id 向けに
+  書かれた rule を壊さないため。候補が増えても 1 つの pattern は 1 つとしか数えないので、
+  specificity の順序は変わらない。
+  (3) **確認手順が観測で対象を変えていた**。端末の中で `wayhint context` を叩くと、その `wayhint`
+  自身がその端末の前面プロセスになる。`vi memo &` も background なので前面プロセス群に居ない。
+  手順を overlay の context ラベルを見る方法と、compositor の keybind から実行してファイルに
+  落とす方法に差し替えた(`docs/TERMINALS.md`)。
+- **[要判断](追記)**: 接尾辞が無い app_id で同名 process が複数あるときの、title / cwd 照合による
+  絞り込み。今回は入れず無判定のままにした。
+- **やらないこと(追記)**: **tab / split を持つ窓の pty 絞り込み**。端末自身に focus を聞く adapter
+  (kitty の `kitten @ ls`、WezTerm の `wezterm cli list-clients`)が要る。`/proc` だけでは決められない
+  ので推測しない。多段 resolver も新しい設定項目も依存も入れない。
+- **Consequences**: terminal 用 sheet を書いていなくても、その中のコマンドの sheet が選ばれる
+  ようになった。親が無いので parent tag の混入は起きず、その sheet の hint だけが出る。
+  **wrapper を通さずに起動した端末の窓は、その端末の process が 1 つのときしか解決しない**
+  (README「Terminal の複数窓」)。`ProcAdapter` は show / refresh のたびに `/proc` を 1 度走査する
+  (polling は無い)。
+  `/proc` が見えない環境(コンテナ、hidepid)では常に無判定になり、従来どおり何も変わらない。
+  `chain` が増えたぶん IPC `context` の応答が伸びる(4096 byte 制限には余裕がある)。
+  多段解決が要るようになった時点で `NestedContextProvider` の作り替えが必要になる。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

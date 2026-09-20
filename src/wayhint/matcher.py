@@ -36,13 +36,45 @@ def _count_matches(patterns: Iterable[str], candidates: Sequence[str]) -> int:
 
 
 def app_specificity(sheet: HintSheet, app_id: str | None) -> int:
+    """Matched against the app_id *and*, for a window naming its pid, the terminal behind it.
+
+    ``foot.p12345`` has to match the sheet somebody wrote for ``foot`` -- the suffix identifies
+    the window, not the program (DECISIONS 0027). Both forms are offered rather than the base
+    alone, so a rule written against a literal app_id that happens to end in ``.p<digits>`` keeps
+    matching; a pattern counts once however many of them it matches.
+    """
     if not app_id:
         return 0
-    return _count_matches(sheet.match.app_id_regex, (app_id,))
+    base, _pid = strip_pid_suffix(app_id)
+    candidates = (app_id, base) if base and base != app_id else (app_id,)
+    return _count_matches(sheet.match.app_id_regex, candidates)
 
 
 GENERIC_PROCESS_NAMES = frozenset({"python", "python3", "node", "sh", "bash", "zsh"})
 """Interpreter and shell names that say nothing about what is running (DECISIONS 0014 D6)."""
+
+
+APP_ID_PID_RE = re.compile(r"\.p(\d+)$")
+"""``<app-id>.p<pid>``: a terminal window saying which process draws it (DECISIONS 0027).
+
+No Wayland protocol tells a client the pid behind a toplevel, and a terminal with several windows
+is otherwise indistinguishable in ``/proc``. The window therefore says so itself, through the one
+field the compositor does hand out: a launcher starts each window with this suffix on its app_id.
+"""
+
+
+def strip_pid_suffix(app_id: str | None) -> tuple[str | None, int | None]:
+    """``"foot.p12345"`` → ``("foot", 12345)``; anything else comes back unchanged with ``None``.
+
+    Kept here rather than in the ``/proc`` adapter because the pure side needs it too: a sheet
+    generated for such a window has to match the *terminal*, not the one window it was made in.
+    """
+    if not app_id:
+        return app_id, None
+    found = APP_ID_PID_RE.search(app_id)
+    if found is None:
+        return app_id, None
+    return app_id[: found.start()], int(found.group(1))
 
 
 def argv_basenames(argv: Sequence[str]) -> list[str]:

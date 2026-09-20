@@ -34,7 +34,7 @@ from wayhint.config import (
     parse_global_config,
 )
 from wayhint.i18n import resolve_language
-from wayhint.matcher import GENERIC_PROCESS_NAMES, argv_basenames
+from wayhint.matcher import GENERIC_PROCESS_NAMES, argv_basenames, strip_pid_suffix
 from wayhint.models import (
     HINT_KINDS,
     Hint,
@@ -970,14 +970,21 @@ def slug(text: str, existing: Sequence[str] = (), now: _dt.datetime | None = Non
 def match_rule_for_context(ctx: ResolvedContext) -> tuple[CommentedMap, str | None]:
     """The ``match:`` block for a sheet generated from ``ctx``, plus a warning to show, or ``None``.
 
-    Which key the context was decided by is recoverable from the context itself: without a nested
-    provider the sheet was chosen by ``app_id``, with one the foreground process decides
+    Which key the context was decided by is recoverable from the context itself: with a
+    foreground process the sheet was chosen by that process, without one by ``app_id``
     (DECISIONS 0014 D6). Interpreter names say nothing about what is running, so for those the
     regex is taken from the arguments instead, using the same basename rule as the matcher.
+
+    The test is the foreground process and not ``parent_context``: a terminal usually has no
+    sheet of its own, so there is no parent, and a rule built from the terminal's ``app_id``
+    would match every command ever run in it (DECISIONS 0027).
     """
     proc = ctx.foreground_process
-    if ctx.parent_context is None or proc is None:
-        return _match_map("wayland", "app_id_regex", ctx.desktop_app or ""), None
+    if proc is None:
+        # The pid suffix names one window, not the program: a rule built from it would match
+        # that window and nothing ever again (0027).
+        base, _pid = strip_pid_suffix(ctx.desktop_app)
+        return _match_map("wayland", "app_id_regex", base or ""), None
     if proc.name not in GENERIC_PROCESS_NAMES:
         return _match_map("process", "argv_regex", proc.name), None
     for candidate in argv_basenames(proc.argv[1:]):
@@ -1009,7 +1016,7 @@ def create_sheet(
     now = now or _dt.datetime.now()
     hints_dir = hints_dir if hints_dir is not None else config_dir() / "hints"
     proc = ctx.foreground_process
-    source = proc.name if (ctx.parent_context is not None and proc is not None) else ctx.desktop_app
+    source = proc.name if proc is not None else strip_pid_suffix(ctx.desktop_app)[0]
     sheet_id = slug(source or "", existing_ids, now)
     match, _warning = match_rule_for_context(ctx)
 

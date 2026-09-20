@@ -275,6 +275,7 @@ class IpcCommandTest(unittest.TestCase):
                     cmdline="synthetic private command line",
                     cwd="/example/private",
                 ),
+                chain=("ProcAdapter",),
             )
         )
         self.assertEqual(
@@ -286,6 +287,7 @@ class IpcCommandTest(unittest.TestCase):
                 "desktop_app": "foot",
                 "process": {"name": "node", "argv_basenames": ["node", "codex"]},
                 "include": [],
+                "chain": ["ProcAdapter"],
                 "error": None,
             },
         )
@@ -301,6 +303,7 @@ class IpcCommandTest(unittest.TestCase):
                 "desktop_app": None,
                 "process": None,
                 "include": [],
+                "chain": [],
                 "error": "desktop context unavailable",
             },
         )

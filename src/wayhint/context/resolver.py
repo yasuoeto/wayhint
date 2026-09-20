@@ -7,6 +7,9 @@ Flow (DESIGN §56):
 2. ``match_app`` picks the desktop sheet.
 3. If a nested provider applies to that app_id, ask it for the foreground process and
    ``match_process`` for a child sheet. Any failure falls back to the desktop sheet alone.
+   Whether the *desktop* app has a sheet does not enter into it: a terminal is usually a window
+   nobody wrote hints for, and the command running in it is exactly what the user wants hints
+   for (DECISIONS 0027). Without a desktop sheet there is simply no parent to filter by.
 4. Output priority: sheet ``display.output`` override → active view's output → focused output →
    global ``overlay.output`` fallback → None (UI uses the default monitor).
 """
@@ -45,20 +48,24 @@ class ContextResolver:
         active = desktop_sheet
         parent_id = None
         proc = None
-        if desktop_sheet is not None:
-            for provider in self.nested:
-                if not provider.applies_to(snap.app_id):
-                    continue
-                try:
-                    proc = provider.foreground_process()
-                except Exception:  # adapter bug must not take the overlay down
-                    log.exception("nested provider failed")
-                    proc = None
+        chain: tuple[str, ...] = ()
+        for provider in self.nested:
+            if not provider.applies_to(snap.app_id):
+                continue
+            # Recorded before the call: the chain says which provider was asked, which is the
+            # thing to look at when the answer is not the expected one.
+            chain = (type(provider).__name__,)
+            try:
+                proc = provider.foreground_process(snap.app_id)
+            except Exception:  # adapter bug must not take the overlay down
+                log.exception("nested provider failed")
+                proc = None
+            if desktop_sheet is not None:  # no desktop sheet means no parent to filter by
                 parent_id = desktop_sheet.id
-                child = match_process(sheets, proc)
-                if child is not None and child is not desktop_sheet:
-                    active = child
-                break
+            child = match_process(sheets, proc)
+            if child is not None and child is not desktop_sheet:
+                active = child
+            break
 
         output = self._pick_output(active, snap.output, snap.focused_output, config)
         return ResolvedContext(
@@ -69,6 +76,7 @@ class ContextResolver:
             parent_context=parent_id,
             foreground_process=proc,
             active_sheet=active.id if active is not None else None,
+            chain=chain,
         )
 
     def _pick_output(

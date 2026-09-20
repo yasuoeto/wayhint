@@ -17,7 +17,14 @@ import jsonschema.validators
 
 from wayhint import yaml_store
 from wayhint.config import EditorConfig, GlobalConfig
-from wayhint.models import ProcessInfo, ResolvedContext
+from wayhint.matcher import match_app
+from wayhint.models import (
+    DisplayConfig,
+    HintSheet,
+    MatchRule,
+    ProcessInfo,
+    ResolvedContext,
+)
 from wayhint.schema import json_schema
 from wayhint.yaml_store import (
     CANONICAL_HINT_KEYS,
@@ -392,6 +399,49 @@ class CreateSheetTest(TmpSheetTest):
         )
         self.assertEqual(path.name, "claude.yaml")
         self.assertEqual(doc["match"]["process"]["argv_regex"], ["^claude$"])
+
+    def test_process_context_without_a_parent_sheet(self) -> None:
+        """A terminal with no sheet of its own still generates a sheet for what runs in it.
+
+        ``ProcAdapter`` reaches this: ``foot`` rarely has hints, so there is no parent, and a
+        rule built from its ``app_id`` would match every command ever run in it (0027).
+        """
+        path, doc = create_sheet(
+            ctx(desktop_app="foot", foreground_process=proc("vi", ("vi", "notes.txt"))),
+            build_hint({"id": "h", "title": "T"}),
+            self.config(),
+            hints_dir=self.dir,
+            now=NOW,
+        )
+        self.assertEqual(path.name, "vi.yaml")
+        self.assertEqual(doc["match"]["process"]["argv_regex"], ["^vi$"])
+        self.assertNotIn("wayland", doc["match"])
+
+    def test_the_window_pid_suffix_is_not_part_of_the_generated_rule(self) -> None:
+        """A rule from ``foot.p12345`` would match that window and nothing ever again (0027)."""
+        path, doc = create_sheet(
+            ctx(desktop_app="foot.p12345"),
+            build_hint({"id": "h", "title": "T"}),
+            self.config(),
+            hints_dir=self.dir,
+            now=NOW,
+        )
+        self.assertEqual(path.name, "foot.yaml")
+        self.assertEqual(doc["match"]["wayland"]["app_id_regex"], ["^foot$"])
+
+        # Round trip: the sheet this produced has to match the next window of that terminal, which
+        # carries a different pid in its app_id.
+        generated = HintSheet(
+            id="foot",
+            title="foot",
+            path=path,
+            priority=0,
+            match=MatchRule(app_id_regex=tuple(doc["match"]["wayland"]["app_id_regex"])),
+            display=DisplayConfig(),
+            hints=(),
+        )
+        self.assertIs(match_app([generated], "foot.p999"), generated)
+        self.assertIs(match_app([generated], "foot"), generated)
 
     def test_generic_process_name_uses_the_arguments(self) -> None:
         context = ctx(

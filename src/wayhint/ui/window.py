@@ -29,6 +29,7 @@ from gi.repository import Gtk4LayerShell as LayerShell  # noqa: E402
 from wayhint import clipboard  # noqa: E402
 from wayhint.config import GlobalConfig  # noqa: E402
 from wayhint.i18n import Translator, translator  # noqa: E402
+from wayhint.matcher import strip_pid_suffix  # noqa: E402
 from wayhint.models import HINT_KINDS, Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.selection import (  # noqa: E402
     search_hints,
@@ -679,7 +680,8 @@ class HintWindow(Gtk.Window):
         self._header.set_label(title)
         parts = []
         if ctx and ctx.desktop_app:
-            parts.append(ctx.desktop_app)
+            # Without the pid suffix: the launcher's bookkeeping is not news to the user (0027).
+            parts.append(strip_pid_suffix(ctx.desktop_app)[0])
         if ctx and ctx.foreground_process:
             parts.append(ctx.foreground_process.name)
         if ctx and ctx.output:
