@@ -859,6 +859,40 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   シェル 1 行に埋め込まれた起動は対象外。kitty の `single_instance` と Ghostty の `gtk-single-instance` は
   wrapper が引数で無効にするので、ユーザーが設定ファイルを触る必要は無くなった。
 
+## 0030 — GUI の自動テストは「プロセス内」と「headless compositor」の 2 層にする
+
+- **Date**: 2026-09-20
+- **Status**: accepted
+- **Context**: overlay の表示・配置・widget 状態は目視チェックリスト(T1–T5, T13, T24–T26)だけが
+  見ていた。手法を 4 つ実地で試した(環境: labwc 0.20.2 / wlroots 0.20.2 / GTK 4.22.4)。
+  a プロセス内 widget、b headless compositor + 画面取得、c AT-SPI、d 入力注入。
+  sway / cage / wtype / ydotool はこのマシンに無く、**labwc 自身が `WLR_BACKENDS=headless` で
+  起動する**ことが分かったので b と c は追加インストール無しで成立した。d は `wtype` を入れて検証した。
+- **Decision**: **a・b・d を採用し、c は b の中の読み取り手段として採用する**。d は `wtype` が
+  ある環境でだけ走る(無ければその 1 本だけ skip)。a(surface を map しない)は `./scripts/check` に入れる。b/c/d は
+  `./scripts/check-gui` に分け、`WAYHINT_GUI_TESTS=1` が無ければ skip する。
+  **ベースライン画像の全面比較は採らない**。同一マシンでは撮影が完全に再現する(フレーム間・
+  hide/show 後・セッション再作成のいずれでも AE=0)が、font と theme が違う別マシンでは無意味に
+  なる。代わりに、overlay を出した frame と出していない frame の**差分の bounding box** で位置と
+  幅を測り(font 非依存)、中身は **AT-SPI の accessible name** で読む。
+- **Alternatives**: **全部 a で済ませる**——layer surface は compositor への*要求*なので、anchor と
+  margin が実際にどう解釈されたかはプロセス内から見えない。実際 `width: 25%`(320px)は
+  ボタン行の必要幅に負けて 356px で表示されており、これは a では検出できない。
+  **sway / cage を入れる**——labwc で足りた上に、実際に使う compositor で測れる方が価値が高い。
+  **ベースライン画像**(上記)。**`./scripts/check` に全部入れる**——8 秒かかり compositor の binary と
+  grim / ImageMagick を要求する。既定の検証は数百 ms で依存の無いままにする。
+  **ydotool で入力注入**——`/dev/uinput` の権限変更と常駐デーモンが要る。wtype は labwc が出す
+  `zwp_virtual_keyboard_manager_v1` を使うので権限が要らない。
+- **Consequences**: `tests/headless.py` が repository の外にプロセスを立てる。巻き込み事故を
+  防ぐため、compositor には専用の `XDG_RUNTIME_DIR`・`XDG_CONFIG_HOME`・`HOME`・session bus を
+  与える(試作段階で、ユーザーの labwc autostart が headless セッション内で waybar と 2 つ目の
+  `wayhintd` を起動した)。`XDG_RUNTIME_DIR` は AF_UNIX の 108 byte 制限のため実 runtime dir の
+  隣に短い名前で作る。`./scripts/check` の skip が 5 件増える(GUI テストの存在と入口の告知を兼ねる)。
+  差分で測る以上、**overlay 以外が動くと混ざる**: probe 窓のカーソル点滅を止め、hotkey テストでは
+  測定前に toggle を 1 往復させて focus に伴う再描画を先に済ませる。また「差分がある」だけでは
+  弱い——割当の無いキーは下の窓に届いて端末がエコーし、それも差分になるので、**位置と幅まで**
+  照合する(故意に keybind を外して確認済)。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

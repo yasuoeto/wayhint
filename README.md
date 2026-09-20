@@ -27,6 +27,22 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 ./scripts/check                 # lint + 単体テスト
 ```
 
+### 開発時のみ: GUI テスト
+
+`./scripts/check-gui` は compositor を headless backend で立て、その中で overlay を実際に
+表示させて位置と中身を測る(DECISIONS 0030)。開発するときだけ必要で、利用には要らない。
+画面には何も出ず、いま使っているセッションにも触らない。
+
+```sh
+sudo apt install grim imagemagick        # 位置の測定に使う
+sudo apt install wtype                   # 任意: hotkey 経路のテスト。無ければその 1 本だけ skip
+./scripts/check-gui
+```
+
+compositor は `labwc` / `sway` / `cage` のうち PATH にあるものを使う。`at-spi2-core` は
+overlay の中身を読むのに使うが、GTK の依存として通常すでに入っている。追加の権限は要らない
+(`wtype` は compositor の virtual-keyboard protocol を使うので `/dev/uinput` に触らない)。
+
 ## 設定ファイルの場所
 
 `$XDG_CONFIG_HOME/wayhint/`(既定 `~/.config/wayhint/`):

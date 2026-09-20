@@ -1,0 +1,19 @@
+#!/bin/sh
+# GUI checks that need a compositor to run in: separate from ./scripts/check on purpose.
+#
+# These start a compositor on the wlroots headless backend, run wayhintd inside it and read the
+# result back with grim and AT-SPI. They take seconds rather than milliseconds and need binaries
+# the default check must not depend on, so they are not part of it. Nothing appears on the
+# screen and the session you are sitting in is not touched; see tests/headless.py.
+set -eu
+CDPATH=''
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+if [ -x .venv/bin/python ]; then
+    PATH="$root/.venv/bin:$PATH"
+    export PATH
+fi
+WAYHINT_GUI_TESTS=1
+export WAYHINT_GUI_TESTS
+PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}" \
+    exec python3 -m unittest discover -s tests -t . -p 'test_gui_*.py' "$@"

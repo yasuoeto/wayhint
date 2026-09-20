@@ -470,23 +470,45 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   表示、layer surface の anchor / margin / size が `geometry.placement` と一致すること
   (global 指定と sheet override の両方)、search で絞られて抜けると戻ることを確認する。
   ここも surface は map しない。
+- **daemon → window**(`tests/test_daemon_window.py`): socket に届いた 1 行を
+  `ipc.handle_request` → `dispatch` → **実物の `HintWindow`** まで通す。`test_daemon_edit` は
+  window を fake にし、`test_window_render` は context を手で組むので、その間の継ぎ目だけが
+  誰にも見られていなかった。呼び出し元(compositor の keybind / CLI / 将来の経路)は CLI より手前で
+  同じ `{"cmd": ...}` に正規化されるので、ここが「正しいものが出たか」の決まる場所になる。
+  ここも surface は map しない(`present` / `set_visible` を差し替え、`get_visible` は
+  `set_visible` に渡った値を返すので keyboard の規則は可視性の変化を見られる)。
+- **headless GUI**(`tests/test_gui_headless.py` + `tests/headless.py`、入口は
+  `./scripts/check-gui`): compositor を `WLR_BACKENDS=headless` で立て、その中で `wayhintd` を
+  動かし、実際に map された surface を測る(DECISIONS 0030)。layer surface は compositor への
+  *要求*なので、anchor と margin がどう解釈されたかはプロセス内からは見えない。
+  **位置**は overlay を出した frame と出していない frame の差分の bounding box(font 非依存)、
+  **中身**は AT-SPI の accessible name で読む。ベースライン画像の全面比較は採らない(0030)。
+  入力注入(compositor の keybind → CLI → IPC)は `wtype` がある環境でだけ走る。
+  ユーザーが座っているセッションには触らない——専用の `XDG_RUNTIME_DIR` /
+  `XDG_CONFIG_HOME` / `HOME` / session bus を与える。
 - `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
   テストから分離し、ヘッドレスでも通るようにする(実機が要るものは skip。上の adapter tests)。
+  headless compositor を要するものは `./scripts/check-gui` に分け、`WAYHINT_GUI_TESTS=1` が
+  無ければ skip する(既定の `check` は数百 ms・依存無しのまま)。
 - daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の
   境界を fake にし、実際の daemon / SheetStore / YAML 保存を通して対象ファイルと編集状態を検証する。
 
 ### 実機チェックリスト(§69–§73、手動)
 
-`./scripts/check` の対象外。GTK と compositor が要るため自動化しない。labwc と Wayfire の
+`./scripts/check` の対象外。labwc と Wayfire の
 それぞれのセッションで実施し、**結果は `STATUS.md` に日付付きで記録する**。この一覧は項目の
 定義だけを持ち、合否は持たない。同じ項目でも compositor ごとに結果が変わるため、記録先を
 1 か所に寄せる。
 
 - T1 hotkey で右上に表示、元アプリへの入力が続く(keyboard grab なし)
-- T2 同じ hotkey で非表示(toggle)
-- T3 別 output 上のアプリから起動 → そのアプリの output に出る
+  （位置と hotkey 経路は `./scripts/check-gui` が headless でも見る。実機で見るのは
+  「元アプリへの入力が続く」の方）
+- T2 同じ hotkey で非表示(toggle)（同上）
+- T3 別 output 上のアプリから起動 → そのアプリの output に出る（複数 output は headless では
+  作っていないので実機のまま）
 - T4 sheet の `display.output` override が効く
 - T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
+  （`./scripts/check-gui` が単一 output で見る。実機では回転・スケールのある output で確認する）
 - T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る
 - T7 エディタで編集: 選択中の hint の sheet が開き該当行に jump、無選択では表示中の sheet の先頭
 - T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
