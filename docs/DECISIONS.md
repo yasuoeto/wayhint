@@ -775,6 +775,53 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   `chain` が増えたぶん IPC `context` の応答が伸びる(4096 byte 制限には余裕がある)。
   多段解決が要るようになった時点で `NestedContextProvider` の作り替えが必要になる。
 
+## 0028 — Herdr は `HERDR_*` を除いた環境で呼び、focus 中の pane を解決する
+
+- **Date**: 2026-09-20
+- **Status**: accepted
+- **Context**: Herdr の workspace に tab を並べて claude / codex / vi / lv / top を開く使い方で、
+  どのタブに切り替えても **wayhintd を起動した pane の hint しか出なかった**。実機で切り分けた
+  ところ、`herdr pane current` は環境変数 `HERDR_PANE_ID` があればその pane を返し、無いときだけ
+  focus 中の pane を返す(`--current` を付けても同じ)。wayhintd を Herdr の pane の中から起動すると
+  `HERDR_PANE_ID` を継承するので、adapter はセッションの間ずっとその pane を「current」と見なす。
+  実機の wayhintd の環境にも `HERDR_PANE_ID=wH:p1` が入っていた。`pane process-info --pane <id>` は
+  id が正しければ正しい process を返すので、壊れていたのは pane の特定だけだった。
+- **Decision**: adapter が herdr を呼ぶときの環境から `HERDR_` で始まる変数を除く
+  (`_herdr_env`、純粋関数)。これで `pane current` は本来の「focus 中の pane」を返す。
+  **保険**として、`pane current` が `focused: false` を返したときだけ `pane list` を呼び、
+  `focused: true` の pane が 1 つだけならそれを採る(0 個または 2 個以上なら pane 不明として
+  従来の fallback = Herdr sheet のみに落とす)。`pane list` を常用する設計にはしない——
+  `pane current` は 1 回の呼び出しで済み、環境さえ正せば正しい答えを返すため。
+  呼び出し回数が 2 回から最大 3 回になるので、時間予算は call ごとではなく **lookup 開始時に
+  決めた deadline** に対して使う。各 call には `min(CALL_TIMEOUT, 残り時間)` を渡し、
+  残りが無ければ呼ばない。`LOOKUP_BUDGET` の値は変えないので `ipc.CLIENT_TIMEOUT` との関係も
+  変わらない。変更は `context/herdr.py` に閉じる。
+- **Alternatives**: **daemon 起動時に `HERDR_*` を一括 unset する**——daemon 全体の環境を書き換える
+  のは影響範囲が広く、adapter の都合は adapter で閉じるべき。
+  **`pane current` をやめて常に `pane list` から focus 中の pane を探す**——環境に依存しない点は
+  同じだが、全 pane を毎回返させることになる(実機で 26 pane)。`pane current` は環境さえ正せば
+  1 回で正しく答えるので、主経路はそちらに置き `pane list` は保険に留める。
+  **wayhintd を Herdr の外から起動する運用にする**——回避策であって修正ではない。daemon の起動場所に
+  よって context の解決結果が変わる設計自体が誤り。
+  **`pane list` の `agent` フィールド(`claude` / `codex`)で sheet を選ぶ**——`vi` / `lv` / `top` は
+  `agent` に出ないので結局 `process-info` が要る。経路を 2 本にする利点が無い。
+- **Consequences**: wayhintd をどこから起動しても、Herdr のどのタブに切り替えても、そのタブの
+  foreground process の sheet が出る。実機で確認済み(`HERDR_PANE_ID=w9:p3` を継承させた状態で
+  focus 中の `wH:p1` の `claude` を解決)。Herdr の lookup は最悪 3 回の subprocess になるが、
+  合計時間は従来と同じ上限のまま。`Runner` の signature に timeout が増えた
+  (`Callable[[Sequence[str], float], str]`)。
+- **[要判断] → 解消(2026-09-20)**: 「Herdr の窓を 2 枚以上開いているとき、focused pane が Wayland 側で
+  active な窓に属するか」は、**問いが成立しないことが分かった**。Herdr のクライアント窓は同じ
+  セッションのミラーで、2 枚目を別のタブで開くと 1 枚目もそのタブに追随する。窓ごとに違うタブを
+  表示する状態が作れないので、herdr が答える focused pane はどの窓から見ても正しい。
+  残る狭い穴は**名前付きセッションを複数動かしたとき**で、セッションごとに socket が分かれる
+  (`herdr session list`)。adapter は `HERDR_SOCKET_PATH` も含めて `HERDR_*` を外すため、常に既定
+  セッションに聞く。既定以外のセッションの窓を focus しても既定セッションの答えが返る。
+  今は 1 セッション運用なので対応しない。
+  なお実機では**保険経路(`pane list`)に一度も落ちなかった**(daemon ログに
+  `answered an unfocused pane` が出ていない)ので、この分岐は dead code に近い。
+  次に触るときは削除も選択肢。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

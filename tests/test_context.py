@@ -1,12 +1,15 @@
 import json
 import logging
+import os
 import subprocess
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from wayhint.config import GlobalConfig
+from wayhint.context import herdr
 from wayhint.context.base import ContextError, DesktopSnapshot
-from wayhint.context.herdr import HerdrContextProvider
+from wayhint.context.herdr import HerdrContextProvider, _herdr_env
 from wayhint.context.process import process_info_from_mapping
 from wayhint.context.resolver import ContextResolver
 from wayhint.context.wayfire import WayfireContextProvider
@@ -228,21 +231,25 @@ def info(procs, leader=None):
 
 
 class HerdrAdapterTest(unittest.TestCase):
-    def make(self, responses):
-        calls = []
+    def make(self, responses, clock=None):
+        """Returns the provider, the argv of each call, and the timeout each was given."""
+        calls: list[list[str]] = []
+        timeouts: list[float] = []
 
-        def runner(argv):
+        def runner(argv, timeout):
             calls.append(list(argv))
+            timeouts.append(timeout)
             key = " ".join(argv[1:3])
             r = responses[key]
             if isinstance(r, Exception):
                 raise r
             return r if isinstance(r, str) else json.dumps(r)
 
-        return HerdrContextProvider(runner=runner), calls
+        kw = {"clock": clock} if clock is not None else {}
+        return HerdrContextProvider(runner=runner, **kw), calls, timeouts
 
     def test_applies_to(self) -> None:
-        p = HerdrContextProvider(runner=lambda a: "")
+        p = HerdrContextProvider(runner=lambda a, t: "")
         self.assertTrue(p.applies_to("herdr"))
         self.assertTrue(p.applies_to("com.example.Herdr"))
         self.assertFalse(p.applies_to("foot"))
@@ -259,7 +266,7 @@ class HerdrAdapterTest(unittest.TestCase):
                 "cwd": "/w",
             },
         ]
-        p, calls = self.make({"pane current": PANE, "pane process-info": info(procs, leader=11)})
+        p, calls, _ = self.make({"pane current": PANE, "pane process-info": info(procs, leader=11)})
         pi = p.foreground_process()
         self.assertEqual(calls[1][:5], ["herdr", "pane", "process-info", "--pane", "wG:p1"])
         self.assertEqual(
@@ -271,7 +278,7 @@ class HerdrAdapterTest(unittest.TestCase):
             {"pid": 1, "name": "bash", "argv": ["bash"]},
             {"pid": 2, "name": "claude", "argv": ["claude"]},
         ]
-        p, _ = self.make({"pane current": PANE, "pane process-info": info(procs)})
+        p, _calls, _ = self.make({"pane current": PANE, "pane process-info": info(procs)})
         self.assertEqual(p.foreground_process().name, "claude")
 
     def test_failures_return_none(self) -> None:
@@ -285,7 +292,7 @@ class HerdrAdapterTest(unittest.TestCase):
         }
         for name, responses in cases.items():
             with self.subTest(name):
-                p, _ = self.make(responses)
+                p, _calls, _ = self.make(responses)
                 self.assertIsNone(p.foreground_process())
 
 
@@ -344,6 +351,145 @@ class WayfireAdapterTest(unittest.TestCase):
         snap = provider.snapshot()
         self.assertEqual((snap.app_id, snap.view_ref), ("foot", "7"))
         self.assertEqual(snap.output, DP1)
+
+
+UNFOCUSED = {"result": {"pane": {"pane_id": "wH:p1", "focused": False}}}
+
+
+def pane_list(*panes):
+    return {"result": {"panes": list(panes)}}
+
+
+class HerdrEnvironmentTest(unittest.TestCase):
+    """``pane current`` answers for ``HERDR_PANE_ID`` when it is set (DECISIONS 0028)."""
+
+    def test_only_herdr_variables_are_dropped(self) -> None:
+        env = _herdr_env(
+            {
+                "HERDR_PANE_ID": "wH:p1",
+                "HERDR_SOCKET_PATH": "/x/herdr.sock",
+                "PATH": "/usr/bin",
+                "HOME": "/home/u",
+                "HERDRISH": "kept: the prefix is HERDR_, not HERDR",
+            }
+        )
+        self.assertEqual(
+            env,
+            {
+                "PATH": "/usr/bin",
+                "HOME": "/home/u",
+                "HERDRISH": "kept: the prefix is HERDR_, not HERDR",
+            },
+        )
+
+    def test_every_call_is_spawned_without_them(self) -> None:
+        """Checked at the ``subprocess`` boundary so that no call path can be forgotten."""
+        procs = [{"pid": 7, "name": "vi", "argv": ["vi"], "cmdline": "vi"}]
+        answers = {
+            "pane current": UNFOCUSED,  # forces the pane list call as well
+            "pane list": pane_list({"pane_id": "wH:p3", "focused": True}),
+            "pane process-info": info(procs, leader=7),
+        }
+        spawned = []
+
+        class Completed:
+            def __init__(self, stdout):
+                self.stdout = stdout
+
+        def fake_run(argv, **kwargs):
+            spawned.append((list(argv), kwargs))
+            return Completed(json.dumps(answers[" ".join(argv[1:3])]))
+
+        with unittest.mock.patch.object(herdr, "subprocess") as sub:
+            sub.run = fake_run
+            sub.SubprocessError = subprocess.SubprocessError
+            with unittest.mock.patch.dict(
+                os.environ, {"HERDR_PANE_ID": "wH:p1", "WAYLAND_DISPLAY": "wayland-0"}
+            ):
+                proc = HerdrContextProvider().foreground_process("herdr")
+
+        self.assertEqual(proc.name, "vi")
+        self.assertEqual(
+            [c[0][1:3] for c in spawned],
+            [["pane", "current"], ["pane", "list"], ["pane", "process-info"]],
+        )
+        for argv, kwargs in spawned:
+            with self.subTest(argv=argv):
+                self.assertNotIn("HERDR_PANE_ID", kwargs["env"], "HERDR_* reached the child")
+                self.assertEqual(kwargs["env"].get("WAYLAND_DISPLAY"), "wayland-0")
+
+
+class HerdrFocusedPaneTest(unittest.TestCase):
+    """Which pane the adapter describes when ``pane current`` is not the focused one."""
+
+    make = HerdrAdapterTest.make
+
+    def test_a_focused_answer_is_taken_as_is(self) -> None:
+        procs = [{"pid": 3, "name": "bash", "argv": ["bash"]}]
+        p, calls, _ = self.make({"pane current": PANE, "pane process-info": info(procs, leader=3)})
+        self.assertEqual(p.foreground_process().name, "bash")
+        self.assertEqual([c[1:3] for c in calls], [["pane", "current"], ["pane", "process-info"]])
+
+    def test_an_unfocused_answer_falls_back_to_the_focused_pane(self) -> None:
+        procs = [{"pid": 9, "name": "top", "argv": ["top"]}]
+        p, calls, _ = self.make(
+            {
+                "pane current": UNFOCUSED,
+                "pane list": pane_list(
+                    {"pane_id": "wH:p1", "focused": False},
+                    {"pane_id": "wH:p4", "focused": True},
+                ),
+                "pane process-info": info(procs, leader=9),
+            }
+        )
+        self.assertEqual(p.foreground_process().name, "top")
+        self.assertEqual(calls[1][1:3], ["pane", "list"])
+        self.assertEqual(calls[2][:5], ["herdr", "pane", "process-info", "--pane", "wH:p4"])
+
+    def test_no_single_focused_pane_is_no_answer(self) -> None:
+        cases = {
+            "none focused": pane_list({"pane_id": "wH:p1", "focused": False}),
+            "two focused": pane_list(
+                {"pane_id": "wH:p1", "focused": True}, {"pane_id": "w9:p1", "focused": True}
+            ),
+            "empty": pane_list(),
+        }
+        for name, listing in cases.items():
+            with self.subTest(name):
+                p, calls, _ = self.make({"pane current": UNFOCUSED, "pane list": listing})
+                self.assertIsNone(p.foreground_process())
+                self.assertEqual(len(calls), 2)  # never reaches process-info
+
+
+class HerdrBudgetTest(unittest.TestCase):
+    """The whole lookup stays inside ``LOOKUP_BUDGET``, however many calls it takes."""
+
+    make = HerdrAdapterTest.make
+
+    def test_a_later_call_only_gets_what_is_left(self) -> None:
+        ticks = iter([0.0, 0.0, 1.4, 1.45])  # deadline, then the clock before each call
+        p, calls, timeouts = self.make(
+            {
+                "pane current": UNFOCUSED,
+                "pane list": pane_list({"pane_id": "wH:p9", "focused": True}),
+                "pane process-info": info([{"pid": 1, "name": "vi", "argv": ["vi"]}], leader=1),
+            },
+            clock=lambda: next(ticks),
+        )
+        p.foreground_process()
+        self.assertEqual(timeouts[0], herdr.CALL_TIMEOUT)  # a fresh lookup gets a full call
+        self.assertAlmostEqual(timeouts[1], 0.1)  # 1.5 - 1.4 left, not another 0.75
+        self.assertAlmostEqual(timeouts[2], 0.05)
+        self.assertEqual(len(calls), 3)
+
+    def test_an_exhausted_budget_stops_the_lookup(self) -> None:
+        ticks = iter([0.0, 0.0, 2.0])
+        p, calls, _ = self.make(
+            {"pane current": UNFOCUSED, "pane list": pane_list()},
+            clock=lambda: next(ticks),
+        )
+        self.assertIsNone(p.foreground_process())
+        self.assertEqual(len(calls), 1)  # pane list was never spawned
 
 
 class ProcessInfoTest(unittest.TestCase):

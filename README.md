@@ -395,7 +395,8 @@ editor:
 | `⚠ compositor does not provide wlr-foreign-toplevel-management` | labwc なら出ない。Wayfire は `[core] plugins` に `foreign-toplevel`、または `ipc` を入れて IPC fallback に任せる |
 | `⚠ Wayfire IPC unavailable` | `context.backend: wayfire` 固定時のみ。`echo $WAYFIRE_SOCKET`、`[core] plugins` に `ipc` |
 | `this Wayland session has no layer-shell support` | `gir1.2-gtk4layershell-1.0` が入っているか。X11/Xwayland では動かない |
-| Herdr の中で親 sheet しか出ない | `herdr pane process-info --current` の `foreground_processes` と `argv_regex` を照合 |
+| Herdr の中で親 sheet しか出ない | `herdr pane process-info --pane <focus 中の pane id>` の `foreground_processes` と `argv_regex` を照合 |
+| Herdr でタブを切り替えてもヒントが変わらない | adapter は継承した `HERDR_*` に影響されず focus 中の pane を解決する(DECISIONS 0028)。それでも変わらないなら `herdr pane current` の `focused` と `pane_id` を確認する。常駐 daemon の起動元としては Herdr の pane 内のほか、compositor の autostart や `systemd --user` も使える |
 | 検索欄や編集フォームで日本語(IME)が入らない | GTK が Wayland ネイティブの text-input-v3 を選べていない。`gsettings get org.gnome.desktop.interface gtk-im-module` が空でなければ GTK はその値を優先するので `gsettings reset org.gnome.desktop.interface gtk-im-module`。`GTK_IM_MODULE` も未設定にする(空なら GTK は `zwp_text_input_manager_v3` を広告する compositor で `wayland` context を自動で選ぶ)。確認は `GTK_IM_MODULE= WAYLAND_DEBUG=1 wayhintd` の出力に `zwp_text_input_v3.enter` と `enable` が出るか。layer-shell surface でも届く(labwc 0.20.2 + GTK 4.22 で確認) |
 | 検索後にキー入力が元アプリに戻らない | 検索を終える(完了 / Esc)と keyboard_mode は必ず none に戻る。focus 復帰は foreign-toplevel `activate`(wayfire backend では IPC `set_focus`)。同じ app_id の window が複数あり title が変わっていると復帰先を決められない。`wayhintd -v` に `could not return focus` が出るか |
 

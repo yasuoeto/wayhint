@@ -198,6 +198,12 @@ hints:
   既定値。`herdr.yaml` の `app_id_regex` と対になっており、どちらも満たさない窓
   (素の kitty で `herdr` を起動した、など)は `/proc` 経路に落ちて「`herdr` というプロセスが
   動いている」までしか分からない。その状態は `proc.SELF_REPORTING` の判定で INFO ログに出す。
+  **呼び出し規約**(DECISIONS 0028): 環境から `HERDR_` で始まる変数を
+  除いて呼ぶ——`pane current` は `HERDR_PANE_ID` があればその pane を返すので、Herdr の pane 内から
+  起動した daemon はその pane に固定されてしまう。`pane current` が `focused: false` を返したとき
+  だけ保険として `pane list` を呼び、`focused: true` の pane が 1 つのときだけ採る。時間予算は
+  lookup 開始時の deadline に対して使い、各 call には `min(CALL_TIMEOUT, 残り時間)` を渡す
+  (最大 3 call でも合計は `LOOKUP_BUDGET` 以内)。
 - **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。開く場所は
   `edit_target(sheet, hint)`(純粋、テスト対象)が決める。**hint を選んでいるときは hint の
   `location` が sheet より優先する**: nested 表示では親 sheet の hint が一覧に混ざるため、active

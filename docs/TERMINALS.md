@@ -123,7 +123,14 @@ herdr is running in a window whose app_id is 'kitty'; open it with 'herdr' in th
 to get hints for what is inside it (docs/TERMINALS.md)
 ```
 
-**どの窓も app_id に `herdr` を含めること。** 含まれていない窓だけが上の `/proc` 経路に落ちる。
+**Herdr の窓は何枚開いてもよい。** クライアント窓は同じセッションのミラーで、2 枚目を別のタブで
+開いても 1 枚目がそのタブに追随する。どの窓も同じ pane を表示するので、herdr が答える focused
+pane はどの窓から見ても正しい(2026-09-20 実機確認)。ただし**どの窓も app_id に `herdr` を
+含めること**——含まれていない窓だけが上の `/proc` 経路に落ちる。
+
+唯一の例外は**名前付きセッションを複数動かした場合**(`herdr --session <名前>`)。セッションごとに
+socket が分かれるが、adapter は常に既定セッションに聞く。既定以外のセッションの窓では正しく
+答えられない(`docs/DECISIONS.md` 0028)。
 
 ### WezTerm
 
