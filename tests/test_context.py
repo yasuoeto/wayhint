@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ from wayhint.context.herdr import HerdrContextProvider, _herdr_env
 from wayhint.context.process import process_info_from_mapping
 from wayhint.context.resolver import ContextResolver
 from wayhint.context.wayfire import WayfireContextProvider
+from wayhint.daemon import _nested_providers
 from wayhint.models import DisplayConfig, Hint, HintSheet, MatchRule, OutputInfo, SourceLocation
 
 LOC = SourceLocation(Path("x.yaml"), 1)
@@ -490,6 +492,43 @@ class HerdrBudgetTest(unittest.TestCase):
         )
         self.assertIsNone(p.foreground_process())
         self.assertEqual(len(calls), 1)  # pane list was never spawned
+
+
+class RealProviderContractTest(unittest.TestCase):
+    """The resolver against the providers the daemon registers, not stand-ins.
+
+    Everything else in this file uses fakes, and that is what let a provider drift out of step
+    with the call the resolver makes. ``foreground_process`` grew an ``app_id`` argument for
+    ``ProcAdapter``; had ``HerdrContextProvider`` kept the old signature, the resolver's call
+    would raise ``TypeError``, be caught as "adapter bug must not take the overlay down", and
+    Herdr would silently stop answering -- with every test still green.
+    """
+
+    def test_every_registered_provider_takes_the_call_the_resolver_makes(self) -> None:
+        """Signatures only: binding the arguments proves the shape without running anything."""
+        providers = _nested_providers()
+        self.assertTrue(providers)
+        for provider in providers:
+            with self.subTest(provider=type(provider).__name__):
+                inspect.signature(provider.applies_to).bind("foot")
+                inspect.signature(provider.foreground_process).bind("foot")
+
+    def test_the_resolver_drives_the_real_herdr_adapter(self) -> None:
+        """End to end through the real adapter, with only the subprocess faked."""
+        procs = [{"pid": 5, "name": "claude", "argv": ["claude"], "cmdline": "claude"}]
+        answers = {"pane current": PANE, "pane process-info": info(procs, leader=5)}
+
+        def runner(argv, timeout):
+            return json.dumps(answers[" ".join(argv[1:3])])
+
+        resolver = ContextResolver(
+            FakeDesktop(snap("herdr")), [HerdrContextProvider(runner=runner)]
+        )
+        ctx = resolver.resolve(SHEETS, GlobalConfig())
+        self.assertEqual(ctx.active_sheet, "claude")
+        self.assertEqual(ctx.parent_context, "herdr")
+        self.assertEqual(ctx.foreground_process.name, "claude")
+        self.assertEqual(ctx.chain, ("HerdrContextProvider",))
 
 
 class ProcessInfoTest(unittest.TestCase):
