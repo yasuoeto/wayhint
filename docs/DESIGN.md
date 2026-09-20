@@ -459,6 +459,11 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   `ContextError` になること」はヘッドレスで常に走る。compositor があるセッションでは、実際に
   接続して snapshot / `find_output` の形と、GTK + gtk4-layer-shell の typelib が DECISIONS 0009 の
   順で読めること(子プロセスで `_load_gui()`)まで確認する。無ければ skip する。
+- **keyboard grab**(`tests/test_window_grab.py`): `keyboard_grab` は純粋で headless に検証済みだが、
+  **widget 側がそれを適用しているか**は手動チェックリスト(T6 / T13 / T24)しか見ていなかった。
+  compositor があるときだけ、実物の `HintWindow` を建てて layer surface の `keyboard_mode` が
+  `keyboard_grab` と全状態で一致すること、hide で grab が落ちて mode は残ることを確認する。
+  **surface は map しない**(`present()` を呼ばず `get_visible` を差し替える)ので画面には何も出ない。
 - `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
   テストから分離し、ヘッドレスでも通るようにする(実機が要るものは skip。上の adapter tests)。
 - daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の
