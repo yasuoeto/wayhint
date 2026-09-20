@@ -464,6 +464,12 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   compositor があるときだけ、実物の `HintWindow` を建てて layer surface の `keyboard_mode` が
   `keyboard_grab` と全状態で一致すること、hide で grab が落ちて mode は残ることを確認する。
   **surface は map しない**(`present()` を呼ばず `get_visible` を差し替える)ので画面には何も出ない。
+- **描画**(`tests/test_window_render.py`): `HintWindow.lay_out()`(= `present_context` から
+  `set_visible` / `present` を除いた部分)を呼び、一覧が `sort_hints(visible_hints(...))` と
+  一致すること、見出しの `親 › 子` と context ラベル(app_id は接尾辞を外す)、sheet が無いときの
+  表示、layer surface の anchor / margin / size が `geometry.placement` と一致すること
+  (global 指定と sheet override の両方)、search で絞られて抜けると戻ることを確認する。
+  ここも surface は map しない。
 - `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
   テストから分離し、ヘッドレスでも通るようにする(実機が要るものは skip。上の adapter tests)。
 - daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の

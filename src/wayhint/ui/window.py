@@ -355,13 +355,19 @@ class HintWindow(Gtk.Window):
     def context(self) -> ResolvedContext | None:
         return self._ctx
 
-    def present_context(
+    def lay_out(
         self,
         ctx: ResolvedContext,
         sheets: Sequence[HintSheet],
         config: GlobalConfig,
         includes: Sequence[HintSheet] = (),
     ) -> None:
+        """Put a context on the widgets without showing them.
+
+        Separate from :meth:`present_context` so that what the overlay *would* display can be
+        checked without mapping a surface -- presenting one during a test run puts a window on
+        the user's screen (``tests/test_window_render.py``).
+        """
         self._ctx = ctx
         self._sheets = {s.id: s for s in sheets}
         self._config = config
@@ -369,6 +375,15 @@ class HintWindow(Gtk.Window):
         self._apply_placement()
         self._render_header()
         self._render_list()
+
+    def present_context(
+        self,
+        ctx: ResolvedContext,
+        sheets: Sequence[HintSheet],
+        config: GlobalConfig,
+        includes: Sequence[HintSheet] = (),
+    ) -> None:
+        self.lay_out(ctx, sheets, config, includes)
         self.set_visible(True)
         self.present()
         # Coming back to a workspace re-takes the grab if the mode still wants it.
