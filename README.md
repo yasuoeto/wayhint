@@ -116,6 +116,15 @@ exec /usr/bin/foot --app-id "foot.p$$" "$@"
 app_id を変えられないため対象外。wrapper を通さない窓でも、その端末のプロセスが 1 つだけなら
 従来どおり解決する。
 
+設定は script が行う。**`--apply` を付けない限り何も書かない**。
+
+```sh
+./scripts/setup-terminals           # dry run。何をするか表示するだけ
+./scripts/setup-terminals --apply   # wrapper / .desktop / launcher 設定まで直す
+```
+
+引数で端末を選べる(既定は入っている端末すべて)。bar や compositor の設定は該当行のコマンドだけを
+置換し、書き換える前にコピーを取る。
 
 bar や compositor の設定だけは表示するだけで書き換えない(手で保守しているファイルのため)。
 **端末ごとの条件、launcher の配線、効いているかの確認方法は
@@ -412,7 +421,7 @@ editor:
 | `docs/DECISIONS.md` | 決定の記録 |
 | `docs/TERMINALS.md` | terminal emulator と launcher の設定 |
 | `examples/` | config.yaml と sheet の雛形 |
-| `scripts/` | `setup`、`check`、この repository 専用の agent hook |
+| `scripts/` | `setup`、`check`、`setup-terminals`、この repository 専用の agent hook |
 | `.agents/skills/` | agent 間で共有する skill |
 | `.claude/`、`.codex/` | vendor ごとの adapter 設定(手で編集しない) |
 

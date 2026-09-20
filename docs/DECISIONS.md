@@ -822,6 +822,43 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   `answered an unfocused pane` が出ていない)ので、この分岐は dead code に近い。
   次に触るときは削除も選択肢。
 
+## 0029 — 端末の設定は script で行い、ユーザーが保守する launcher 設定は書き換えない
+
+- **Date**: 2026-09-20
+- **Status**: accepted
+- **Context**: `.p<pid>` 規約(0027)を有効にするには wrapper を作って**端末を起動している経路すべて**を
+  そこに向ける必要があり、`docs/TERMINALS.md` の手順は長い。一度きりの作業なので手順書だけで
+  よいかとも考えたが、(a) この repository を他人が使う場合、(b) 別のマシンで組み直す場合、の
+  どちらでも手作業を繰り返すことになる。一方で対象ファイルは 2 種類に分かれる——wayhint が
+  生成するもの(wrapper、`.desktop` の上書き)と、ユーザーが手で保守しているもの(bar の設定、
+  compositor のメニュー)。
+- **Decision**: `scripts/setup-terminals` を追加する。生成するファイル(wrapper、`.desktop` の
+  上書き)に加え、**bar や compositor の設定の該当行も書き換える**。当初は後者を報告だけに留めた——
+  JSON with comments や XML は経緯コメントを伴い(実機の `waybar/config.jsonc` には
+  `// 2026-09-16: was U+F120 ...` のような行がある)、機械的な書き換えはそれを失うため。
+  ただしこの懸念は**ファイルを読み直して書き出す**場合のもので、検出が「何行目のどの範囲か」まで
+  特定できている以上、**その範囲だけを置換**すればパースも再シリアライズも要らず、コメントも
+  整形もそのまま残る。書き換える前に `<ファイル名>.wayhint-backup-<日時>` のコピーを取る。
+  引数で端末を選べ、既定は「入っている端末すべて」。
+  **既定は dry run で、`--apply` を付けたときだけ書き込む**(端末指定の有無に関わらず)——
+  ユーザーの home に書く script が初回に何をするかは、実行前に読めるべきである。
+  残作業がある間は exit 1 を返し、dry run がそのまま健全性チェックになる。生成物には目印のコメントを入れ、**目印の無いファイルには触らない**(自分で書いた
+  wrapper を潰さない)。端末の検出は「コマンドとして実行されている値の先頭語」だけを見る——
+  名前を行内検索すると、実機ではコメントや tooltip の文字列に当たって 19 件中 14 件が誤検出だった。
+  `TERMINAL_APP_IDS` との食い違いは起動時に検査して落とす。
+- **Alternatives**: **手順書のままにする**——一度きりとはいえ、配布と再セットアップで繰り返す。
+  **launcher 設定は報告だけにする**(当初の決定)——「他人が clone して 1 コマンド」が成立せず、
+  4 種類のファイル形式に対する手作業が残る。範囲を限った置換とバックアップで壊す危険は下げられる。
+  **`--check` だけを作る**——診断はできるが、他人に渡す目的には足りない。
+  **`./scripts/check` に組み込む**——`check` は repository の検証で、ユーザーのデスクトップの
+  状態は対象外。別の入口に分ける(`AGENTS.md` にもそう書く)。
+- **Consequences**: `scripts/` に repository の外(ユーザーの home)へ書く script が初めて入った。
+  そのため全ての path を環境変数から取り、`tests/test_setup_terminals.py` が一時ディレクトリを
+  HOME に見立てて検証する(既存ファイルがある場合——最新・古い生成物・手書き・既に wrapper を
+  指している launcher 行——も含む)。見に行く launcher は `LAUNCHERS` の 8 ファイルだけで、
+  シェル 1 行に埋め込まれた起動は対象外。kitty の `single_instance` と Ghostty の `gtk-single-instance` は
+  wrapper が引数で無効にするので、ユーザーが設定ファイルを触る必要は無くなった。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

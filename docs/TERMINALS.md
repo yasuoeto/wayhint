@@ -40,6 +40,46 @@ app_id = "foot"         →  foot のプロセスが 1 つだけならそれ、�
 - overlay の context ラベルにも `foot` と出る
 - `wayhint context` の `desktop_app` にだけ `foot.p12345` がそのまま出る(窓の識別子なので)
 
+## まず script を走らせる
+
+手順の大半は `./scripts/setup-terminals` が行う。**`--apply` を付けない限り何も書かない**
+(端末を指定してもしなくても同じ)。引数で端末を選べ、既定は入っている端末すべて。
+
+```sh
+./scripts/setup-terminals                        # dry run。何をするか表示するだけ
+./scripts/setup-terminals kitty ghostty          # dry run。端末を指定する
+./scripts/setup-terminals --apply                # 実際に書き込む
+./scripts/setup-terminals --apply kitty ghostty  # 端末を指定して書き込む
+```
+
+`--check` は既定と同じ dry run(意図をはっきりさせたいとき用)。`--apply` との併用はエラー。
+
+`--apply` が行うこと:
+
+- `~/.local/bin/<端末>-wayhint` の wrapper を作る
+- `~/.local/share/applications/<端末>.desktop` を上書きする(システムの `.desktop` から `Exec` だけ
+  差し替える。`%F` などの引数書式は残す)
+- **bar や compositor の設定の該当行**を書き換える。置換するのは**その行のコマンドの先頭語だけ**で、
+  ファイルを読み直して書き出すことはしない。コメント・キーの順序・空白はそのまま残る
+
+既存ファイルの扱い:
+
+| 状態 | 動作 |
+|---|---|
+| 生成済みで内容も最新 | 何もしない(`最新です`) |
+| 生成済みだが内容が古い | 上書きする。目印のコメントで自分が作ったものだと分かる |
+| 目印の無い手書きファイル | **触らない**(`手で書かれたものがあるので触りません`) |
+| 既に wrapper を指している launcher 行 | 対象にしない |
+
+launcher の設定は**書き換える前にコピーを取る**。1 回の実行で 1 ファイルにつき 1 つ、
+`<ファイル名>.wayhint-backup-<日時>` という名前で同じディレクトリに置く。
+
+残作業がある間は exit 1 を返すので、dry run はそのまま健全性チェックに使える。
+見に行く launcher は 8 ファイル(実行の最後に一覧が出る)。それ以外から端末を起動している場合は
+自分で探す必要がある。シェル 1 行に埋め込まれた起動(`sh -c '... foot ...'`)も対象外。
+
+以降は script が何をしているか、手でやる場合はどうするかの説明。
+
 ## 端末ごとの対応
 
 | 端末 | 規約への乗せ方 | 条件 |
