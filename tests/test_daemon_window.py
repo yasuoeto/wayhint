@@ -22,6 +22,7 @@ from pathlib import Path
 
 from tests.test_desktop_providers import needs_compositor
 from wayhint import ipc
+from wayhint.i18n import translator
 from wayhint.daemon import Daemon
 from wayhint.models import OutputInfo, ResolvedContext
 
@@ -53,13 +54,15 @@ class DaemonToWindowTest(unittest.TestCase):
         self.root = Path(temp.name)
         (self.root / "hints").mkdir()
         (self.root / "hints" / "a.yaml").write_text(SHEET)
+        self.write_config("en")
 
         self.daemon = Daemon(self.root, self.root / "unused.sock")
         self.daemon.config = replace(self.daemon.config, workspace_scope="all")
         self.daemon.store.load_all()
         self.assertEqual([s.id for s in self.daemon.store.sheets], ["a"], self.daemon.store.issues)
 
-        self.window = self.gui.HintWindow(None, noop, noop, noop, noop, noop)
+        # Built in the language the config names, the way ``Daemon.start`` builds it.
+        self.window = self.gui.HintWindow(None, noop, noop, noop, noop, noop, tr=translator("en"))
         self.addCleanup(self.window.destroy)
         self.visible = False
         self.window.present = noop
@@ -77,6 +80,11 @@ class DaemonToWindowTest(unittest.TestCase):
 
     def _set_visible(self, value: bool) -> None:
         self.visible = bool(value)
+
+    def write_config(self, language: str) -> None:
+        (self.root / "config.yaml").write_text(
+            f"appearance: {{language: {language}}}\ncontext: {{workspace: all}}\n"
+        )
 
     def send(self, cmd: str) -> dict:
         return ipc.handle_request(f'{{"cmd":"{cmd}"}}\n'.encode(), self.daemon.dispatch)
@@ -118,6 +126,38 @@ class DaemonToWindowTest(unittest.TestCase):
 
         self.send("hide")
         self.assertEqual(self.keyboard(), shell.KeyboardMode.NONE)  # 0014 D4: hiding drops it
+
+    def test_changing_the_language_re_labels_the_window_that_is_already_up(self) -> None:
+        """``appearance.language`` is one setting for the sheets and for the words around them.
+
+        The buttons and the form captions are written when the window is built, so they were
+        the one part that kept the language the daemon started in until it was restarted. The
+        rest of the overlay is translated as it renders and never had the problem.
+        """
+        self.send("reload")
+        self.send("show")
+        self.assertEqual(self.window._search_btn.get_label(), "Search")
+        self.assertEqual(self.window._copy_btn.get_label(), "Copy")
+
+        self.write_config("ja")
+        self.send("reload")
+        self.assertEqual(self.window._search_btn.get_label(), "検索")
+        self.assertEqual(self.window._copy_btn.get_label(), "コピー")
+        self.assertEqual(self.window._search.get_placeholder_text(), "ヒントを検索…")
+
+        self.write_config("en")
+        self.send("reload")
+        self.assertEqual(self.window._search_btn.get_label(), "Search")
+
+    def test_the_language_follows_while_the_search_box_is_open(self) -> None:
+        """In search the button says "Done", and re-labelling must not put "Search" back."""
+        self.send("show")
+        self.window.set_mode("search", refocus=False)
+        self.assertEqual(self.window._search_btn.get_label(), "Done")
+
+        self.write_config("ja")
+        self.send("reload")
+        self.assertEqual(self.window._search_btn.get_label(), "完了")
 
     def test_a_request_the_daemon_cannot_serve_is_a_reply_not_a_crash(self) -> None:
         self.assertFalse(self.send("wayhint-no-such-command")["ok"])

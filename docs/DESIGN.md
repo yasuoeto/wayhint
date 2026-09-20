@@ -411,6 +411,14 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
 
 新規ラベルは EN（キー兼値）と JA の両方に追加。対象: フォームの欄名と kind の表示、key 割当ヘルプ、擬似 category（`inbox` / `未定義`）、エラー（validation 失敗、id 不在、YAML error 中は編集不可、sheet 不在）、削除確認、汎用 process 名の警告。
 
+`appearance.language` の変更は **daemon を再起動せずに反映する**（0024 の「1 言語 = 1 ディレクトリ」は
+sheet だけでなく UI の文言にも掛かる）。context ごとに描き直す文字列は毎回 `self._tr` を引くので
+自動的に追従するが、**widget を組み立てたときに一度だけ書き込んだ文字列**（ツールバーの 5 ボタン、
+検索欄の placeholder、フォームの欄名と `Kind`）は追従しない。この分だけを
+`HintWindow._fixed()` が `(setter, key)` として控え、`set_language()` が引き直す。
+daemon 側は `_reload_config` で `appearance.language` の変化を見て呼ぶ
+（`hints_dir` の変化では判定できない——`ja` と `auto` が同じ `hints/en/` に落ちることがある）。
+
 ### 13. テスト
 
 純粋関数（`./scripts/check`）:
@@ -542,7 +550,9 @@ CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略
   id の不一致が出る **(2026-09-19 確認済)**
 - T30 `appearance.language` を `ja` / `en` で切り替える（または `LANG` を変えて daemon を起動）
   → UI の文言と一緒に `hints/ja/` と `hints/en/` が切り替わる。片方しか無い言語では `en` に
-  落ち、どちらも無ければ `hints/*.yaml` が読まれる
+  落ち、どちらも無ければ `hints/*.yaml` が読まれる。**overlay を出したまま config.yaml を
+  書き換えても、再起動せずにボタンと欄名まで切り替わる**（自動テストは
+  `tests/test_daemon_window.py`。実機で見るのは overlay を開いたままの書き換え）
 - T31 sheet の `include` で他 sheet の hint が一覧の末尾に出る。それを編集すると所属ファイルが
   更新される（詳細欄の `ファイル:` が書き換え先）
 - T32 config の `include` が `include` を書いていない sheet 全部に効き、`include:` を書いた sheet では

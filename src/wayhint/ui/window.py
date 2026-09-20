@@ -161,6 +161,10 @@ class HintWindow(Gtk.Window):
         self._on_resize = on_resize
         self._refocus = refocus
         self._tr = tr or translator()
+        # Strings written into a widget once, when it was built. Everything else is translated
+        # at render time and follows the catalogue by itself; these would keep the language the
+        # daemon started in, so they are remembered and re-applied by :meth:`set_language`.
+        self._fixed_text: list[tuple[Callable[[str], None], str]] = []
         self._ctx: ResolvedContext | None = None
         self._sheets: dict[str, HintSheet] = {}
         self._config = GlobalConfig()
@@ -216,7 +220,8 @@ class HintWindow(Gtk.Window):
         root.append(self._error)
         search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, visible=False)
         self._search_row = search_row
-        self._search = Gtk.SearchEntry(hexpand=True, placeholder_text=self._tr("search hints…"))
+        self._search = Gtk.SearchEntry(hexpand=True)
+        self._fixed(self._search.set_placeholder_text, "search hints…")
         self._search.connect("search-changed", lambda *_: self._render_list())
         self._search.connect("stop-search", lambda *_: self.end_search())
         self._watch_preedit(self._search)
@@ -244,11 +249,11 @@ class HintWindow(Gtk.Window):
 
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bar.add_css_class("wayhint-toolbar")
-        self._search_btn = self._button(bar, self._tr("Search"), self._toggle_search)
-        self._copy_btn = self._button(bar, self._tr("Copy"), self._copy_selected)
-        self._button(bar, self._tr("Edit in editor"), self._edit_in_editor)
-        self._button(bar, self._tr("Edit"), lambda: self._on_action("enter-edit", None))
-        self._button(bar, self._tr("Close"), lambda: self._on_close())
+        self._search_btn = self._button(bar, "Search", self._toggle_search)
+        self._copy_btn = self._button(bar, "Copy", self._copy_selected)
+        self._button(bar, "Edit in editor", self._edit_in_editor)
+        self._button(bar, "Edit", lambda: self._on_action("enter-edit", None))
+        self._button(bar, "Close", lambda: self._on_close())
         root.append(bar)
 
     def _build_form(self) -> Gtk.Widget:
@@ -269,7 +274,8 @@ class HintWindow(Gtk.Window):
             ("remark", "Remark"),
         ):
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            caption = Gtk.Label(label=self._tr(label), xalign=0, width_chars=9)
+            caption = Gtk.Label(xalign=0, width_chars=9)
+            self._fixed(caption.set_label, label)
             caption.add_css_class("wayhint-form-label")
             entry = Gtk.Entry(hexpand=True)
             # ``activate`` is Enter *after* the input method is done with it: a conversion being
@@ -284,7 +290,9 @@ class HintWindow(Gtk.Window):
             self._rows[name] = row
 
         kind_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        kind_row.append(Gtk.Label(label=self._tr("Kind"), xalign=0, width_chars=9))
+        kind_caption = Gtk.Label(xalign=0, width_chars=9)
+        self._fixed(kind_caption.set_label, "Kind")
+        kind_row.append(kind_caption)
         self._kind = Gtk.DropDown.new_from_strings(list(HINT_KINDS))
         self._kind.connect("notify::selected", lambda *_: self._sync_form_rows())
         kind_row.append(self._kind)
@@ -342,14 +350,35 @@ class HintWindow(Gtk.Window):
         self.set_size_request(*size)
         self._on_resize(*size)  # the daemon writes config.yaml; the reload brings it back here
 
-    @staticmethod
-    def _button(parent: Gtk.Box, label: str, cb: Callable[[], None]) -> Gtk.Button:
-        b = Gtk.Button(label=label)
+    def _fixed(self, setter: Callable[[str], None], key: str) -> None:
+        """Apply a translated string now, and again whenever the language changes."""
+        self._fixed_text.append((setter, key))
+        setter(self._tr(key))
+
+    def _button(self, parent: Gtk.Box, key: str, cb: Callable[[], None]) -> Gtk.Button:
+        b = Gtk.Button()
+        self._fixed(b.set_label, key)
         b.connect("clicked", lambda *_: cb())
         parent.append(b)
         return b
 
     # --- public API used by the daemon -----------------------------------------------------
+
+    def set_language(self, tr: Translator) -> None:
+        """Switch the catalogue the overlay is written in (DECISIONS 0024).
+
+        ``appearance.language`` changes which sheets are read *and* which language the interface
+        is in, and both have to follow the setting without a restart. What is rendered per
+        context already does, because it asks ``self._tr`` each time; the strings written into a
+        widget when it was built do not, and those are the ones re-applied here.
+        """
+        self._tr = tr
+        for setter, key in self._fixed_text:
+            setter(tr(key))
+        if self._mode == "search":
+            self._search_btn.set_label(tr("Done"))  # the fixed label above said "Search"
+        if self._mode == "edit":
+            self._help.set_label(self._help_text())
 
     @property
     def context(self) -> ResolvedContext | None:

@@ -115,6 +115,7 @@ class Daemon:
         self.desktop = select_desktop_provider(self.config.context_backend)
         self.resolver = ContextResolver(self.desktop, _nested_providers())
         self._backend = self.config.context_backend
+        self._language = self.config.language
         self.window: HintWindow | None = None
         self._watcher: WorkspaceWatcher | None = None
         self._watch_source: int | None = None
@@ -187,6 +188,14 @@ class Daemon:
         if self.store.global_include != self.config.include:
             self.store.global_include = self.config.include
             self.store.resolve()
+        if self.config.language != self._language:
+            # The setting names one language for both halves: the sheets below, and the words
+            # around them. The window was built with the catalogue the daemon started in, so it
+            # is handed the new one rather than waiting for a restart (0024).
+            log.info("language: %s", self.config.language)
+            self._language = self.config.language
+            if self.window is not None:
+                self.window.set_language(translator(self.config.language))
         wanted = hints_dir(self.root, self.config.language)
         if wanted != self.store.hints_dir:
             # Changing the language changes which sheets exist, so the store is re-read from the
