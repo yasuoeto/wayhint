@@ -1,0 +1,25 @@
+# 切り替えが Claude Code 専用でないことを示すための 2 つ目のコマンド。
+id: codex
+title: Codex
+priority: 10
+match:
+  process:
+    argv_regex: ["^codex$"]
+inherit:
+  parent_tags: [terminal]
+include: [wm]
+hints:
+  - id: approve
+    title: 実行を承認する
+    key: y
+    category: 確認
+    favorite: true
+  - id: reject
+    title: 実行を却下する
+    key: n
+    category: 確認
+  - id: diff
+    title: 変更点を見る
+    kind: command
+    command: /diff
+    category: 確認

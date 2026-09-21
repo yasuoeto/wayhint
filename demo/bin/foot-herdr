@@ -1,0 +1,9 @@
+#!/bin/sh
+# Herdr in a terminal, the way docs/TERMINALS.md says to start it: the window's app_id has to
+# contain "herdr" or wayhint never asks Herdr which pane is focused. The foot settings and the
+# fixed app_id are what make two recordings of this look the same.
+set -eu
+CDPATH=''
+dir=$(cd -- "$(dirname -- "$0")" && pwd)
+# "$@" goes where foot's own options do: the recorder adds --title=<placement> there.
+exec /usr/bin/foot --app-id=foot-herdr --config "$dir/../fixtures/foot.ini" "$@" herdr

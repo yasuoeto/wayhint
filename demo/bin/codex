@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""A stand-in for Claude Code, for the demo to point the overlay at.
+"""A stand-in for Codex: a second command, so the demo can show the overlay following the
+focus from one pane to another.
 
 The real thing is not run: a demo has to come out the same every time, and a coding agent does
 not. What matters for wayhint is only that the terminal's foreground process is called
-``claude``, which is what picks ``claude-code.yaml`` (README「どの sheet が選ばれるか」). Two
+``codex``, which is what picks ``codex.yaml`` (README「どの sheet が選ばれるか」). Two
 things make that work and both are easy to break:
 
 * the **file name** is the whole trick -- ``/proc`` (and Herdr) report ``argv[0]``, and for a
@@ -22,7 +23,7 @@ import ctypes
 import os
 import sys
 
-NAME = "claude"
+NAME = "codex"
 TITLE = f"{NAME}  ·  demo stub"
 LINES = [
     "Working in ~/demo",

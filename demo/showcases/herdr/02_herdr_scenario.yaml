@@ -1,0 +1,537 @@
+# The herdr showcase, as a script. 01_herdr_storyboard.md says what this argues and why; this
+# file says what the recorder does. When the two disagree about wording or seconds, change this
+# one and copy the result back into the storyboard. When they disagree about *what to show*,
+# stop and ask -- the storyboard is the one that decides that (DECISIONS 0032).
+#
+# `steps` defines every moment once. A `variant` is a list of step ids and has to be a complete
+# sequence on its own: the 60-second cut repeats the opening steps with its own shorter holds
+# rather than borrowing state from the longer ones.
+
+output: {width: 1280, height: 720, fps: 30}
+fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
+
+windows:
+  - {title: Herdr, x: 32, y: 48, width: 620, height: 580}
+  - {title: vi, x: 104, y: 214, width: 560, height: 380}
+
+steps:
+  # =============================================================================================
+  # 60 秒版。同じ操作でも尺が違うので、長い版とは別の step として書く(variant 別 override は
+  # 持たない設計。demo/README.md「variant の完全列」)。
+  # =============================================================================================
+  - id: open-herdr-60
+    spawn: {window: Herdr, argv: ["{demo_bin}/foot-herdr"]}
+    wait_for:
+      toplevel: "^foot-herdr$"
+      context: {active_sheet: herdr}
+      overlay: hidden
+      timeout: 40
+    caption: {ja: "Herdr の中で作業している"}
+    hold: 3.0
+
+  - id: start-claude-60
+    herdr: [pane, run, "w1:p1", claude]
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "操作を忘れたら、いつも同じ場所を見ればいい"}
+    hold: 4.0
+
+  - id: show-hints-60
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 10}
+    caption: {ja: "いま使っているものの、自分用チートシート"}
+    hold: 6.0
+
+  - id: whose-hints-60
+    cli: refresh
+    wait_for: {overlay: visible, label: "Claude Code"}
+    caption: {ja: "端末の中で動いてるものまで見て切り替わる"}
+    hold: 7.0
+
+  - id: keep-typing-60
+    type: "/comp"
+    precondition: {overlay: visible}
+    wait_for: {overlay: visible}
+    caption: {ja: "出したまま、そのまま作業できる"}
+    hold: 8.0
+
+  - id: new-tab-60
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 1.5
+
+  - id: start-codex-60
+    herdr: [pane, run, "w1:p2", codex]
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      timeout: 30
+    hold: 2.5
+
+  - id: switch-pane-60
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex", hints: 8}
+    caption: {ja: "別の pane に移って、もう一度"}
+    hold: 7.0
+
+  - id: edit-mode-60
+    key: super+ctrl+h
+    wait_for:
+      overlay: visible
+      label: "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
+    caption: {ja: "忘れた操作は、その場で追記"}
+    hold: 3.0
+
+  - id: open-form-60
+    key: a
+    wait_for: {overlay: visible, label: "Title"}
+    hold: 2.0
+
+  - id: type-title-60
+    type: "直前の検索を繰り返す"
+    wait_for: {overlay: visible, label: "Title"}
+    hold: 2.5
+
+  - id: next-field-60
+    key: tab
+    wait_for: {overlay: visible, label: "Key"}
+    hold: 0.5
+
+  - id: type-key-60
+    type: "n"
+    wait_for: {overlay: visible, label: "Key"}
+    hold: 2.5
+
+  - id: save-hint-60
+    key: enter
+    wait_for: {overlay: visible, no_label: "Title", hints: 9}
+    caption: {ja: "保存したら、キーボードは元のアプリへ"}
+    hold: 6.0
+
+  - id: close-60
+    key: super+h
+    wait_for: {overlay: hidden}
+    caption: {ja: "中身は YAML。自分で書いて育てる"}
+    hold: 4.5
+
+  # =============================================================================================
+  # 3 分版 / 5 分版が共有する本編(storyboard §1–§6)
+  # =============================================================================================
+
+  # --- §1 課題 ---------------------------------------------------------------------------------
+  - id: open-herdr
+    spawn: {window: Herdr, argv: ["{demo_bin}/foot-herdr"]}
+    wait_for:
+      toplevel: "^foot-herdr$"
+      context: {active_sheet: herdr}
+      overlay: hidden
+      timeout: 40
+    caption: {ja: "Herdr の中で Claude Code を動かしている"}
+    hold: 3.0
+
+  - id: start-claude
+    herdr: [pane, run, "w1:p1", claude]
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "操作を忘れるたびに、Web で検索する"}
+    hold: 5.0
+
+  - id: nothing-remains
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "調べたことが、どこにも残らない"}
+    hold: 5.0
+
+  - id: wrong-hints
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "欲しいのは、いま動いているものの hint"}
+    hold: 5.0
+
+  # --- §2 いつも同じ場所 -------------------------------------------------------------------------
+  - id: show-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 10}
+    caption: {ja: "hotkey 一発。いつも右上。"}
+    hold: 7.0
+
+  - id: list-layout
+    cli: refresh
+    wait_for: {overlay: visible, label: "Claude Code"}
+    caption: {ja: "★ はよく使うもの。左にキー、右に分類"}
+    hold: 8.0
+
+  - id: detail-pane
+    cli: refresh
+    wait_for: {overlay: visible, label: "Claude Code"}
+    caption: {ja: "補足は下に出る。一覧には出さない"}
+    hold: 7.0
+
+  # --- §3 主役1: 中まで見て切り替わる -------------------------------------------------------------
+  - id: whose-hints
+    cli: refresh
+    wait_for: {overlay: visible, label: "Claude Code"}
+    caption: {ja: "見ているのは窓ではなく、中のプロセス"}
+    hold: 8.0
+
+  - id: new-tab
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 2.0
+
+  - id: start-codex
+    herdr: [pane, run, "w1:p2", codex]
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      timeout: 30
+    hold: 3.0
+
+  - id: switch-pane
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex", hints: 8}
+    caption: {ja: "別の pane で押し直せば、閉じずに差し替わる"}
+    hold: 8.0
+
+  - id: parent-hints
+    cli: refresh
+    wait_for: {overlay: visible, label: "Codex"}
+    caption: {ja: "後ろは Herdr の hint。タグで絞ってある"}
+    hold: 8.0
+
+  # --- §4 主役2: 奪わない ------------------------------------------------------------------------
+  - id: keep-typing
+    type: "/dif"
+    precondition: {overlay: visible}
+    wait_for: {overlay: visible}
+    caption: {ja: "通常表示中はキーボードを受け取らない"}
+    hold: 8.0
+
+  - id: open-search
+    press: {button: search}
+    precondition: {overlay: visible}
+    wait_for: {button: done}
+    hold: 2.5
+
+  - id: type-search
+    type: "確認"
+    wait_for: {overlay: visible, hints: 3}
+    caption: {ja: "キーボードが来るのは、検索を始めたときだけ"}
+    hold: 7.0
+
+  - id: close-search
+    key: escape
+    wait_for: {button: search}
+    hold: 3.0
+
+  - id: focus-back
+    type: "f"
+    wait_for: {overlay: visible}
+    caption: {ja: "終えたら、focus は元の窓へ戻る"}
+    hold: 6.0
+
+  # --- §5 主役3: その場で育てる -------------------------------------------------------------------
+  - id: edit-mode
+    key: super+ctrl+h
+    precondition: {overlay: visible}
+    wait_for:
+      overlay: visible
+      label: "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
+    caption: {ja: "忘れていた操作を見つけたら、その場で書く"}
+    hold: 5.0
+
+  - id: open-form
+    key: a
+    wait_for: {overlay: visible, label: "Title"}
+    caption: {ja: "追加先は、いま選んでいる hint と同じ sheet"}
+    hold: 4.0
+
+  - id: type-title
+    type: "直前の検索を繰り返す"
+    wait_for: {overlay: visible, label: "Title"}
+    hold: 3.5
+
+  - id: next-field
+    key: tab
+    wait_for: {overlay: visible, label: "Key"}
+    hold: 0.6
+
+  - id: type-key
+    type: "n"
+    wait_for: {overlay: visible, label: "Key"}
+    hold: 3.5
+
+  - id: save-hint
+    key: enter
+    wait_for: {overlay: visible, no_label: "Title", hints: 9}
+    caption: {ja: "保存すると編集モードは終わる"}
+    hold: 7.0
+
+  - id: break-yaml
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      text: |
+        id: herdr
+        title: Herdr
+        hints:
+          - {id: broken, title: [
+    precondition: {overlay: visible}
+    wait_for: {overlay: visible, label: "YAML error"}
+    caption: {ja: "手で編集して壊しても、最後に読めた内容が残る"}
+    hold: 7.0
+
+  - id: fix-yaml
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      source: "fixtures/hints/{lang}/herdr.yaml"
+    wait_for: {overlay: visible, no_label: "YAML error"}
+    caption: {ja: "直せばそのまま復帰する。再起動は要らない"}
+    hold: 7.0
+
+  # --- §6 締め ----------------------------------------------------------------------------------
+  - id: close
+    key: super+h
+    precondition: {overlay: visible}
+    wait_for: {overlay: hidden}
+    caption: {ja: "忘れた瞬間、いつも同じ場所に、必要な情報がある"}
+    hold: 6.0
+
+  - id: no-exec
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "command は表示とコピーだけ。実行はしない"}
+    hold: 6.0
+
+  - id: stack
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "Wayland (labwc) / GTK4 / hint は YAML"}
+    hold: 6.0
+
+  # =============================================================================================
+  # 5 分版だけの追加(storyboard §3–§6 の「加えて」の部分)。本編の step 列に差し込む。
+  # =============================================================================================
+
+  # --- §3 追加: Herdr が無くても端末の中を見る ------------------------------------------------
+  - id: open-vi
+    spawn: {window: vi, argv: ["{demo_bin}/foot-wayhint", "{demo_bin}/vi"]}
+    precondition: {overlay: visible}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: visible, timeout: 30}
+    caption: {ja: "Herdr を使わない、ただの端末を開く"}
+    hold: 5.0
+
+  - id: show-vi
+    key: super+h
+    wait_for: {overlay: visible, label: "Vi"}
+    caption: {ja: "Herdr が無くても、端末の中のプロセスを見る"}
+    hold: 9.0
+
+  - id: vi-note
+    cli: refresh
+    wait_for: {overlay: visible, label: "Vi"}
+    caption: {ja: "窓が複数なら app_id に .p<pid> を付ける"}
+    hold: 9.0
+
+  - id: close-vi
+    close: {window: vi}
+    wait_for: {context: {active_sheet: codex}, timeout: 20}
+    hold: 3.0
+
+  - id: back-to-codex
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex"}
+    hold: 4.0
+
+  # --- §4 追加: コピー ---------------------------------------------------------------------------
+  - id: copy-hint
+    press: {button: copy}
+    precondition: {overlay: visible}
+    wait_for: {overlay: visible, label: "Codex"}
+    caption: {ja: "コピーは copy → command → key の順"}
+    hold: 8.0
+
+  - id: no-run
+    pause: true
+    wait_for: {overlay: visible}
+    caption: {ja: "コピーするだけで、実行はしない"}
+    hold: 7.0
+
+  # --- §5 追加: favorite と並べ替え ---------------------------------------------------------------
+  - id: favorite-hint
+    key: f
+    precondition: {overlay: visible}
+    wait_for: {overlay: visible}
+    caption: {ja: "f で ★。★ の付いた hint は先頭に集まる"}
+    hold: 8.0
+
+  - id: move-down
+    key: J
+    wait_for: {overlay: visible}
+    caption: {ja: "J / K で並べ替え。YAML の行がそのまま動く"}
+    hold: 7.0
+
+  - id: move-up
+    key: K
+    wait_for: {overlay: visible}
+    hold: 4.0
+
+  - id: stay-in-edit
+    pause: true
+    wait_for: {overlay: visible}
+    caption: {ja: "編集モードのまま続けられる"}
+    hold: 7.0
+
+  # --- §6 追加: 仕組みと設定 -----------------------------------------------------------------------
+  - id: open-yaml
+    spawn: {window: vi, argv: ["{demo_bin}/foot-wayhint", "{demo_bin}/vi"]}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, timeout: 30}
+    caption: {ja: "sheet は 1 アプリ 1 YAML"}
+    hold: 7.0
+
+  - id: yaml-match
+    pause: true
+    wait_for: {context: {active_sheet: vi}}
+    caption: {ja: "match でどの窓・どのプロセスに出すかが決まる"}
+    hold: 8.0
+
+  - id: yaml-inherit
+    pause: true
+    wait_for: {context: {active_sheet: vi}}
+    caption: {ja: "inherit.parent_tags — 親から混ぜるタグ"}
+    hold: 8.0
+
+  - id: yaml-include
+    pause: true
+    wait_for: {context: {active_sheet: vi}}
+    caption: {ja: "include — 共通の hint を混ぜる"}
+    hold: 8.0
+
+  - id: yaml-lang
+    pause: true
+    wait_for: {context: {active_sheet: vi}}
+    caption: {ja: "hint は言語ごと。UI と同じ言語が出る"}
+    hold: 8.0
+
+  - id: close-yaml
+    close: {window: vi}
+    wait_for: {context: {active_sheet: codex}, timeout: 20}
+    hold: 3.0
+
+  - id: no-scrape
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "やらないこと: 自動実行・AI 生成・画面の読み取り"}
+    hold: 8.0
+
+# =================================================================================================
+# 尺は storyboard の尺割りから引く。--dry-run が target ± tolerance を判定し、外れたら止まる。
+# =================================================================================================
+variants:
+  60s:
+    target: 60
+    tolerance: 2
+    square: true
+    steps:
+      - open-herdr-60
+      - start-claude-60
+      - show-hints-60
+      - whose-hints-60
+      - keep-typing-60
+      - new-tab-60
+      - start-codex-60
+      - switch-pane-60
+      - edit-mode-60
+      - open-form-60
+      - type-title-60
+      - next-field-60
+      - type-key-60
+      - save-hint-60
+      - close-60
+
+  3min:
+    target: 160
+    tolerance: 30
+    steps:
+      - open-herdr
+      - start-claude
+      - nothing-remains
+      - wrong-hints
+      - show-hints
+      - list-layout
+      - detail-pane
+      - whose-hints
+      - new-tab
+      - start-codex
+      - switch-pane
+      - parent-hints
+      - keep-typing
+      - open-search
+      - type-search
+      - close-search
+      - focus-back
+      - edit-mode
+      - open-form
+      - type-title
+      - next-field
+      - type-key
+      - save-hint
+      - break-yaml
+      - fix-yaml
+      - close
+      - no-exec
+      - stack
+
+  5min:
+    target: 300
+    tolerance: 30
+    steps:
+      - open-herdr
+      - start-claude
+      - nothing-remains
+      - wrong-hints
+      - show-hints
+      - list-layout
+      - detail-pane
+      - whose-hints
+      - new-tab
+      - start-codex
+      - switch-pane
+      - parent-hints
+      - open-vi
+      - show-vi
+      - vi-note
+      - close-vi
+      - back-to-codex
+      - keep-typing
+      - open-search
+      - type-search
+      - close-search
+      - focus-back
+      - copy-hint
+      - no-run
+      - edit-mode
+      - open-form
+      - type-title
+      - next-field
+      - type-key
+      - save-hint
+      - favorite-hint
+      - move-down
+      - move-up
+      - stay-in-edit
+      - break-yaml
+      - fix-yaml
+      - close
+      - open-yaml
+      - yaml-match
+      - yaml-inherit
+      - yaml-include
+      - yaml-lang
+      - close-yaml
+      - no-exec
+      - no-scrape
+      - stack

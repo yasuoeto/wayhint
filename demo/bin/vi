@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""A stand-in for vi: a second command in a second terminal, so the demo can show the overlay
-following the focus. See ``claude`` next to it for why the real program is not used and why
-the file name is what matters.
+"""A stand-in for vi, so the demo can show a terminal with no Herdr in it. See ``claude`` next
+to it for why the real program is not used and why the file name and ``comm`` both matter.
+
+What it draws is a hint sheet, because that is what the 5-minute cut talks about while it is on
+screen. The text is the demo's own fixture, not anything from the person's machine.
 """
 
+import ctypes
+import os
 import sys
 
 KEY = "\033[38;5;180m"
@@ -17,14 +21,22 @@ LINES = [
     f"{KEY}title{OFF}{TEXT}: Claude Code{OFF}",
     f"{KEY}hints{OFF}{TEXT}:{OFF}",
     f"{TEXT}  - {KEY}id{OFF}{TEXT}: compact{OFF}",
-    f"{TEXT}    {KEY}title{OFF}{TEXT}: Compact the conversation{OFF}",
+    f"{TEXT}    {KEY}title{OFF}{TEXT}: 会話を要約して畳む{OFF}",
     f"{TEXT}    {KEY}command{OFF}{TEXT}: /compact{OFF}",
     *[f"{TILDE}~{OFF}"] * 4,
-    f'{STATUS}"hints/en/claude-code.yaml" 41L, 812B{OFF}',
+    f'{STATUS}"hints/ja/claude-code.yaml" 32L, 641B{OFF}',
 ]
 
 
+def rename() -> None:
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
+    except OSError:
+        pass
+
+
 def main() -> int:
+    rename()
     sys.stdout.write("\n".join(LINES) + "\n")
     sys.stdout.flush()
     try:

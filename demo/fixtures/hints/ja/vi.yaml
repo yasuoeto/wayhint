@@ -1,12 +1,10 @@
-# 2 つ目のコマンド。overlay を閉じずに focus を追って sheet が差し替わる場面(場面④)で使う。
+# Herdr が無くても端末の foreground process を /proc から見る、を示すための sheet。
 id: vi
 title: Vi
 priority: 10
 match:
   process:
     argv_regex: ["^vi$"]
-inherit:
-  parent_tags: [terminal]
 include: [wm]
 hints:
   - id: write-quit
@@ -22,9 +20,4 @@ hints:
   - id: undo
     title: 取り消す
     key: u
-    category: 編集
-  - id: search
-    title: 前方検索
-    kind: command
-    command: /pattern
     category: 編集

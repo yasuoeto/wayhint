@@ -24,6 +24,7 @@ Not run by ``./scripts/check``; see ``tests/headless.py``.
 
 import shutil
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -33,6 +34,8 @@ from tests.headless import (
     needs_headless,
     needs_key_injection,
 )
+
+REPO = Path(__file__).resolve().parent.parent
 
 WIDTH, HEIGHT = 1280, 720
 SHEET = """\
@@ -55,11 +58,15 @@ def scratch(case: unittest.TestCase, prefix: str) -> Path:
     return path
 
 
-def config_root(case: unittest.TestCase, overlay: str) -> Path:
-    """A throwaway config directory with one sheet that matches the probe window."""
+def config_root(
+    case: unittest.TestCase, overlay: str, sheets: dict[str, str] | None = None
+) -> Path:
+    """A throwaway config directory with sheets that match the windows a test opens."""
     root = scratch(case, "wayhint-cfg-")
-    (root / "hints" / "en").mkdir(parents=True)
-    (root / "hints" / "en" / "demo.yaml").write_text(SHEET)
+    hints = root / "hints" / "en"
+    hints.mkdir(parents=True)
+    for name, text in (sheets or {"demo": SHEET}).items():
+        (hints / f"{name}.yaml").write_text(text)
     (root / "config.yaml").write_text(
         f"overlay: {overlay}\nappearance: {{language: en}}\ncontext: {{workspace: all}}\n"
     )
@@ -172,6 +179,80 @@ class CallerTest(unittest.TestCase):
             by_cli = difference_box(session.grab(work / "by-cli.png", settle=1.5), off)
 
         self.assertEqual(by_key, by_cli)
+
+
+PROCESS_SHEETS = {
+    "claude-code": """\
+id: claude-code
+title: Claude Code
+match:
+  process:
+    argv_regex: ['^claude$']
+hints:
+  - {id: compact, title: Compact, key: 'Ctrl+C'}
+""",
+    "vi": """\
+id: vi
+title: Vi
+match:
+  process:
+    argv_regex: ['^vi$']
+hints:
+  - {id: quit, title: Quit, key: ':q'}
+""",
+}
+
+
+@needs_key_injection
+class FocusFollowTest(unittest.TestCase):
+    """The sheet follows the focused *window*, and the overlay does not close on the way.
+
+    Two things are pinned here and both are product behaviour that nothing else covers end to
+    end. The first is the pid-suffix convention (README「Terminal の複数窓」): two terminals of
+    the same program are told apart because each window names the process drawing it in its
+    app_id, and ``/proc`` is then read for what runs inside. The second is that pressing the
+    hotkey while looking at a different window *replaces* what is on screen rather than
+    hiding it and opening it again -- a hidden frame in between is what a user sees as a flash.
+
+    The demo used to show this; it does not any more (DECISIONS 0032), so it lives here. If
+    this fails, the regression is in the product, not in the test: do not relax it to suit a
+    recording.
+    """
+
+    OVERLAY = "{anchor: top-right, width: 400px, margin: {top: 20, right: 20}}"
+    BIN = REPO / "demo" / "bin"
+
+    def terminal(self, session: HeadlessSession, stub: str, sheet: str) -> None:
+        """A foot window named after its own pid, running one of the demo's stubs in it."""
+        session.spawn([str(self.BIN / "foot-wayhint"), str(self.BIN / stub)])
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if f"active_sheet={sheet}" in session.wayhint("context"):
+                return
+            time.sleep(0.2)
+        self.fail(f"{stub} never became the active context\n{session.wayhint('context')}")
+
+    def test_the_sheet_follows_the_focus_without_the_overlay_closing(self) -> None:
+        root = config_root(self, self.OVERLAY, PROCESS_SHEETS)
+        with HeadlessSession(root, keybind=("W-h", "toggle")) as session:
+            self.terminal(session, "claude", "claude-code")
+            session.press("win", "h")
+            self.assertIn("Claude Code", session.a11y_names("label"), session.log_tail())
+
+            self.terminal(session, "vi", "vi")  # the new window takes the focus
+            self.assertTrue(session.a11y_nodes(), "the overlay closed when the focus moved")
+
+            session.press("win", "h")
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                labels = session.a11y_names("label")
+                if "Vi" in labels:
+                    break
+                time.sleep(0.2)
+            self.assertIn("Vi", labels, session.log_tail())
+            self.assertNotIn("Claude Code", labels)
+            # Replaced, not closed and re-opened: the daemon says which of the two it did.
+            self.assertIn("replacing claude-code with vi", session.log_tail(60))
 
 
 if __name__ == "__main__":

@@ -14,7 +14,8 @@ hints:
     kind: command
     command: /compact
     category: セッション
-    remark: 要約は残し、ツールの生出力を捨てる。
+    favorite: true
+    remark: 要約は残し、ツールの生出力を捨てる。長い会話で効く。
   - id: model
     title: モデルを切り替える
     kind: command
@@ -29,9 +30,7 @@ hints:
     title: 編集の前に計画する
     key: Shift+Tab
     category: 編集
-  - id: shell-escape
-    title: シェルコマンドを実行する
-    kind: tip
-    key: "! <command>"
+  - id: interrupt
+    title: 実行中の応答を止める
+    key: Esc
     category: 編集
-    copy: "! "

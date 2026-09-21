@@ -1,0 +1,28 @@
+# Herdr の窓そのものの sheet。端末の中でコマンドが動いているときは *親* になり、
+# `terminal` タグの付いた hint だけがコマンド側の hint に続く(config.yaml の nested.parent_tags)。
+id: herdr
+title: Herdr
+match:
+  wayland:
+    app_id_regex: ["herdr"]
+hints:
+  - id: new-tab
+    title: 新しいタブ
+    key: Ctrl+B c
+    category: pane
+    tags: [terminal]
+    favorite: true
+  - id: next-tab
+    title: 次のタブへ
+    key: Ctrl+B n
+    category: pane
+    tags: [terminal]
+  - id: split
+    title: pane を縦に分割
+    key: Ctrl+B v
+    category: pane
+    tags: [terminal]
+  - id: zoom
+    title: pane を拡大・復帰
+    key: Ctrl+B z
+    category: 表示
