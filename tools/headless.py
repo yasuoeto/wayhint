@@ -23,6 +23,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Sequence
@@ -173,16 +174,16 @@ class HeadlessSession:
         stack undoes what has been done so far and is dismissed only on the way out.
         """
         with contextlib.ExitStack() as stack:
+            # The log first and the tear-down second: the stack unwinds last-registered-first,
+            # so this order runs the tear-down *before* the file is closed -- and the tear-down
+            # is what writes into it when it has something to report.
+            self.log = stack.enter_context(open(self.home / "session.log", "w+"))
             stack.callback(self._tear_down)
             self._bus_address = ""
             self.runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
             (self.home / "config" / self.compositor).mkdir(parents=True, exist_ok=True)
             (self.home / "config" / self.compositor / "autostart").write_text("")
             self._write_compositor_config()
-            # On the stack as well as in :meth:`_tear_down`: a failure before ``pop_all`` below
-            # unwinds the stack instead of calling the tear-down, and an open file object with
-            # no owner is what a ResourceWarning is.
-            self.log = stack.enter_context(open(self.home / "session.log", "w+"))
             self._start_bus()
             self._spawn(
                 [self.compositor],
@@ -225,59 +226,109 @@ class HeadlessSession:
         # address, so it is the last thing that may go down: taking it out from under a live
         # compositor is what makes AT-SPI clients hang on the way out.
         started = [*filter(None, [self._bus]), *self._procs]
+        left: list[str] = []
         for proc in reversed(started):
-            self._signal_group(proc, signal.SIGTERM)
+            try:
+                self._signal_group(proc, signal.SIGTERM)
+            except (ValueError, OSError) as e:  # a bad pgid is a bug; keep taking the rest down
+                left.append(f"SIGTERM: {type(e).__name__}: {e}")
         for proc in reversed(started):
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self._signal_group(proc, signal.SIGKILL)
-                proc.wait(timeout=5)
-            self._wait_group_gone(proc)
+                with contextlib.suppress(ValueError, OSError, subprocess.TimeoutExpired):
+                    self._signal_group(proc, signal.SIGKILL)
+                    proc.wait(timeout=5)
+            try:
+                if not self._wait_group_gone(proc):
+                    left.append("a process group was not seen to empty out (timed out)")
+            except (ValueError, OSError) as e:
+                left.append(f"waiting for a process group: {type(e).__name__}: {e}")
+        if left:
+            self._keep_directories(left)
         if self.log is not None:
             self.log.close()
             self.log = None
+        if left:
+            return  # both directories stay; see the message above
         shutil.rmtree(self.runtime, ignore_errors=True)
         shutil.rmtree(self.home, ignore_errors=True)
 
-    def _wait_group_gone(self, proc: subprocess.Popen) -> None:
+    def _keep_directories(self, reasons: list[str]) -> None:
+        """Say what is being left behind and why, to stderr and into the session log."""
+        text = "\n".join(
+            [
+                f"headless session: leaving {self.home} and {self.runtime} in place",
+                *(f"  {reason}" for reason in reasons),
+                "  removing them is only safe once nothing of the session is running;",
+                "  check with `ps -eo pgid,cmd` and delete them by hand",
+            ]
+        )
+        print(text, file=sys.stderr)
+        if self.log is not None:
+            with contextlib.suppress(OSError, ValueError):
+                self.log.write(text + "\n")
+                self.log.flush()
+
+    def _wait_group_gone(self, proc: subprocess.Popen) -> bool:
         """Wait for the whole process group, not only the child this object started.
 
         ``Popen.wait`` comes back when the direct child is gone, and its own children are still
         on their way out. A grandchild that writes into the session's HOME while it exits makes
-        the ``rmtree`` below race it, and what is left behind is the directory itself -- empty,
-        20 of them in /tmp after a day of runs (measured in C-B).
+        the ``rmtree`` in the caller race it, and what is left behind is the directory itself --
+        empty, 20 of them in /tmp after a day of runs (measured in C-B).
+
+        True only when the group was *seen* to go: a probe that answers ``ProcessLookupError``.
+        A timeout, a ``PermissionError``, any other ``OSError`` -- all False. **The session's
+        directories are removed only on True.** Something that is still running may still write
+        into them, and a directory left in /tmp is a smaller problem than deleting the files a
+        live process is using: check what is left and remove it by hand.
         """
-        # Never a group this process is in. ``killpg(0, ...)`` means "my own group", and a pgid
-        # that happens to be ours would take the test runner down with it -- which is what it
-        # did once, before the guard (B-7). Every group this signals was started with
-        # ``start_new_session=True``, so neither case can be a real one: they are bugs, and a
-        # bug that reaches a kill has to stop here rather than be quietly skipped.
+        pgid = self._checked_pgid(proc)
+        for sig in (None, signal.SIGKILL):
+            if sig is not None:
+                try:
+                    os.killpg(pgid, sig)
+                except ProcessLookupError:
+                    return True
+                except OSError:
+                    return False  # PermissionError and the rest: we cannot tell, so we do not
+            deadline = time.monotonic() + GROUP_GONE_TIMEOUT
+            while time.monotonic() < deadline:
+                try:
+                    os.killpg(pgid, 0)  # 0 asks whether anything is left in the group
+                except ProcessLookupError:
+                    return True
+                except OSError:
+                    return False
+                time.sleep(0.05)
+        return False
+
+    @staticmethod
+    def _checked_pgid(proc: subprocess.Popen) -> int:
+        """The process group to signal -- never one this process is in.
+
+        ``killpg(0, ...)`` means "my own group", and a pgid that happens to be ours would take
+        whatever is running this down with it, which is what it did once before the guard
+        (B-7). Every group signalled here was started with ``start_new_session=True``, so
+        neither case can be real: they are bugs, and a bug that has reached a kill has to stop
+        rather than be quietly skipped. Every signal in this file goes through here.
+        """
         if proc.pid <= 0 or proc.pid == os.getpgrp():
             raise ValueError(
                 f"refusing to signal process group {proc.pid}: that is this process's own "
                 "group, not one the session started"
             )
-        for sig in (None, signal.SIGKILL):
-            if sig is not None:
-                try:
-                    os.killpg(proc.pid, sig)
-                except (ProcessLookupError, PermissionError):
-                    return
-            deadline = time.monotonic() + GROUP_GONE_TIMEOUT
-            while time.monotonic() < deadline:
-                try:
-                    os.killpg(proc.pid, 0)  # 0 asks whether anything is left in the group
-                except (ProcessLookupError, PermissionError):
-                    return
-                time.sleep(0.05)
+        return proc.pid
 
-    @staticmethod
-    def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    def _signal_group(self, proc: subprocess.Popen, sig: int) -> None:
+        # Checked before the early return below: whether the child has already exited says
+        # nothing about whether the group is one we are allowed to signal.
+        pgid = self._checked_pgid(proc)
         if proc.poll() is not None:
             return
         try:
-            os.killpg(proc.pid, sig)  # each was started with start_new_session=True
+            os.killpg(pgid, sig)  # each was started with start_new_session=True
         except (ProcessLookupError, PermissionError):
             proc.send_signal(sig)
 

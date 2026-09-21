@@ -734,6 +734,12 @@ class WaitGroupGoneTest(unittest.TestCase):
         def __init__(self, pid: int) -> None:
             self.pid = pid
 
+        def poll(self):
+            return 0  # already exited, so `_signal_group` has nothing to send
+
+        def wait(self, timeout=None):
+            return 0
+
     def session(self) -> headless_mod.HeadlessSession:
         session = headless_mod.HeadlessSession(scratch(self))
         self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
@@ -766,6 +772,19 @@ class WaitGroupGoneTest(unittest.TestCase):
         self.assertEqual(killpg.call_count, 1)  # one probe, and nothing to kill
         self.assertEqual(killpg.call_args.args[1], 0)
 
+    def test_signal_group_refuses_pid_zero(self) -> None:
+        """Every signal in the file goes through the same guard, not only the wait."""
+        killpg = self.killpg()
+        with self.assertRaisesRegex(ValueError, "own"):
+            self.session()._signal_group(self.Proc(0), signal.SIGTERM)
+        killpg.assert_not_called()
+
+    def test_signal_group_refuses_its_own_process_group(self) -> None:
+        killpg = self.killpg()
+        with self.assertRaisesRegex(ValueError, "own"):
+            self.session()._signal_group(self.Proc(os.getpgrp()), signal.SIGKILL)
+        killpg.assert_not_called()
+
     def test_it_escalates_to_sigkill_when_the_group_stays(self) -> None:
         """A group that outlives the timeout is killed, and then waited for again."""
         patch = unittest.mock.patch.object(headless_mod, "GROUP_GONE_TIMEOUT", 0.1)
@@ -777,6 +796,53 @@ class WaitGroupGoneTest(unittest.TestCase):
         signals = [call.args[1] for call in killpg.call_args_list]
         self.assertIn(signal.SIGKILL, signals)
         self.assertEqual(signals[-1], 0, "it waits again after the kill")
+
+
+class KeepDirectoriesTest(unittest.TestCase):
+    """The session's directories go only when the process group is *seen* to be empty.
+
+    Something still running can still write into them, and a directory left in /tmp is a
+    smaller problem than deleting files a live process is holding.
+    """
+
+    def session(self) -> headless_mod.HeadlessSession:
+        session = headless_mod.HeadlessSession(scratch(self))
+        self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
+        session._procs = [WaitGroupGoneTest.Proc(os.getpgrp() + 1)]
+        return session
+
+    def patch(self, name: str, target, **kw):
+        patch = unittest.mock.patch.object(target, name, **kw)
+        mock = patch.start()
+        self.addCleanup(patch.stop)
+        return mock
+
+    def tear_down(self, *killpg_effect):
+        self.patch("GROUP_GONE_TIMEOUT", headless_mod, new=0.1)
+        killpg = self.patch("killpg", headless_mod.os)
+        if killpg_effect:
+            killpg.side_effect = killpg_effect[0]
+        rmtree = self.patch("rmtree", headless_mod.shutil)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.session()._tear_down()
+        return rmtree, err.getvalue()
+
+    def test_a_group_that_never_empties_keeps_the_directories(self) -> None:
+        rmtree, err = self.tear_down()  # killpg always answers "still there"
+        rmtree.assert_not_called()
+        self.assertIn("leaving", err)
+        self.assertIn("timed out", err)
+
+    def test_a_permission_error_keeps_the_directories(self) -> None:
+        rmtree, err = self.tear_down(PermissionError(1, "not yours"))
+        rmtree.assert_not_called()
+        self.assertIn("leaving", err)
+
+    def test_a_group_seen_to_go_lets_the_directories_be_removed(self) -> None:
+        rmtree, err = self.tear_down(ProcessLookupError())
+        self.assertEqual(rmtree.call_count, 2)  # the runtime directory and the home
+        self.assertEqual(err, "")
 
 
 class StartupUnwindTest(unittest.TestCase):
@@ -856,11 +922,24 @@ class StartupUnwindTest(unittest.TestCase):
         session._signal_group = lambda proc, sig: (
             stopped.append(proc.name) if sig == signal.SIGTERM else None
         )
-        session._wait_group_gone = lambda proc: None  # the fakes have no process group
+        session._wait_group_gone = lambda proc: True  # the fakes have no process group
         session.__enter__()
         self.assertEqual(started, ["bus", "labwc", "wayhintd"])
         session.__exit__()
         self.assertEqual(stopped, list(reversed(started)))
+
+    def test_the_session_log_is_closed_after_the_tear_down(self) -> None:
+        """The tear-down writes into the log when it has something to report, so it goes first."""
+        session = self.headless()
+        seen: list[tuple[str, bool]] = []
+        session._start_bus = lambda: None
+        session._spawn = lambda argv, env: None
+        session._wait_for = lambda path, what: (_ for _ in ()).throw(RuntimeError(what))
+        session._tear_down = lambda: seen.append(("tear-down", session.log.closed))
+        with self.assertRaises(RuntimeError):
+            session.__enter__()
+        self.assertEqual(seen, [("tear-down", False)], "the log was closed too early")
+        self.assertTrue(session.log.closed, "the log was left open")
 
     def test_a_demo_session_closes_the_headless_one_when_a_check_fails(self) -> None:
         class Fake:
