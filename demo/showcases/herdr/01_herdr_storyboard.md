@@ -125,11 +125,12 @@
 
 §3 の裏返し。端末は**中で動いているプロセス**で選ばれ、GUI アプリには覗き込むプロセスが無いので
 **窓の app_id** で選ばれる(DECISIONS 0024)。映すのは demo の GTK4 stub `notes` で、実アプリは
-使わない。overlay の sub-header にプロセス名が出ず `dev.wayhint.demo.Notes` だけが出るのが要点。
+使わない。窓は下の端末を覆う大きさにしてある——この場面の主語は GUI の窓なので、後ろに端末が
+覗いていると何を見ればいいのか分からなくなる。overlay の sub-header にプロセス名が出ず `dev.wayhint.demo.Notes` だけが出るのが要点。
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
-| 58–63 | GUI アプリ(Notes)が Herdr の手前に開く | GUI アプリでも同じ |
+| 58–63 | GUI アプリ(Notes)が開く。Herdr の窓は隠れる | GUI アプリでも同じ |
 | 63–72 | `Super+H` → `Notes` の sheet。sub-header は app_id だけ | 端末は中のプロセス、GUI は窓の app_id |
 | 72–81 | 同じ画面。一覧の末尾に wm の hint | 窓の操作はどの sheet にも付いてくる |
 | 81–92 | overlay を閉じ、Notes の窓も閉じて Herdr に戻り、`Super+H` で出し直す | (字幕なし) |

@@ -15,7 +15,9 @@ fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
 windows:
   - {title: Herdr, x: 32, y: 48, width: 620, height: 566}
   - {title: vi, x: 104, y: 214, width: 560, height: 380}
-  - {title: Notes, app_id: "dev.wayhint.demo.Notes", x: 60, y: 120, width: 560, height: 380}
+  # Big enough to cover the Herdr window underneath it: the GUI scene is about *this*
+  # window, and a strip of terminal behind it only asks what it is doing there.
+  - {title: Notes, app_id: "dev.wayhint.demo.Notes", x: 28, y: 40, width: 630, height: 562}
 
 steps:
   # =============================================================================================
