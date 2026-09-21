@@ -22,8 +22,8 @@ from pathlib import Path
 
 from tests.test_desktop_providers import needs_compositor
 from wayhint import ipc
-from wayhint.i18n import translator
 from wayhint.daemon import Daemon
+from wayhint.i18n import translator
 from wayhint.models import OutputInfo, ResolvedContext
 
 OUT = OutputInfo("eDP-1", 2560, 1600)
