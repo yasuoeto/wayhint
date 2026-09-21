@@ -485,9 +485,11 @@ daemon 側は `_reload_config` で `appearance.language` の変化を見て呼�
   同じ `{"cmd": ...}` に正規化されるので、ここが「正しいものが出たか」の決まる場所になる。
   ここも surface は map しない(`present` / `set_visible` を差し替え、`get_visible` は
   `set_visible` に渡った値を返すので keyboard の規則は可視性の変化を見られる)。
-- **headless GUI**(`tests/test_gui_headless.py` + `tests/headless.py`、入口は
-  `./scripts/check-gui`): compositor を `WLR_BACKENDS=headless` で立て、その中で `wayhintd` を
-  動かし、実際に map された surface を測る(DECISIONS 0030)。layer surface は compositor への
+- **headless GUI**(`tests/test_gui_headless.py`、入口は `./scripts/check-gui`): compositor を
+  `WLR_BACKENDS=headless` で立て、その中で `wayhintd` を動かし、実際に map された surface を
+  測る(DECISIONS 0030)。session の起動・後片付け・grim / AT-SPI / wtype の呼び出しは
+  `tools/headless.py` にあり、`tests/headless.py` は unittest 向けの opt-in と skip だけを足す薄い層
+  (デモ生成 `scripts/demo` と共有するため)。layer surface は compositor への
   *要求*なので、anchor と margin がどう解釈されたかはプロセス内からは見えない。
   **位置**は overlay を出した frame と出していない frame の差分の bounding box(font 非依存)、
   **中身**は AT-SPI の accessible name で読む。ベースライン画像の全面比較は採らない(0030)。
