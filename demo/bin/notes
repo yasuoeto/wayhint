@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""A stand-in for a GUI application, so the demo can show a window that is not a terminal.
+
+The other stubs exist to be *found through a terminal* -- wayhint reads the foreground process
+out of ``/proc`` and matches on its name. A GTK application is the other half of the product:
+there is no process to look into, and the sheet is chosen by the window's ``app_id`` alone
+(DECISIONS 0024). So the one thing that matters here is that the ``app_id`` is fixed and
+recognisable; the contents only have to be still.
+
+Still means: labels, no entries (an entry draws a caret that blinks), no scrolled windows (the
+scrollbar fades out on its own), no animation and nothing that reads the clock. Two recordings
+of this have to come out pixel for pixel the same.
+
+It is not a real notes application and does not pretend to be one. The text is made up.
+"""
+
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gio, Gtk  # noqa: E402
+
+APP_ID = "dev.wayhint.demo.Notes"
+"""What ``notes.yaml`` matches on. The window carries it, and wayhint reads it off the
+toplevel: no ``/proc``, no process name (DECISIONS 0024)."""
+TITLE = "Notes"
+
+NOTES = ("買い物メモ", "旅行の下調べ", "読んだ本")
+BODY = (
+    "旅行の下調べ",
+    "",
+    "・宿は駅の近くにする",
+    "・初日の午後は移動だけで終わる",
+    "・二日目の朝に市場へ行く",
+    "・帰りの便は夕方より前に取る",
+)
+
+CSS = b"""
+window { background: #1c1c28; }
+.side { background: #16161f; padding: 12px; }
+.body { padding: 16px; }
+label { color: #d6d6e0; }
+.note { padding: 6px 4px; }
+.picked { color: #ffffff; font-weight: bold; }
+.head { font-size: 15pt; font-weight: bold; padding-bottom: 8px; }
+"""
+
+
+def label(text: str, *classes: str) -> Gtk.Label:
+    widget = Gtk.Label(label=text, xalign=0)
+    for name in classes:
+        widget.add_css_class(name)
+    return widget
+
+
+def build(app: Gtk.Application) -> None:
+    window = Gtk.ApplicationWindow(application=app, title=TITLE)
+    window.set_default_size(560, 380)
+
+    side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    side.add_css_class("side")
+    for index, name in enumerate(NOTES):
+        side.append(label(name, "note", *(["picked"] if index == 1 else [])))
+
+    body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    body.add_css_class("body")
+    body.append(label(BODY[0], "head"))
+    for line in BODY[1:]:
+        body.append(label(line))
+
+    split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    split.append(side)
+    split.append(body)
+    window.set_child(split)
+
+    styles = Gtk.CssProvider()
+    styles.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_display(window.get_display(), styles, 600)
+    window.present()
+
+
+def main() -> int:
+    app = Gtk.Application(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
+    app.connect("activate", build)
+    # Its own accelerator rather than a compositor keybind: the recorder presses Ctrl+Q and the
+    # window has to go, whatever the session's rc.xml happens to say.
+    quit_action = Gio.SimpleAction.new("quit")
+    quit_action.connect("activate", lambda *_: app.quit())
+    app.add_action(quit_action)
+    app.set_accels_for_action("app.quit", ["<Control>q"])
+    return app.run([])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
