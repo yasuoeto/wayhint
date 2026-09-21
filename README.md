@@ -43,6 +43,19 @@ compositor は `labwc` / `sway` / `cage` のうち PATH にあるものを使う
 overlay の中身を読むのに使うが、GTK の依存として通常すでに入っている。追加の権限は要らない
 (`wtype` は compositor の virtual-keyboard protocol を使うので `/dev/uinput` に触らない)。
 
+### 開発時のみ: 紹介動画
+
+`./scripts/demo` は `demo/scenario.yaml` の脚本を同じ headless compositor の中で再生して録画する
+(DECISIONS 0031)。`--record` を付けない限り、何を撮るかと尺を表示するだけで録らない。
+
+```sh
+sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mono
+./scripts/demo                # 予定を表示するだけ
+./scripts/demo --record       # demo/out/<lang>/ に mp4 / webm / contact-sheet.png
+```
+
+脚本の書き方、反復のしかた、場面の足し方は [`demo/README.md`](demo/README.md)。
+
 ## 設定ファイルの場所
 
 `$XDG_CONFIG_HOME/wayhint/`(既定 `~/.config/wayhint/`):
@@ -437,7 +450,9 @@ editor:
 | `docs/DECISIONS.md` | 決定の記録 |
 | `docs/TERMINALS.md` | terminal emulator と launcher の設定 |
 | `examples/` | config.yaml と sheet の雛形 |
-| `scripts/` | `setup`、`check`、`setup-terminals`、この repository 専用の agent hook |
+| `demo/` | 紹介動画の脚本・fixtures・stub(`demo/README.md`)。生成物 `demo/out/` は追跡しない |
+| `tools/` | repository の道具。headless session(テストとデモで共有)と動画生成 |
+| `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals`、この repository 専用の agent hook |
 | `.agents/skills/` | agent 間で共有する skill |
 | `.claude/`、`.codex/` | vendor ごとの adapter 設定(手で編集しない) |
 

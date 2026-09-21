@@ -893,6 +893,57 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   弱い——割当の無いキーは下の窓に届いて端末がエコーし、それも差分になるので、**位置と幅まで**
   照合する(故意に keybind を外して確認済)。
 
+## 0031 — デモ動画は headless compositor 上の scenario 駆動 frame-stepping で生成する
+
+- **Date**: 2026-09-21
+- **Status**: accepted
+- **Context**: 紹介動画を手で画面録画すると、hint の中身・タイミング・窓の配置・言語が毎回ずれ、
+  機能を直すたびに撮り直しになる。再現の水準は 3 段階に分けて考える——(1) 同一マシンでは frame
+  単位で一致、(2) 別マシンでは内容・順序・尺が一致(font / theme で pixel は変わってよい)、
+  (3) 尺は wall-clock ではなく scenario に書いた frame 数で決まる。0030 で、labwc を
+  `WLR_BACKENDS=headless` で立て grim で撮り AT-SPI で読む基盤が既にあり、同一マシンでは撮影が
+  完全に再現する(AE=0)ことも確認済みだった。測定環境は labwc 0.20.2 / wlroots 0.20.2 /
+  GTK 4.22.4 / at-spi2-core 2.62.0 / foot 1.28.0 / grim 1.5.0 / ImageMagick 7.1.2 / wtype 0.4 /
+  ffmpeg 9.0.2。
+- **Decision**: `demo/scenario.yaml`(脚本)を `./scripts/demo --record` が読み、0030 と同じ
+  headless session の中で再生して録る。実装は `tools/demo/`(製品パッケージの外)。
+  **実時間キャプチャは使わない**——各 step は `wait_for` の条件(toplevel の出現、overlay の
+  可視、AT-SPI で読んだ label / ボタン / 行数)が満たされるまで poll し、画面が止まってから
+  grim で **1 frame だけ**撮り、それを `hold × fps` 枚複製して尺を作る。ffmpeg は frame 列を
+  結合するだけなので、**尺はファイルが決め、マシンの速さは関係しない**。ボタンは AT-SPI の
+  Action interface(role `button`、action `click`)で押し、key は wtype で compositor の keybind に
+  送る。scenario は data であり、実行できる action は固定集合・固定 argv で、置換は
+  `{demo_bin}` と `{lang}` の 2 つだけ(`shell=True` は使わない)。動画(mp4 / webm)に加えて
+  **contact sheet と step ごとの静止画**を出す——動画を再生できない agent / CI でも中身を見られる
+  ようにするため。
+- **Alternatives**: **wf-recorder などの実時間キャプチャ**——尺と frame 数がマシンの速さに依存し、
+  上の (1)(3) を両方落とす。**実物の Claude Code / Codex を動かす**——出力が毎回違い、再現しない。
+  stub を `demo/bin/` に置き、`/proc` 経由の照合(argv[0] の basename)だけを本物と同じにした。
+  **pointer 注入**——`/dev/uinput` の権限か常駐デーモンが要る。AT-SPI の Action で足りた。
+  **ベースライン画像との全面比較**——0030 と同じ理由で採らない(font / theme で別マシンでは無意味)。
+  **`tests/headless.py` をそのまま import する**——テストの skip 判定と opt-in がデモに付いてくる。
+  session 部分を `tools/headless.py` に移し、tests 側を薄い層にした。
+- **Consequences**: headless の制約(単一 output、scale 1、既定 1280×720)はデモにも及ぶ。
+  `tools/headless.py` の変更は `./scripts/check-gui` とデモの両方に影響する。録画には ffmpeg /
+  grim / ImageMagick / foot / Noto fonts が要るが、`./scripts/check` の依存は増えていない
+  (`scripts/demo` の中だけ)。**動画は commit しない**(`demo/out/` は `.gitignore`)。
+  再現のために画面上のあらゆる動きを止める必要がある: foot は `cursor.blink=no` に加えて
+  `cursor.unfocused-style=unchanged`(focus の出入りで cursor の描画が変わる)、overlay の
+  text caret は **GTK 4.22 が `settings.ini` の `gtk-cursor-blink` を読まない**ため止められず、
+  最後の打鍵から約 8 秒で自然に止まるのを待つ(撮影は「同じ frame が連続 7 枚」を条件にする)。
+  fixtures の作業コピーは **固定パス**(`/tmp/wayhint-demo-<uid>-<lang>`)に置く——YAML error の
+  場面では overlay がそのパスを表示するので、`mkdtemp` の名前だと毎回 frame が変わる。
+- **Phase A(調査)で本文から変えた点**: `spawn` の argv に `{pid}` を埋める案は成立しない
+  (pid は exec 後にしか決まらない)ので、README「Terminal の複数窓」と同じ wrapper
+  (`demo/bin/foot-wayhint`)を通す。AT-SPI の Action は**使えた**ので `cli:` への格下げは無し。
+  ただし `do_action` は処理の完了を待たないので、`press` の後は必ず状態を `wait_for` してから
+  次へ進む。検索欄とフォームの中身は AT-SPI から読めないため、効果(行数・label)で確かめる。
+  output 解像度は既定が 1280×720 なので設定せず、最初の frame の寸法が scenario と違えば fail
+  する。1 step は 1 action とし(`press` と `type` は別の step。上の待ちの規則のため)、窓の
+  配置は scenario の `windows:` に名前付きで書いて labwc の `windowRules` に落とす。
+  wtype は `key:` / `type:` を含む scenario でだけ必須で、無ければその場で fail する
+  (CLI に黙って置き換えない。hotkey 経路を見せるのが目的のため)。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

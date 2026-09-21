@@ -503,6 +503,29 @@ daemon 側は `_reload_config` で `appearance.language` の変化を見て呼�
 - daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の
   境界を fake にし、実際の daemon / SheetStore / YAML 保存を通して対象ファイルと編集状態を検証する。
 
+## Demo generation
+
+紹介動画は `./scripts/demo --record` が `demo/scenario.yaml` から生成する(DECISIONS 0031)。
+テストと同じ基盤の上に乗っている:
+
+```
+tools/headless.py ──┬── tests/headless.py ── tests/test_gui_headless.py   (./scripts/check-gui)
+ (compositor /      │
+  daemon / grim /   └── tools/demo/session.py ── tools/demo/__main__.py    (./scripts/demo)
+  AT-SPI / wtype)
+```
+
+`tools/headless.py` は headless session そのもの(専用の `XDG_RUNTIME_DIR` / `XDG_CONFIG_HOME` /
+`HOME` / session bus、compositor と `wayhintd` の起動と後片付け、grim・AT-SPI・wtype)。
+`tests/headless.py` は unittest の opt-in と skip だけを足す薄い層で、`tools/demo/` は同じ
+session に keybind 2 つ・`windowRules`・fixtures の作業コピーを足して使う。**ここを変えると
+`./scripts/check-gui` とデモの両方が動く。**
+
+`tools/demo/` の分担は scenario(読み込みと検証、尺の計算)、session(必要なものの確認と
+fixtures の配置)、actions(action の実行と `wait_for` の判定)、capture(frame-stepping と
+contact sheet)、encode(ffmpeg と SRT)。尺は scenario の `hold` を frame 数に丸めたもので
+決まり、1 step につき 1 frame だけ撮って複製する。scenario の書き方は `demo/README.md`。
+
 ### 実機チェックリスト(§69–§73、手動)
 
 `./scripts/check` の対象外。labwc と Wayfire の
