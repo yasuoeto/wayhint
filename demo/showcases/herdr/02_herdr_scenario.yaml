@@ -386,6 +386,13 @@ steps:
     wait_for: {context: {active_sheet: codex}, overlay: hidden, timeout: 20}
     hold: 4.0
 
+  - id: back-to-codex
+    # §4 opens with the overlay already up ("出したまま作業できる"), so this scene has to hand
+    # it back the way it found it.
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex"}
+    hold: 4.0
+
   # --- §4 追加: コピー ---------------------------------------------------------------------------
   - id: copy-hint
     press: {button: copy}
@@ -522,6 +529,7 @@ variants:
       - notes-wm
       - close-notes-hints
       - quit-notes
+      - back-to-codex
       - keep-typing
       - open-search
       - type-search
