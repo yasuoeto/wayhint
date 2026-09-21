@@ -6,7 +6,7 @@
 overlay:
   anchor: top-right
   width: 560px
-  height: 94%
+  height: 80%
   margin: {top: 24, right: 24}
 appearance:
   style: style.css

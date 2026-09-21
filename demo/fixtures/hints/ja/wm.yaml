@@ -11,7 +11,3 @@ hints:
     title: overlay の中で hint を編集する
     key: Super+Ctrl+H
     category: wayhint
-  - id: close-window
-    title: 前面の窓を閉じる
-    key: Super+Shift+Q
-    category: 窓

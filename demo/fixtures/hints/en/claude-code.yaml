@@ -35,7 +35,3 @@ hints:
     key: "! <command>"
     category: editing
     copy: "! "
-  - id: interrupt
-    title: Interrupt the current turn
-    key: Esc
-    category: editing

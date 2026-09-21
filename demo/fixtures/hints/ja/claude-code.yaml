@@ -35,7 +35,3 @@ hints:
     key: "! <command>"
     category: 編集
     copy: "! "
-  - id: interrupt
-    title: 実行中の応答を止める
-    key: Esc
-    category: 編集

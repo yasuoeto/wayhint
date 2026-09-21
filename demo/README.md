@@ -51,7 +51,7 @@ windows:
 steps:
   - id: show-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 11}
+    wait_for: {overlay: visible, label: "Claude Code", hints: 9}
     caption: {en: "Super+H — …", ja: "Super+H — …"}
     hold: 4.0
 ```

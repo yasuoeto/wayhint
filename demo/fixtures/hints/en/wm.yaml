@@ -11,7 +11,3 @@ hints:
     title: Edit hints in the overlay
     key: Super+Ctrl+H
     category: wayhint
-  - id: close-window
-    title: Close the focused window
-    key: Super+Shift+Q
-    category: windows

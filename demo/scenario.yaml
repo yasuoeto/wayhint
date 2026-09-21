@@ -32,7 +32,7 @@ steps:
 
   - id: show-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 11}
+    wait_for: {overlay: visible, label: "Claude Code", hints: 9}
     caption:
       en: "Super+H — the hints for the command in front of you, not for the terminal"
       ja: "Super+H — 端末ではなく、いま動いているコマンドの hint が出る"
@@ -40,7 +40,7 @@ steps:
 
   - id: mixed-in
     cli: refresh
-    wait_for: {overlay: visible, hints: 11}
+    wait_for: {overlay: visible, hints: 9}
     caption:
       en: "Below them: the terminal's own hints, filtered by tag, then the window manager's"
       ja: "その下に端末自身の hint(タグで絞り込み)、続いてウィンドウマネージャの hint"
@@ -76,7 +76,7 @@ steps:
 
   - id: close-search
     key: escape
-    wait_for: {button: search, hints: 11}
+    wait_for: {button: search, hints: 9}
     caption:
       en: "Escape gives the keyboard back to the application"
       ja: "Esc でキーボードはアプリに戻る"
@@ -98,7 +98,7 @@ steps:
 
   - id: follow-focus
     key: super+h
-    wait_for: {overlay: visible, label: "Vi", hints: 9}
+    wait_for: {overlay: visible, label: "Vi", hints: 8}
     caption:
       en: "Super+H again: the sheet is replaced without the overlay closing"
       ja: "もう一度 Super+H。overlay は閉じずに sheet だけが差し替わる"
@@ -147,7 +147,7 @@ steps:
 
   - id: save-hint
     key: enter
-    wait_for: {overlay: visible, no_label: "Title", hints: 10}
+    wait_for: {overlay: visible, no_label: "Title", hints: 9}
     caption:
       en: "Enter writes it into the sheet's YAML file and the list shows it straight away"
       ja: "Enter で sheet の YAML に書かれ、一覧にもすぐ出る"
@@ -173,7 +173,7 @@ steps:
     write:
       file: "hints/{lang}/foot.yaml"
       source: "fixtures/hints/{lang}/foot.yaml"
-    wait_for: {overlay: visible, no_label: "YAML error", hints: 10}
+    wait_for: {overlay: visible, no_label: "YAML error", hints: 9}
     caption:
       en: "Fix the file and it comes back, without restarting anything"
       ja: "直せばそのまま復帰する。再起動は要らない"
