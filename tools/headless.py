@@ -36,6 +36,8 @@ TOOLS = ("grim", "magick")
 INJECT = "wtype"
 HEADLESS_OUTPUT = "HEADLESS-1"
 START_TIMEOUT = 15.0
+GROUP_GONE_TIMEOUT = 5.0
+"""How long a process group is given to empty out after it has been signalled."""
 
 
 @dataclass(frozen=True)
@@ -177,7 +179,10 @@ class HeadlessSession:
             (self.home / "config" / self.compositor).mkdir(parents=True, exist_ok=True)
             (self.home / "config" / self.compositor / "autostart").write_text("")
             self._write_compositor_config()
-            self.log = open(self.home / "session.log", "w+")
+            # On the stack as well as in :meth:`_tear_down`: a failure before ``pop_all`` below
+            # unwinds the stack instead of calling the tear-down, and an open file object with
+            # no owner is what a ResourceWarning is.
+            self.log = stack.enter_context(open(self.home / "session.log", "w+"))
             self._start_bus()
             self._spawn(
                 [self.compositor],
@@ -228,11 +233,36 @@ class HeadlessSession:
             except subprocess.TimeoutExpired:
                 self._signal_group(proc, signal.SIGKILL)
                 proc.wait(timeout=5)
+            self._wait_group_gone(proc)
         if self.log is not None:
             self.log.close()
             self.log = None
         shutil.rmtree(self.runtime, ignore_errors=True)
         shutil.rmtree(self.home, ignore_errors=True)
+
+    def _wait_group_gone(self, proc: subprocess.Popen) -> None:
+        """Wait for the whole process group, not only the child this object started.
+
+        ``Popen.wait`` comes back when the direct child is gone, and its own children are still
+        on their way out. A grandchild that writes into the session's HOME while it exits makes
+        the ``rmtree`` below race it, and what is left behind is the directory itself -- empty,
+        20 of them in /tmp after a day of runs (measured in C-B).
+        """
+        if proc.pid <= 0:
+            return  # 0 is *this* process group; nothing we started ever has it
+        for sig in (None, signal.SIGKILL):
+            if sig is not None:
+                try:
+                    os.killpg(proc.pid, sig)
+                except (ProcessLookupError, PermissionError):
+                    return
+            deadline = time.monotonic() + GROUP_GONE_TIMEOUT
+            while time.monotonic() < deadline:
+                try:
+                    os.killpg(proc.pid, 0)  # 0 asks whether anything is left in the group
+                except (ProcessLookupError, PermissionError):
+                    return
+                time.sleep(0.05)
 
     @staticmethod
     def _signal_group(proc: subprocess.Popen, sig: int) -> None:

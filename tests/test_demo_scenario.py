@@ -570,6 +570,8 @@ class StartupUnwindTest(unittest.TestCase):
         session.compositor = "labwc"  # nothing is actually started; the spawn is stubbed
         self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
         self.addCleanup(shutil.rmtree, session.runtime, ignore_errors=True)
+        # These cases stub out the tear-down, which is what would close the log.
+        self.addCleanup(lambda: session.log.close() if session.log is not None else None)
         return session
 
     def test_a_socket_that_never_appears_tears_the_session_down(self) -> None:
@@ -632,6 +634,7 @@ class StartupUnwindTest(unittest.TestCase):
         session._signal_group = lambda proc, sig: (
             stopped.append(proc.name) if sig == signal.SIGTERM else None
         )
+        session._wait_group_gone = lambda proc: None  # the fakes have no process group
         session.__enter__()
         self.assertEqual(started, ["bus", "labwc", "wayhintd"])
         session.__exit__()
@@ -654,6 +657,9 @@ class StartupUnwindTest(unittest.TestCase):
 
         work = scratch(self)
         demo = sess.DemoSession(parse(MINIMAL), work, work, work)
+        # Building one makes a real HeadlessSession, and that makes its HOME in /tmp. The fake
+        # below takes its place, so nothing else will ever remove it.
+        self.addCleanup(shutil.rmtree, demo.session.home, ignore_errors=True)
         fake = Fake(work)
         demo.session = fake
         demo._check_stubs = lambda: (_ for _ in ()).throw(sess.DemoError("no stub"))
