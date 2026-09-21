@@ -72,6 +72,9 @@ CLI_COMMANDS = ("toggle", "show", "hide", "refresh", "reload", "ping", "context"
 
 # --- herdr -------------------------------------------------------------------------------------
 
+# Matched with ``fullmatch``, not ``match``: ``$`` also matches just before a trailing newline,
+# so ``re.match`` accepts ``"w1:p1\n"`` -- and everything here comes out of the scenario file,
+# where a newline is one keystroke away (DECISIONS 0032's threat model).
 PANE_ID = re.compile(r"^w\d+:p\d+$")
 TAB_ID = re.compile(r"^w\d+:t\d+$")
 WORKSPACE_ID = re.compile(r"^w\d+$")
@@ -101,7 +104,7 @@ def _herdr_focus_flags(rest: list[str], where: str, _bin: Path | None) -> None:
 def _herdr_pane_selector(rest: list[str], where: str, _bin: Path | None) -> None:
     if rest == ["--current"]:
         return
-    if len(rest) == 2 and rest[0] == "--pane" and PANE_ID.match(rest[1]):
+    if len(rest) == 2 and rest[0] == "--pane" and PANE_ID.fullmatch(rest[1]):
         return
     raise ScenarioError(f"{where}: expected --current or --pane <wN:pN>, got {' '.join(rest)}")
 
@@ -123,7 +126,7 @@ def _herdr_pane_split(rest: list[str], where: str, _bin: Path | None) -> None:
                 raise ScenarioError(f"{where}: --direction takes right or down")
             seen_direction, index = True, index + 2
         elif arg == "--pane":
-            if index + 1 >= len(rest) or not PANE_ID.match(rest[index + 1]):
+            if index + 1 >= len(rest) or not PANE_ID.fullmatch(rest[index + 1]):
                 raise ScenarioError(f"{where}: --pane takes a pane id like w1:p1")
             index += 2
         elif arg in allowed:
@@ -136,7 +139,7 @@ def _herdr_pane_split(rest: list[str], where: str, _bin: Path | None) -> None:
 
 def _herdr_one(pattern: re.Pattern, kind: str):
     def check(rest: list[str], where: str, _bin: Path | None) -> None:
-        if len(rest) != 1 or not pattern.match(rest[0]):
+        if len(rest) != 1 or not pattern.fullmatch(rest[0]):
             raise ScenarioError(f"{where}: expected exactly one {kind} id, got {' '.join(rest)}")
 
     return check
@@ -182,7 +185,7 @@ def _spawn_option(part: str, where: str) -> None:
             "else (the recorder puts in the title, the config and the program)"
         )
     app_id = part[len("--app-id=") :]
-    if not APP_ID.match(app_id):
+    if not APP_ID.fullmatch(app_id):
         raise ScenarioError(
             f"{where}: {app_id!r} is not an app_id this demo uses (foot, or foot-<name>)"
         )
@@ -202,9 +205,7 @@ def _spawn_argv(argv: list[str], where: str, demo_bin: Path | None) -> list[str]
         _spawn_option(part, f"{where}[{index}]")
     if TERMINALS[head] == "no command":
         if cut != len(rest):
-            raise ScenarioError(
-                f"{where}: {head!r} starts its own program, so it takes no -e"
-            )
+            raise ScenarioError(f"{where}: {head!r} starts its own program, so it takes no -e")
         return list(argv)
     if len(command) != 1:
         raise ScenarioError(
@@ -237,7 +238,7 @@ def _herdr_pane_run(rest: list[str], where: str, demo_bin: Path | None) -> None:
     if len(rest) != 2:
         raise ScenarioError(f"{where}: expected <pane id> <command>, got {' '.join(rest)}")
     pane, command = rest
-    if not PANE_ID.match(pane):
+    if not PANE_ID.fullmatch(pane):
         raise ScenarioError(f"{where}: {pane!r} is not a pane id like w1:p1")
     _bare_program(command, where, demo_bin)
 
@@ -721,7 +722,7 @@ def _keys(value: str, where: str) -> list[str]:
         keysym = KEY_NAMES[key]
     else:
         original = value.split("+")[-1].strip()
-        if not KEYSYM.match(original):
+        if not KEYSYM.fullmatch(original):
             raise ScenarioError(f"{where}.key: {original!r} is not a key name")
         keysym = original
     return [*(MODIFIERS[mod] for mod in mods), keysym]

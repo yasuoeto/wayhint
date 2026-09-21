@@ -1042,6 +1042,11 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   **後片付けを起動の逆順にする**——`HeadlessSession` は bus → compositor → daemon の順に上げるのに、
   停止の list を `[*_procs, _bus]` で組んでいたので bus が最初に落ちていた。生きている compositor
   の足元から session bus を抜くのが、AT-SPI client が終了時に固まる形。
+  wrapper の引数検査だけは shell script なので、`./scripts/check` の test が wrapper を**実際に
+  subprocess として起動する**。起動しないのは **foot と Herdr** のほうで、どの case も
+  `exec /usr/bin/foot` の数行手前で止まる——だから compositor も server も要らず、純粋な parse の
+  test と同じ場所に置ける。**正規表現は `fullmatch` で照合する**——`$` は末尾の改行の手前にも
+  合うので、`re.match` だと `--app-id=foot\n` や `w1:p1\n` が通る(Codex 3 回目の指摘)。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot

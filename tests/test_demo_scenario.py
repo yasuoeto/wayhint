@@ -191,6 +191,11 @@ class HerdrCommandTest(unittest.TestCase):
         with self.assertRaisesRegex(scn.ScenarioError, "only --focus / --no-focus"):
             self.herdr("[tab, create, --cwd, /etc]")
 
+    def test_a_pane_id_with_a_trailing_newline_is_refused(self) -> None:
+        """The same ``re.match`` hole as the app_id, on the ids that reach Herdr's argv."""
+        with self.assertRaisesRegex(scn.ScenarioError, "expected exactly one pane id"):
+            self.herdr('[pane, close, "w1:p1\n"]')
+
     def test_a_bad_pane_id_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "is not a pane id"):
             self.herdr("[pane, run, nonsense, claude]")
@@ -310,14 +315,20 @@ class SpawnTest(unittest.TestCase):
     def test_an_option_outside_the_allow_list_is_refused(self) -> None:
         """``--override=shell=...`` is how a scenario would put the shell back."""
         for option in ("--override=shell=/bin/sh", "--config=/tmp/foot.ini", "--server", "--hold"):
-            with self.subTest(option=option), self.assertRaisesRegex(
-                scn.ScenarioError, "is not allowed here"
+            with (
+                self.subTest(option=option),
+                self.assertRaisesRegex(scn.ScenarioError, "is not allowed here"),
             ):
                 self.spawn(f"[foot-wayhint, {option}, -e, vi]", self.bin())
 
     def test_an_app_id_outside_the_convention_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "is not an app_id"):
             self.spawn("[foot-wayhint, --app-id=evil, -e, vi]", self.bin())
+
+    def test_an_app_id_with_a_trailing_newline_is_refused(self) -> None:
+        """``$`` matches before a final newline, so this is what ``re.match`` would let past."""
+        with self.assertRaisesRegex(scn.ScenarioError, "is not an app_id"):
+            self.spawn('[foot-wayhint, "--app-id=foot\n", -e, vi]', self.bin())
 
     def test_the_one_allowed_option_is_accepted(self) -> None:
         script = self.spawn("[foot-wayhint, --app-id=foot-herdr, -e, claude]", self.bin())
@@ -436,8 +447,11 @@ class PaneProgramTest(unittest.TestCase):
 class WrapperTest(unittest.TestCase):
     """The terminal wrappers in ``demo/bin``, on the paths that refuse and exec nothing.
 
-    Every case here stops in the wrapper's own argument checking, before ``exec foot``, so no
-    terminal and no Herdr is started -- which is what makes these safe in ``./scripts/check``.
+    These do run the wrapper as a real subprocess -- there is no other way to check a shell
+    script's own argument handling. What they do not start is **foot and Herdr**: every case
+    here stops in the wrapper's argument checking, several lines before ``exec /usr/bin/foot``,
+    so nothing is drawn, no compositor is needed and no server is contacted. That is what makes
+    them safe to run in ``./scripts/check`` next to the pure parsing tests.
     """
 
     def run_wrapper(self, wrapper: Path, *args: str, herdr: str | None = None):
