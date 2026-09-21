@@ -1058,6 +1058,20 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   session の fixtures のコピーの中だけ(`WAYHINT_DEMO_CONFIG`)で、scenario が任意のファイルを
   画面に出せてはならない。**`J` / `K` は `type:` で送る**——wtype の `-k J` も `-M shift -k j` も
   窓には小文字で届き、大文字が届くのは text mode だけだった(実測)。
+- **視聴して直した点(2026-09-22、B-8)**: 生成した 3 本を人が見て決めたこと。
+  **GUI アプリの場面は GTK4 の stub `notes` で撮る**——実アプリ(gedit など)は使わない。出力が
+  毎回違ううえ、ロゴや文言を借りることになる。stub は label だけで、entry も scrolled window も
+  置かない(caret とスクロールバーが時間で変わる)。窓は下の端末を覆う大きさにする——この場面の
+  主語は GUI の窓で、後ろに端末が覗いていると何を見ればいいのか分からない。sheet は
+  `match.wayland` で app_id に当て、overlay の sub-header にプロセス名が出ないことが要点になる。
+  代わりに「Herdr の無い端末」の場面は落とした(直前の場面と言っていることが同じ)。
+  **字幕帯の行はレイアウトで予約する**——帯を不透明にして隠すのではなく、窓と overlay を帯の上で
+  止める。帯の幾何は `tools/demo/encode.py` の `caption_band_top` / `caption_text_top` が決め、
+  720p では上端 638。窓は scenario の `windows` の `height` で、overlay は `config.yaml` の
+  `overlay.height` で収める(実測: 窓 624 / overlay 628 / 編集フォーム 628)。labwc の `<margin>`
+  は使わない——`rc.xml` を書くのは `tools/headless.py` で、demo だけの都合を持ち込みたくない。
+  **共通 sheet(`wm`)には窓そのものの操作を置く**——「この overlay を出す・消す (`Super+H`)」は
+  hint として成立しない。それを忘れている人はこの一覧を開けない。
   wrapper の引数検査だけは shell script なので、`./scripts/check` の test が wrapper を**実際に
   subprocess として起動する**。起動しないのは **foot と Herdr** のほうで、どの case も
   `exec /usr/bin/foot` の数行手前で止まる——だから compositor も server も要らず、純粋な parse の
