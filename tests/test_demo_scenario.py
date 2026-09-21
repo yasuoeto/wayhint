@@ -524,6 +524,17 @@ class SheetViewerTest(unittest.TestCase):
         self.addCleanup(os.environ.pop, self.viewer().ROOT_ENV, None)
         return root
 
+    def test_the_status_line_is_named_relative_to_the_session_and_fits(self) -> None:
+        """A wrapped status line scrolls the first line of the file off the top."""
+        vi = self.viewer()
+        root = self.root()
+        (root / "hints").mkdir()
+        (root / "hints" / "ja").mkdir()
+        (root / "hints" / "ja" / "claude-code.yaml").write_text("id: x\n")
+        screen = vi.screen(*vi.opened([str(root / "hints" / "ja" / "claude-code.yaml")]))
+        self.assertIn('"hints/ja/claude-code.yaml" 1L, 6B', screen[-1])
+        self.assertLessEqual(len(screen[-1].replace(vi.STATUS, "").replace(vi.OFF, "")), vi.COLUMNS)
+
     def test_it_shows_the_top_of_the_file_and_the_real_line_count(self) -> None:
         vi = self.viewer()
         body = "".join(f"line{n}: value\n" for n in range(1, 31))

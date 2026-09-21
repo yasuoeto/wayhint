@@ -1042,6 +1042,22 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   **後片付けを起動の逆順にする**——`HeadlessSession` は bus → compositor → daemon の順に上げるのに、
   停止の list を `[*_procs, _bus]` で組んでいたので bus が最初に落ちていた。生きている compositor
   の足元から session bus を抜くのが、AT-SPI client が終了時に固まる形。
+- **字幕と画面を合わせるための修正(2026-09-21、B-7)**: 生成した 3 本を見て、字幕が指す出来事が
+  frame に映っていない箇所を洗い出して直した。**session の作業ディレクトリは
+  `/tmp/wayhint-demo/<showcase>-<lang>/`**——uid を入れない。このパスは YAML error の帯として
+  画面に映るので動画の一部で、`…-1000-…` は視聴者には事故に見える。同一マシンで 2 人が同時に
+  撮ることは想定しない(既存のディレクトリがあれば空けずに exit 1 する)。
+  **単キー操作の場面は製品仕様に合わせて台本のほうを直した**——フォームの保存は編集モードを
+  終える(0021)ので、`f` / `J` / `K` は保存の**前**に置く。後ろに置いていた初稿では overlay に
+  届かず、Codex の pane に文字として入っていた。さらに編集モードには**選択行を動かすキーが無い**
+  (`Down` も `Tab`+`Down` も効かないことを実測)ので、単キー操作は編集モードに入った時点の
+  選択行、つまり先頭行についてしか見せられない。そのため `codex.yaml` から `favorite` を外し、
+  先頭行を素の hint にした——`f` に「付けるべき ★」を用意するため。
+  **`demo/bin/vi` は引数の sheet を実際に読んで表示する**——固定の抜粋を出していたころは、
+  `match` / `inherit` / `include` を語る 4 枚 32 秒がそれらの行が無い画面に重なっていた。開けるのは
+  session の fixtures のコピーの中だけ(`WAYHINT_DEMO_CONFIG`)で、scenario が任意のファイルを
+  画面に出せてはならない。**`J` / `K` は `type:` で送る**——wtype の `-k J` も `-M shift -k j` も
+  窓には小文字で届き、大文字が届くのは text mode だけだった(実測)。
   wrapper の引数検査だけは shell script なので、`./scripts/check` の test が wrapper を**実際に
   subprocess として起動する**。起動しないのは **foot と Herdr** のほうで、どの case も
   `exec /usr/bin/foot` の数行手前で止まる——だから compositor も server も要らず、純粋な parse の

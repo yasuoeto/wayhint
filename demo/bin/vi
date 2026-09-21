@@ -75,7 +75,11 @@ def opened(argv: list[str]) -> tuple[Path | None, str]:
     if not path.is_relative_to(base) or not path.is_file() or path.is_symlink():
         sys.stderr.write(f"vi: {argv[0]} is not a file in {base}\n")
         raise SystemExit(1)
-    return path, argv[0]
+    # Named the way the person would have typed it, not the way the recorder resolved it: the
+    # session's own directory is a throwaway path, and it is 60 columns of one on screen. A
+    # status line that does not fit wraps, and a wrapped one scrolls the first line of the file
+    # off the top (measured in B-7).
+    return path, str(path.relative_to(base))
 
 
 def screen(path: Path | None, name: str) -> list[str]:
@@ -85,7 +89,8 @@ def screen(path: Path | None, name: str) -> list[str]:
     lines = path.read_text().splitlines()
     shown = [paint(clip(line)) for line in lines[:ROWS]]
     shown += [f"{TILDE}~{OFF}"] * (ROWS - len(shown))
-    return [*shown, f'{STATUS}"{clip(name)}" {len(lines)}L, {len(raw)}B{OFF}']
+    status = f'"{name}" {len(lines)}L, {len(raw)}B'
+    return [*shown, f"{STATUS}{clip(status)}{OFF}"]
 
 
 def main() -> int:

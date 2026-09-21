@@ -221,6 +221,7 @@ Herdr は実物が動くので、呼べる subcommand と引数を固定して�
 | ロゴ・URL の静止画面 | 合成の手段が無い。`pause` の字幕で代替 |
 | キー表示(showmethekey) | 押したキーは字幕に含める |
 | IME の変換過程 | wtype は確定した文字列を送るので変換中が映らない |
+| 一覧の選択行を動かすこと | 編集モードに選択行を動かすキーが無く、pointer も使えない。単キー操作(`f` `J` `K`)は**先頭行**について見せる |
 
 ## fixtures と stub
 
@@ -233,8 +234,11 @@ daemon が読むのはそのコピー。**編集モードの場面と YAML error
 `wayhint validate --config-dir demo/fixtures` が通る状態に保つこと。font は fixtures の側で固定して
 ある(`style.css` と `foot.ini` が Noto を名指しする。このマシンの既定 sans-serif は VL ゴシック)。
 
-`bin/` の `claude` `codex` `vi` は**本物ではない**。起動直後の待ち受け画面を出して stdin で待つだけの
-python script で、大事なのは 2 つ:
+`bin/` の `claude` `codex` `vi` は**本物ではない**。stdin で待つだけの python script で、
+`claude` と `codex` は起動直後の待ち受け画面を出す。`vi` は**引数の sheet を実際に開いて**
+先頭 14 行を固定幅で表示する(5 分版が `match` / `inherit` / `include` と `hints/ja/` を画面で
+指すため。固定の抜粋を出していたころは、字幕が画面に無い行を語っていた)。開けるのは session の
+fixtures のコピーの中だけで、場所は `WAYHINT_DEMO_CONFIG` で渡す。大事なのは 2 つ:
 
 * **ファイル名**。wayhint は端末の foreground process を `/proc` から見つけ、`argv[0]` の basename
   (interpreter なら `argv[1]` の basename)を名前にするので、`#!/usr/bin/env python3` の script
@@ -251,7 +255,7 @@ process として答えられてしまう。
 
 **どちらの wrapper も引数を素通ししない。** 受け取るのは `--app-id=` と `--title=` だけで、
 `foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` のいずれかで、
-symlink は拒否)。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
+symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
 shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
 `foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
 wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。
@@ -275,6 +279,9 @@ PATH から 1 回だけ解決し(このマシンでは `~/.local/bin/herdr`、0.
 | `[ui] prompt_new_tab_name = false` | `tab create` が名前を聞かずに済む(生成名 `1` `2` になる) |
 | `[ui] window_title = "{workspace}"` | 既定は `"{hostname}: {workspace}"` で、**ホスト名が窓 title として全 frame に写る** |
 | `[terminal] default_shell = <demo_bin>/idle` | pane に shell を置かない(下記) |
+
+`J` / `K` は `key:` ではなく `type:` で送る。wtype の `-k J` も `-M shift -k j` も窓には小文字で
+届き(このマシンで実測。labwc 0.20.2 / wtype 0.4)、大文字が届くのは text mode だけ。
 
 **session に shell は無い。** `default_shell` は `demo/bin/idle` で、これは 1 行出して stdin を
 読み、行が `claude` `codex` `vi`(`idle` 内に静的に書いた list)ならそれに `exec` するだけ。`herdr pane run <pane> claude` がまさに
