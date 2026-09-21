@@ -270,7 +270,7 @@ steps:
   - id: favorite-hint
     key: f
     wait_for: {overlay: visible, label: "★ 実行を承認する"}
-    caption: {ja: "f で ★。★ の付いた hint は先頭に集まる"}
+    caption: {ja: "f で ★ を付け外し。★ は先頭にまとまる"}
     hold: 8.0
 
   - id: open-form

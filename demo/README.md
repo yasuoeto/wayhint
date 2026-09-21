@@ -137,8 +137,8 @@ variants:
 |---|---|---|
 | `spawn` | `{window: <名前>, argv: [foot-herdr]}` / `{…, argv: [foot-wayhint, -e, vi]}` | 窓を起動する。argv[0] は `demo/bin` の端末 wrapper(`foot-wayhint` か `foot-herdr`)。`foot-wayhint` は **`-e <stub 名>` が必須**——command 無しの foot は login shell を開くので拒否する。`foot-herdr` は Herdr 自身を起動するので command を取らない。オプションは `--app-id=foot-<名前>` だけ。**すべて名前だけ**(絶対パス不可) |
 | `close` | `{window: <名前>}` | その窓を閉じる。focus が下の窓へ戻るので、別のアプリを見せて帰ってこられる |
-| `key` | `super+ctrl+h` | wtype で compositor に送る。修飾は `super` `ctrl` `shift` `alt` |
-| `type` | `"文字列"` または `{ja: …, en: …}` | wtype で文字を打つ |
+| `key` | `super+ctrl+h` | wtype で 1 打鍵を送る。修飾は `super` `ctrl` `shift` `alt`。**用途は修飾キー付きの操作(`super+h` など)と単独の特殊キー(`enter` `tab` `esc` `down`)**。`wtype -k` は shift レベルが乗らないので、大文字や shift の要る記号はここでは送れない(`key: J` も `key: shift+j` も窓には `j` が届く。labwc 0.20.2 / wtype 0.4 で実測) |
+| `type` | `"文字列"` または `{ja: …, en: …}` | wtype の text mode で文字を打つ。**大文字・記号はこちら**——`type: "J"` なら `J` が届く。編集モードの `J` / `K` もこれで送っている |
 | `press` | `{button: search}` | overlay のボタンを AT-SPI で押す。`search` `done` `copy` `editor` `edit` `close` |
 | `cli` | `refresh` | `wayhint <cmd>` を直接呼ぶ(hotkey の無いもの用) |
 | `herdr` | `[tab, focus, "w1:t2"]` | Herdr の CLI。下記の許可 list に限る |
@@ -279,9 +279,6 @@ PATH から 1 回だけ解決し(このマシンでは `~/.local/bin/herdr`、0.
 | `[ui] prompt_new_tab_name = false` | `tab create` が名前を聞かずに済む(生成名 `1` `2` になる) |
 | `[ui] window_title = "{workspace}"` | 既定は `"{hostname}: {workspace}"` で、**ホスト名が窓 title として全 frame に写る** |
 | `[terminal] default_shell = <demo_bin>/idle` | pane に shell を置かない(下記) |
-
-`J` / `K` は `key:` ではなく `type:` で送る。wtype の `-k J` も `-M shift -k j` も窓には小文字で
-届き(このマシンで実測。labwc 0.20.2 / wtype 0.4)、大文字が届くのは text mode だけ。
 
 **session に shell は無い。** `default_shell` は `demo/bin/idle` で、これは 1 行出して stdin を
 読み、行が `claude` `codex` `vi`(`idle` 内に静的に書いた list)ならそれに `exec` するだけ。`herdr pane run <pane> claude` がまさに

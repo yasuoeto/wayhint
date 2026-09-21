@@ -19,6 +19,7 @@ import signal
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from tools import headless as headless_mod
@@ -720,6 +721,62 @@ class CommandLineNameTest(unittest.TestCase):
         )
         # ... and the showcase resolver reaches the same function, rather than its own regex.
         self.assertIn(("showcase name", "herdr"), seen)
+
+
+class WaitGroupGoneTest(unittest.TestCase):
+    """The tear-down waits for the whole process group, and never signals its own.
+
+    ``os.killpg`` is a mock in every case here: a real one on the wrong group takes the test
+    runner with it, which is exactly the accident the guard exists for.
+    """
+
+    class Proc:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+
+    def session(self) -> headless_mod.HeadlessSession:
+        session = headless_mod.HeadlessSession(scratch(self))
+        self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
+        return session
+
+    def killpg(self, *side_effect):
+        patch = unittest.mock.patch.object(headless_mod.os, "killpg")
+        mock = patch.start()
+        self.addCleanup(patch.stop)
+        if side_effect:
+            mock.side_effect = side_effect
+        return mock
+
+    def test_it_refuses_pid_zero(self) -> None:
+        """``killpg(0, ...)`` is 'my own group', and it would kill whatever is running this."""
+        killpg = self.killpg()
+        with self.assertRaisesRegex(ValueError, "own"):
+            self.session()._wait_group_gone(self.Proc(0))
+        killpg.assert_not_called()
+
+    def test_it_refuses_its_own_process_group(self) -> None:
+        killpg = self.killpg()
+        with self.assertRaisesRegex(ValueError, "own"):
+            self.session()._wait_group_gone(self.Proc(os.getpgrp()))
+        killpg.assert_not_called()
+
+    def test_it_returns_as_soon_as_the_group_is_empty(self) -> None:
+        killpg = self.killpg(ProcessLookupError())
+        self.session()._wait_group_gone(self.Proc(os.getpgrp() + 1))
+        self.assertEqual(killpg.call_count, 1)  # one probe, and nothing to kill
+        self.assertEqual(killpg.call_args.args[1], 0)
+
+    def test_it_escalates_to_sigkill_when_the_group_stays(self) -> None:
+        """A group that outlives the timeout is killed, and then waited for again."""
+        patch = unittest.mock.patch.object(headless_mod, "GROUP_GONE_TIMEOUT", 0.1)
+        patch.start()
+        self.addCleanup(patch.stop)
+        killpg = self.killpg()
+        killpg.side_effect = [*[None] * 40, None, ProcessLookupError()]
+        self.session()._wait_group_gone(self.Proc(os.getpgrp() + 1))
+        signals = [call.args[1] for call in killpg.call_args_list]
+        self.assertIn(signal.SIGKILL, signals)
+        self.assertEqual(signals[-1], 0, "it waits again after the kill")
 
 
 class StartupUnwindTest(unittest.TestCase):

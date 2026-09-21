@@ -248,8 +248,16 @@ class HeadlessSession:
         the ``rmtree`` below race it, and what is left behind is the directory itself -- empty,
         20 of them in /tmp after a day of runs (measured in C-B).
         """
-        if proc.pid <= 0:
-            return  # 0 is *this* process group; nothing we started ever has it
+        # Never a group this process is in. ``killpg(0, ...)`` means "my own group", and a pgid
+        # that happens to be ours would take the test runner down with it -- which is what it
+        # did once, before the guard (B-7). Every group this signals was started with
+        # ``start_new_session=True``, so neither case can be a real one: they are bugs, and a
+        # bug that reaches a kill has to stop here rather than be quietly skipped.
+        if proc.pid <= 0 or proc.pid == os.getpgrp():
+            raise ValueError(
+                f"refusing to signal process group {proc.pid}: that is this process's own "
+                "group, not one the session started"
+            )
         for sig in (None, signal.SIGKILL):
             if sig is not None:
                 try:
