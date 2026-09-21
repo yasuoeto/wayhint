@@ -262,7 +262,7 @@ def _record(
                 _run_step(run, recorder, step, number, script.output.fps)
         _finish(args, script, recorder, out, language, show, variant)
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        sess.release(work)
         # A run that failed before it captured anything leaves a directory where a recording
         # should be; that reads as "it recorded nothing", which is worse than saying nothing.
         if out.is_dir() and not any(path.is_file() for path in out.rglob("*")):

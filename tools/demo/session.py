@@ -46,6 +46,8 @@ HERDR_BIN_ENV = "WAYHINT_DEMO_HERDR_BIN"
 The wrapper refuses to run without it rather than falling back to a bare ``herdr``."""
 HERDR_STOP_TIMEOUT = 15.0
 HERDR_GONE_TIMEOUT = 5.0
+DEMO_ROOT = "wayhint-demo"
+"""The one directory under /tmp that a recording's throwaway files live in."""
 WORK_DIR = "demo"
 """The directory the terminals are started in. Herdr names its workspace after it, and that
 name is on screen, so it is a fixed readable word rather than a temporary path."""
@@ -153,18 +155,39 @@ def font_file(family: str) -> str:
 
 
 def workspace(showcase: str, language: str) -> Path:
-    """The throwaway directory a recording runs in -- at a *fixed* path, and emptied first.
+    """The throwaway directory a recording runs in -- at a *fixed* path, made fresh.
 
     Fixed because the overlay shows the path of a sheet it could not read, and the demo records
     that on purpose (the YAML-error scene). A ``mkdtemp`` name would put a different string on
-    screen every run and there goes frame-for-frame reproducibility. The uid keeps two people
-    on one machine out of each other's way.
+    screen every run and there goes frame-for-frame reproducibility. It carries no uid either:
+    the path is *on screen*, and ``/tmp/wayhint-demo-1000-herdr-ja`` reads like an accident to
+    whoever watches the video (DECISIONS 0032). Two people recording on one machine at the same
+    time is not a case this supports -- the second one is told to look at the first.
+
+    An existing directory is refused rather than emptied: it means either a recording that is
+    still running, whose files would be pulled out from under it, or one that died and left
+    something worth looking at.
     """
-    root = Path(tempfile.gettempdir()) / f"wayhint-demo-{os.getuid()}-{showcase}-{language}"
-    shutil.rmtree(root, ignore_errors=True)
-    root.mkdir(mode=0o700, parents=True)
+    root = Path(tempfile.gettempdir()) / DEMO_ROOT / f"{showcase}-{language}"
+    if root.exists():
+        raise DemoError(
+            f"{root} is already there. Another recording of {showcase} in {language} may be "
+            f"running; if not, remove it and start again (rm -rf {root})"
+        )
+    try:
+        root.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root.mkdir(mode=0o700)
+    except OSError as e:
+        raise DemoError(f"cannot make {root}: {e}") from e
     (root / WORK_DIR).mkdir()
     return root
+
+
+def release(work: Path) -> None:
+    """Remove a workspace, and the directory that held it once it is the last one."""
+    shutil.rmtree(work, ignore_errors=True)
+    with contextlib.suppress(OSError):
+        work.parent.rmdir()  # not empty means another language or showcase is still recording
 
 
 def prepare_config(fixtures: Path, language: str, into: Path) -> Path:

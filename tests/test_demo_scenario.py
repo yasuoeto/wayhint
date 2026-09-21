@@ -232,6 +232,45 @@ class FixtureLanguageTest(unittest.TestCase):
             sess.prepare_config(self.fixtures("ja"), "en", scratch(self))
 
 
+class WorkspaceTest(unittest.TestCase):
+    """Where a recording's throwaway files go. The path is on screen, so it is part of the film."""
+
+    def setUp(self) -> None:
+        root = scratch(self)
+        original = tempfile.tempdir
+        tempfile.tempdir = str(root)
+        self.addCleanup(setattr, tempfile, "tempdir", original)
+        self.tmp = root
+
+    def test_it_makes_one_directory_per_showcase_and_language(self) -> None:
+        work = sess.workspace("herdr", "ja")
+        self.assertEqual(work, self.tmp / sess.DEMO_ROOT / "herdr-ja")
+        self.assertTrue((work / sess.WORK_DIR).is_dir())
+
+    def test_the_path_carries_no_uid(self) -> None:
+        """It is read off the screen in the YAML-error scene; a uid there reads as an accident."""
+        work = sess.workspace("herdr", "ja")
+        self.assertNotIn(str(os.getuid()), str(work.relative_to(self.tmp)))
+
+    def test_a_workspace_that_is_already_there_is_refused(self) -> None:
+        sess.workspace("herdr", "ja")
+        with self.assertRaisesRegex(sess.DemoError, "already there"):
+            sess.workspace("herdr", "ja")
+
+    def test_release_takes_the_directory_above_it_too(self) -> None:
+        work = sess.workspace("herdr", "ja")
+        sess.release(work)
+        self.assertFalse(work.exists())
+        self.assertFalse(work.parent.exists(), "nothing of the recording is left in /tmp")
+
+    def test_release_keeps_the_directory_above_while_another_recording_is_in_it(self) -> None:
+        first = sess.workspace("herdr", "ja")
+        second = sess.workspace("herdr", "en")
+        sess.release(first)
+        self.assertTrue(second.is_dir())
+        self.assertTrue(second.parent.is_dir())
+
+
 class OutputDirTest(unittest.TestCase):
     """The one place that deletes a directory checks where it is, whatever it was told."""
 

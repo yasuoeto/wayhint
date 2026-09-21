@@ -224,7 +224,7 @@ Herdr は実物が動くので、呼べる subcommand と引数を固定して�
 
 ## fixtures と stub
 
-`fixtures/` は録画のたびに `/tmp/wayhint-demo-<uid>-<showcase>-<lang>/config` へ丸ごとコピーされ、
+`fixtures/` は録画のたびに `/tmp/wayhint-demo/<showcase>-<lang>/config` へ丸ごとコピーされ、
 daemon が読むのはそのコピー。**編集モードの場面と YAML error の場面はそのコピーを書き換える**ので、
 `fixtures/` 自身は録画で変わらない。パスが固定なのは、YAML error の場面で overlay が
 そのパスを表示するため(`mkdtemp` だと毎回違う文字列が frame に写る)。
