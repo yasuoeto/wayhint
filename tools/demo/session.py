@@ -28,12 +28,9 @@ from tools.demo.scenario import Scenario
 from tools.demo.scenario import programs as scenario_programs
 from tools.headless import HeadlessSession, WindowRule, compositor
 
-APP_ID = "foot*"
-"""Every terminal the demo starts, whatever suffix it carries.
-
-The placement rules tell the windows apart by *title*, which the recorder sets from the
-scenario, so the app_id only has to be wide enough to catch them all: ``foot.p<pid>`` from the
-pid-suffix convention and ``foot-herdr`` from the one Herdr runs in (docs/TERMINALS.md)."""
+"""Placement rules come from the scenario: each ``windows`` entry carries its own ``app_id``
+(default ``foot*``, wide enough for every terminal the demo starts) and its title, which is
+what tells two terminals apart. A window of its own, like the GUI stub, names its own."""
 KEYBINDS = (("W-h", "toggle"), ("W-C-h", "edit-mode"))
 """What the person's own compositor config does (README, compositor の設定)."""
 
@@ -263,7 +260,7 @@ class DemoSession:
             height=scenario.output.height,
             keybinds=KEYBINDS,
             window_rules=[
-                WindowRule(APP_ID, w.x, w.y, w.width, w.height, title=w.title)
+                WindowRule(w.app_id, w.x, w.y, w.width, w.height, title=w.title)
                 for w in scenario.windows
             ],
             # The overlay's own text cursor blinks in the search box and in the form. Anything

@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from tools.demo.scenario import BUTTONS, Condition, Step
+from tools.demo.scenario import BUTTONS, GUI_STUBS, Condition, Step
 from tools.demo.scenario import spawn_command as scenario_command
 from tools.demo.session import DemoError, DemoSession
 from wayhint import ipc
@@ -52,9 +52,12 @@ def perform(run: Run, step: Step) -> None:
         # file reaches PATH resolution, so a stub cannot be shadowed by a real program of the
         # same name (DECISIONS 0032).
         parts = list(payload["argv"])
-        # The title is how the compositor rule finds this window (scenario ``windows``), so it
-        # is put in by the recorder rather than written into every argv in the scenario.
-        argv = [str(run.demo_bin / parts[0]), f"--title={payload['window']}"]
+        argv = [str(run.demo_bin / parts[0])]
+        if parts[0] not in GUI_STUBS:
+            # The title is how the compositor rule finds a terminal (scenario ``windows``), so
+            # it is put in by the recorder rather than written into every argv. A window of its
+            # own carries its title already, and takes no arguments at all.
+            argv.append(f"--title={payload['window']}")
         command = scenario_command(parts)
         argv += parts[1 : len(parts) - len(command) - 1] if command else parts[1:]
         if command:

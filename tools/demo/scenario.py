@@ -154,6 +154,17 @@ starts the login shell, and this session is built not to have one (DECISIONS 003
 matched on a prefix -- a prefix would accept the next wrapper somebody adds, whatever it does.
 """
 
+DEFAULT_APP_ID = "foot*"
+"""What a placement matches on unless it says otherwise: every terminal the demo starts, both
+``foot.p<pid>`` and ``foot-herdr`` (docs/TERMINALS.md)."""
+WINDOW_APP_ID = re.compile(r"[A-Za-z0-9.*?_-]+")
+"""A labwc ``identifier`` glob. Narrow on purpose: it comes out of the scenario."""
+
+GUI_STUBS = {"notes": "no args"}
+"""Stubs a ``spawn`` may start *without* a terminal: a window of their own, matched by app_id
+rather than by the process inside a terminal (DECISIONS 0024). They take no arguments -- what
+they draw is fixed, which is what makes two recordings the same."""
+
 APP_ID = re.compile(r"^foot(-[a-z0-9]+|\.p\{pid\})?$")
 """What ``--app-id`` may be set to: the naming convention in docs/TERMINALS.md, and nothing
 that would make the window look like another application's to the daemon."""
@@ -192,11 +203,16 @@ def _spawn_option(part: str, where: str) -> None:
 
 
 def _spawn_argv(argv: list[str], where: str, demo_bin: Path | None) -> list[str]:
-    """``[foot-herdr]`` or ``[foot-wayhint, -e, vi]``: one wrapper, options, one stub."""
+    """``[foot-herdr]``, ``[foot-wayhint, -e, vi]`` or ``[notes]``: a terminal, or a window."""
     head = _bare_program(argv[0], f"{where}[0]", demo_bin)
+    if head in GUI_STUBS:
+        if len(argv) > 1:
+            raise ScenarioError(f"{where}: {head!r} draws a fixed window and takes no arguments")
+        return list(argv)
     if head not in TERMINALS:
         raise ScenarioError(
-            f"{where}[0]: {head!r} has to start a terminal ({', '.join(sorted(TERMINALS))})"
+            f"{where}[0]: {head!r} has to start a terminal ({', '.join(sorted(TERMINALS))}) "
+            f"or be one of the windows ({', '.join(sorted(GUI_STUBS))})"
         )
     rest = list(argv[1:])
     cut = rest.index("-e") if "-e" in rest else len(rest)
@@ -298,7 +314,9 @@ class Window:
     """Where a spawned window goes. Fixed, so the picture is the same on the next run.
 
     ``title`` is both the name a ``spawn`` step refers to and the window title the compositor
-    matches its rule on, which is how two terminals end up in two different places.
+    matches its rule on, which is how two terminals end up in two different places. ``app_id``
+    is the other half of the rule; the default catches every terminal the demo starts, and a
+    window of its own (``notes``) names its own.
     """
 
     title: str
@@ -306,6 +324,7 @@ class Window:
     y: int
     width: int
     height: int
+    app_id: str = DEFAULT_APP_ID
 
 
 @dataclass(frozen=True)
@@ -543,7 +562,7 @@ def _windows(value: object) -> list[Window]:
     for index, item in enumerate(value):
         doc = _mapping(item, f"windows[{index}]")
         where = f"windows[{index}]"
-        _unknown(doc, {"title", "x", "y", "width", "height"}, where)
+        _unknown(doc, {"title", "x", "y", "width", "height", "app_id"}, where)
         title = _string(doc.get("title"), f"{where}.title")
         if title in seen:
             raise ScenarioError(f"windows: two placements called {title!r}")
@@ -555,6 +574,7 @@ def _windows(value: object) -> list[Window]:
                 y=_int(doc.get("y", 60), f"{where}.y", minimum=0),
                 width=_int(doc.get("width", 760), f"{where}.width", minimum=16),
                 height=_int(doc.get("height", 460), f"{where}.height", minimum=16),
+                app_id=_app_id(doc.get("app_id", DEFAULT_APP_ID), f"{where}.app_id"),
             )
         )
     return out
@@ -708,6 +728,15 @@ def _relative(value: str, where: str) -> str:
     if path.is_absolute() or ".." in path.parts:
         raise ScenarioError(f"{where}: has to be a relative path without '..'")
     return value
+
+
+def _app_id(value: object, where: str) -> str:
+    text = _string(value, where)
+    if not WINDOW_APP_ID.fullmatch(text):
+        raise ScenarioError(
+            f"{where}: {text!r} is not an app_id glob (letters, digits, . * ? _ - only)"
+        )
+    return text
 
 
 def _button(value: object, where: str) -> str:

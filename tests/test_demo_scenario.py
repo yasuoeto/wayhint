@@ -233,6 +233,25 @@ class FixtureLanguageTest(unittest.TestCase):
             sess.prepare_config(self.fixtures("ja"), "en", scratch(self))
 
 
+class WindowPlacementTest(unittest.TestCase):
+    """Each placement carries the app_id its rule matches on, so a GUI window can have one."""
+
+    def windows(self, text: str) -> tuple:
+        return parse(MINIMAL.replace("windows: [{title: main", text)).windows
+
+    def test_the_default_catches_every_terminal(self) -> None:
+        self.assertEqual(parse(MINIMAL).windows[0].app_id, scn.DEFAULT_APP_ID)
+
+    def test_a_placement_may_name_its_own_app_id(self) -> None:
+        windows = self.windows('windows: [{app_id: "dev.wayhint.demo.Notes", title: main')
+        self.assertEqual(windows[0].app_id, "dev.wayhint.demo.Notes")
+
+    def test_an_app_id_that_is_not_a_glob_is_refused(self) -> None:
+        for bad in ("dev wayhint", "dev/wayhint", "dev.wayhint\n"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(scn.ScenarioError, "app_id glob"):
+                self.windows(f'windows: [{{app_id: "{bad}", title: main')
+
+
 class WorkspaceTest(unittest.TestCase):
     """Where a recording's throwaway files go. The path is on screen, so it is part of the film."""
 
@@ -332,7 +351,7 @@ class SpawnTest(unittest.TestCase):
 
     def bin(self) -> Path:
         demo_bin = scratch(self)
-        for name in ("foot-herdr", "foot-wayhint", "vi", "claude", "idle"):
+        for name in ("foot-herdr", "foot-wayhint", "vi", "claude", "idle", "notes"):
             (demo_bin / name).write_text("#!/bin/sh\n")
         return demo_bin
 
@@ -415,6 +434,20 @@ class SpawnTest(unittest.TestCase):
         script = self.spawn('[foot-wayhint, -e, vi, "hints/ja/x.yaml"]', self.bin())
         self.assertEqual(scn.programs(script.steps["show"]), ["foot-wayhint", "vi"])
 
+    def test_a_window_of_its_own_is_started_without_a_terminal(self) -> None:
+        """The GUI stub is matched by app_id, so nothing has to look inside a terminal (0024)."""
+        script = self.spawn("[notes]", self.bin())
+        self.assertEqual(script.steps["show"].action.payload["argv"], ["notes"])
+        self.assertEqual(scn.programs(script.steps["show"]), ["notes"])
+
+    def test_a_window_of_its_own_takes_no_arguments(self) -> None:
+        for extra in ("-e, vi", '"hints/ja/x.yaml"', "--app-id=foot"):
+            with (
+                self.subTest(extra=extra),
+                self.assertRaisesRegex(scn.ScenarioError, "takes no arguments"),
+            ):
+                self.spawn(f"[notes, {extra}]", self.bin())
+
     def test_a_stub_that_is_not_in_demo_bin_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "no such program"):
             self.spawn("[foot-wayhint, -e, bash]", self.bin())
@@ -490,7 +523,8 @@ class PaneProgramTest(unittest.TestCase):
 
     def test_a_name_outside_the_list_starts_nothing(self) -> None:
         idle = self.idle()
-        for name in ("foot-wayhint", "idle", "sh", "", "../vi"):
+        # ``notes`` among them: it is a window of its own, not something a pane runs.
+        for name in ("foot-wayhint", "idle", "notes", "sh", "", "../vi"):
             with self.subTest(name=name):
                 self.assertIsNone(idle.target(name))
 
