@@ -371,7 +371,7 @@ steps:
 
   - id: notes-wm
     pause: true
-    wait_for: {overlay: visible, label: "この overlay を出す・消す"}
+    wait_for: {overlay: visible, label: "次の窓へ"}
     caption: {ja: "窓の操作はどの sheet にも付いてくる"}
     hold: 9.0
 

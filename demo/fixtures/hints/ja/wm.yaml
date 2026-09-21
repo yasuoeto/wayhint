@@ -1,13 +1,16 @@
 # `match` が無いので窓に対して選ばれることはない。config.yaml の `include` に書いてあるので、
 # 断りのない sheet すべてに混ざり、一覧の末尾に出る。
+#
+# ここに置くのは**窓そのものの操作**。overlay の出し方(`Super+H`)は書かない——それを忘れている
+# 人はこの一覧を開けないので、hint として成立しない。
 id: wm
 title: ウィンドウマネージャ
 hints:
-  - id: hints
-    title: この overlay を出す・消す
-    key: Super+H
-    category: wayhint
+  - id: next-window
+    title: 次の窓へ
+    key: Alt+Tab
+    category: 窓
   - id: edit-mode
-    title: overlay の中で hint を編集する
+    title: この一覧に hint を書き足す
     key: Super+Ctrl+H
     category: wayhint
