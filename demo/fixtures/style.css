@@ -1,0 +1,104 @@
+/* The demo's stylesheet: examples/style.css with the two font families pinned, so that a
+   recording looks the same wherever it is made (demo/README.md). */
+/* labwc のテーマに合わせた配色。使うときは
+ *   cp examples/style.css ~/.config/wayhint/style.css
+ * で置き、daemon を再起動する(style.css を読むのは起動時の一度だけ)。
+ * config.yaml の appearance.style がこのファイル名を指す(既定 "style.css")。
+ *
+ * 出典は labwc のテーマ Syscrash(/usr/share/themes/Syscrash/openbox-3/themerc)と、
+ * OSD の色(~/.config/labwc/themerc-override)。#ffcc00 / #f53c3c は warning / critical
+ * として desktop 側で既に使っている色。別のテーマを使うなら色だけ差し替える。
+ * class 名の一覧は src/wayhint/ui/style.py の DEFAULT_CSS。
+ * 既定 CSS が下に残るので、opacity など上書きしたい property は明示的に戻している。 */
+
+window.wayhint {
+  background-color: alpha(#2b2b2b, 0.95);   /* osd.bg.color #2b2b2bf2 */
+  color: #d8d8d8;                           /* osd.label.text.color */
+  border: 1px solid #3c3c3c;                /* osd.border.color / osd.border.width 1 */
+  border-radius: 0;                         /* labwc <cornerRadius>0</cornerRadius> */
+  font-family: "Noto Sans CJK JP", sans-serif;
+}
+/* GTK 既定テーマ(light Adwaita)は list に view の色(明るい背景 + 暗い文字)を当てるので、
+   背景だけでなく文字色も panel 側に戻す。 */
+.wayhint box, .wayhint list, .wayhint row, .wayhint scrolledwindow {
+  background-color: transparent;
+  color: #d8d8d8;
+}
+
+/* header は titlebar の label と同じ縦 gradient(window.active.label.bg #4c4c4c -> #707070) */
+.wayhint-header {
+  background-image: linear-gradient(to bottom, #4c4c4c, #707070);
+  border-bottom: 1px solid #3c3c3c;
+  color: #ffffff; font-weight: bold; padding: 5px 10px;
+}
+.wayhint-context { padding: 4px 10px 6px 10px; color: #b4b4b4; opacity: 1; font-size: 0.85em; }
+.wayhint-error {
+  background-color: alpha(#f53c3c, 0.20); color: #f53c3c;
+  padding: 6px 10px; border-bottom: 1px solid #3c3c3c;
+}
+
+/* hint 一覧だけシステムフォント(ここでは Adwaita Sans 11)より 2pt 大きくする。
+   category など em 指定の子はこれに追従する。header や toolbar は変えない。 */
+/* border-bottom が hint 同士の区切り線。最終行だけ消して下端が二重にならないようにする。 */
+.wayhint-row { padding: 4px 10px; font-size: 13pt; border-bottom: 1px solid #3c3c3c; }
+.wayhint-row:last-child { border-bottom: none; }
+.wayhint-row:hover { background-color: alpha(#ffffff, 0.08); }
+.wayhint-row:selected { background-color: #4c4c4c; color: #ffffff; }  /* menu.items.active */
+.wayhint-title { color: #ffffff; }
+.wayhint-row.favorite .wayhint-title { font-weight: bold; }
+.wayhint-key { font-family: "Noto Sans Mono", monospace; color: #9fbfc1; min-width: 9em; }
+.wayhint-command { font-family: "Noto Sans Mono", monospace; color: #aaaaaa; }
+.wayhint-category { color: #8c8c75; opacity: 1; font-size: 0.8em; }
+
+.wayhint-detail { padding: 8px 10px; border-top: 1px solid #3c3c3c; font-size: 0.9em; }
+.wayhint-help {
+  padding: 4px 10px; color: #8c8c75; opacity: 1; font-size: 0.8em; font-family: "Noto Sans Mono", monospace;
+}
+.wayhint-chip { background-color: alpha(#ffffff, 0.18); border-radius: 0; padding: 1px 6px; }
+/* リサイズのつまみ。layer surface には枠が無いので自前で置いている。角(both)は常に見え、
+   辺の帯(x = 幅だけ / y = 高さだけ)は hover したときだけ出す。 */
+.wayhint-grip-both {
+  background-image: linear-gradient(to bottom right, transparent 55%, alpha(#9fbfc1, 0.45));
+}
+.wayhint-grip-both:hover {
+  background-image: linear-gradient(to bottom right, transparent 45%, #9fbfc1);
+}
+.wayhint-grip-x:hover, .wayhint-grip-y:hover { background-color: alpha(#9fbfc1, 0.55); }
+.wayhint-form { padding: 8px 10px; border-top: 1px solid #3c3c3c; }
+.wayhint-form-title { font-weight: bold; padding-bottom: 4px; }
+.wayhint-form-label { color: #b4b4b4; opacity: 1; font-size: 0.85em; }
+.wayhint-form-note { color: #ffcc00; font-size: 0.85em; padding-top: 4px; }
+/* 下の 6px は resize の帯(.wayhint-grip-y)の逃げ: button に掛からないようにする。 */
+.wayhint-toolbar { padding: 6px 8px 12px 8px; border-top: 1px solid #3c3c3c; }
+
+/* GTK 既定テーマは light なので、button と entry は暗い panel 用に明示する。
+   button は window.active.button.*(unpressed 縦 gradient / hover 単色 / pressed 斜め)。 */
+.wayhint button, .wayhint dropdown > button {
+  background-image: linear-gradient(to bottom, #515151, #676767);
+  background-color: transparent;
+  border: 1px solid #6d6d6d; border-radius: 0;   /* border.color / 角は立てる */
+  box-shadow: none; text-shadow: none;
+  color: #ffffff; padding: 2px 8px; min-height: 0;
+}
+.wayhint button:hover { background-image: none; background-color: #e6e6e0; color: #22221c; }
+.wayhint button:active, .wayhint button:checked {
+  background-image: linear-gradient(to bottom right, #d3deda, #9fbfc1); color: #22221c;
+}
+.wayhint button:disabled {
+  background-image: none; background-color: alpha(#ffffff, 0.06); color: #8c8c75;
+}
+.wayhint entry {
+  background-color: #222222; color: #d8d8d8; caret-color: #d8d8d8;
+  border: 1px solid #6d6d6d; border-radius: 0; box-shadow: none;
+  padding: 2px 6px; min-height: 0;
+}
+.wayhint entry:focus-within { border-color: #9fbfc1; }
+.wayhint entry image { color: #8c8c75; }
+.wayhint text > placeholder { color: #8c8c75; }
+.wayhint text selection, .wayhint label selection { background-color: #4c4c4c; color: #ffffff; }
+.wayhint popover > contents {
+  background-color: #222222; color: #d8d8d8; border: 1px solid #3c3c3c; border-radius: 0;
+}
+.wayhint popover row:selected { background-color: #4c4c4c; color: #ffffff; }
+.wayhint scrollbar { background-color: transparent; border: none; }
+.wayhint scrollbar slider { background-color: alpha(#ffffff, 0.25); border-radius: 0; }

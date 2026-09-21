@@ -1,0 +1,30 @@
+# 2 つ目のコマンド。overlay を閉じずに focus を追って sheet が差し替わる場面(場面④)で使う。
+id: vi
+title: Vi
+priority: 10
+match:
+  process:
+    argv_regex: ["^vi$"]
+inherit:
+  parent_tags: [terminal]
+include: [wm]
+hints:
+  - id: write-quit
+    title: 保存して終了
+    kind: command
+    command: ":wq"
+    category: ファイル
+  - id: quit-hard
+    title: 保存せずに終了
+    kind: command
+    command: ":q!"
+    category: ファイル
+  - id: undo
+    title: 取り消す
+    key: u
+    category: 編集
+  - id: search
+    title: 前方検索
+    kind: command
+    command: /pattern
+    category: 編集

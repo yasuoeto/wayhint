@@ -1,0 +1,8 @@
+#!/bin/sh
+# The wrapper from README「Terminal の複数窓」: the window names the pid that draws it in its
+# app_id, which is how wayhint finds the process running inside it. The demo goes through the
+# same path a person's terminal does -- there is no demo-only route into the daemon.
+set -eu
+CDPATH=''
+dir=$(cd -- "$(dirname -- "$0")" && pwd)
+exec /usr/bin/foot --app-id "foot.p$$" --config "$dir/../fixtures/foot.ini" "$@"

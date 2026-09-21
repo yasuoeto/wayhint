@@ -1,0 +1,41 @@
+# 窓ではなく、端末の中で動いている *プロセス* で選ばれる(match.process)。
+id: claude-code
+title: Claude Code
+priority: 10
+match:
+  process:
+    argv_regex: ["^claude$"]
+inherit:
+  parent_tags: [terminal]
+include: [wm]
+hints:
+  - id: compact
+    title: 会話を要約して畳む
+    kind: command
+    command: /compact
+    category: セッション
+    remark: 要約は残し、ツールの生出力を捨てる。
+  - id: model
+    title: モデルを切り替える
+    kind: command
+    command: /model
+    category: セッション
+  - id: resume
+    title: 前の会話を再開する
+    kind: command
+    command: /resume
+    category: セッション
+  - id: plan-mode
+    title: 編集の前に計画する
+    key: Shift+Tab
+    category: 編集
+  - id: shell-escape
+    title: シェルコマンドを実行する
+    kind: tip
+    key: "! <command>"
+    category: 編集
+    copy: "! "
+  - id: interrupt
+    title: 実行中の応答を止める
+    key: Esc
+    category: 編集

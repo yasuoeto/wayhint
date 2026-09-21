@@ -1,0 +1,27 @@
+# The window's own sheet. When a command is running inside the terminal this one becomes the
+# *parent*: only its hints tagged `terminal` follow the command's own (config.yaml
+# nested.parent_tags), which is what the demo's first scene shows.
+id: foot
+title: Terminal
+match:
+  wayland:
+    app_id_regex: ["^foot$"]
+hints:
+  - id: new-window
+    title: New window
+    key: Ctrl+Shift+N
+    category: terminal
+    tags: [terminal]
+  - id: copy
+    title: Copy the selection
+    key: Ctrl+Shift+C
+    category: terminal
+    tags: [terminal]
+  - id: scrollback
+    title: Search the scrollback
+    key: Ctrl+Shift+R
+    category: terminal
+  - id: font-size
+    title: Make the font bigger
+    key: Ctrl+plus
+    category: terminal

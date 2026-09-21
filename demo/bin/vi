@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""A stand-in for vi: a second command in a second terminal, so the demo can show the overlay
+following the focus. See ``claude`` next to it for why the real program is not used and why
+the file name is what matters.
+"""
+
+import sys
+
+KEY = "\033[38;5;180m"
+TEXT = "\033[38;5;252m"
+TILDE = "\033[38;5;103m"
+STATUS = "\033[7m"
+OFF = "\033[0m"
+
+LINES = [
+    f"{KEY}id{OFF}{TEXT}: claude-code{OFF}",
+    f"{KEY}title{OFF}{TEXT}: Claude Code{OFF}",
+    f"{KEY}hints{OFF}{TEXT}:{OFF}",
+    f"{TEXT}  - {KEY}id{OFF}{TEXT}: compact{OFF}",
+    f"{TEXT}    {KEY}title{OFF}{TEXT}: Compact the conversation{OFF}",
+    f"{TEXT}    {KEY}command{OFF}{TEXT}: /compact{OFF}",
+    *[f"{TILDE}~{OFF}"] * 4,
+    f'{STATUS}"hints/en/claude-code.yaml" 41L, 812B{OFF}',
+]
+
+
+def main() -> int:
+    sys.stdout.write("\n".join(LINES) + "\n")
+    sys.stdout.flush()
+    try:
+        sys.stdin.read()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

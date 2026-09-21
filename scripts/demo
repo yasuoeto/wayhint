@@ -1,0 +1,16 @@
+#!/bin/sh
+# Record the demo video from demo/scenario.yaml. Reads the scenario and prints the plan unless
+# --record is given, the way ./scripts/setup-terminals needs --apply before it writes anything.
+#
+# Not part of ./scripts/check: recording starts a compositor and needs ffmpeg, grim, wtype and
+# foot. See demo/README.md.
+set -eu
+CDPATH=''
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+if [ -x .venv/bin/python ]; then
+    PATH="$root/.venv/bin:$PATH"
+    export PATH
+fi
+PYTHONPATH="$root/src:$root${PYTHONPATH:+:$PYTHONPATH}" \
+    exec python3 -m tools.demo "$@"

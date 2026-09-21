@@ -1,0 +1,17 @@
+# `match` が無いので窓に対して選ばれることはない。config.yaml の `include` に書いてあるので、
+# 断りのない sheet すべてに混ざり、一覧の末尾に出る。
+id: wm
+title: ウィンドウマネージャ
+hints:
+  - id: hints
+    title: この overlay を出す・消す
+    key: Super+H
+    category: wayhint
+  - id: edit-mode
+    title: overlay の中で hint を編集する
+    key: Super+Ctrl+H
+    category: wayhint
+  - id: close-window
+    title: 前面の窓を閉じる
+    key: Super+Shift+Q
+    category: 窓

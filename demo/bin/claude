@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""A stand-in for Claude Code, for the demo to point the overlay at.
+
+The real thing is not run: a demo has to come out the same every time, and a coding agent does
+not. What matters for wayhint is only that the terminal's foreground process is called
+``claude``, which is what picks ``claude-code.yaml`` (README「どの sheet が選ばれるか」). The
+name comes from ``argv[0]`` through ``/proc``, so this file's own name is the whole trick --
+see demo/README.md before renaming it.
+
+It must not start a child of its own: wayhint takes the deepest process in the terminal's
+foreground group, and a ``sleep`` here would become the answer instead of this.
+"""
+
+import sys
+
+WIDTH = 48
+TITLE = " Claude Code "
+BODY = [
+    "src/wayhint/ui/window.py",
+    "",
+    "The overlay now redraws its fixed labels",
+    "when the language changes, so a reload",
+    "is enough.",
+    "",
+    "Shall I add a test for it?",
+]
+FRAME = "\033[38;5;110m"
+TEXT = "\033[38;5;252m"
+PROMPT = "\033[38;5;150m"
+OFF = "\033[0m"
+
+
+def screen() -> str:
+    inner = WIDTH - 2
+    rows = [f"{FRAME}╭─{TITLE}" + "─" * (inner - len(TITLE) - 1) + f"╮{OFF}"]
+    rows += [f"{FRAME}│{OFF} {TEXT}{line:<{inner - 2}}{OFF} {FRAME}│{OFF}" for line in BODY]
+    rows.append(f"{FRAME}╰" + "─" * inner + f"╯{OFF}")
+    return "\n".join(rows) + f"\n\n{PROMPT}>{OFF} "
+
+
+def main() -> int:
+    sys.stdout.write(screen())
+    sys.stdout.flush()
+    try:
+        sys.stdin.read()  # wait, without spawning anything
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

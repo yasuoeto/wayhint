@@ -1,0 +1,22 @@
+# The configuration the demo records against. A copy of this is made for each run and the copy
+# is what the daemon reads, so a recording never writes back here (tools/demo/session.py).
+#
+# appearance.language is replaced per language by the recorder; the value below is the one a
+# person reading this file should see.
+overlay:
+  anchor: top-right
+  width: 560px
+  height: 94%
+  margin: {top: 24, right: 24}
+appearance:
+  style: style.css
+  language: en
+editor:
+  command: [gvim, --remote-silent, "+{line}", "{file}"]
+nested:
+  parent_tags: [terminal]
+include: [wm]
+search:
+  max_results: 30
+logging:
+  level: info

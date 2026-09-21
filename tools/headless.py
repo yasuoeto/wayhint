@@ -17,13 +17,17 @@ seconds rather than milliseconds. ``./scripts/check-gui`` is the test entry poin
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
 import subprocess
 import tempfile
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from xml.sax.saxutils import quoteattr
 
 REPO = Path(__file__).resolve().parent.parent
 COMPOSITORS = ("labwc", "sway", "cage")
@@ -31,6 +35,45 @@ TOOLS = ("grim", "magick")
 INJECT = "wtype"
 HEADLESS_OUTPUT = "HEADLESS-1"
 START_TIMEOUT = 15.0
+
+
+@dataclass(frozen=True)
+class WindowRule:
+    """Where the compositor puts a window, so two runs record the same picture.
+
+    A client asks for a size and the compositor decides; on the headless backend nothing else
+    is on screen, so without a rule the answer is whatever the client happened to ask for. The
+    criteria are labwc's (``identifier`` is the app_id, glob, case-insensitive) and the actions
+    are ``MoveTo`` / ``ResizeTo``.
+    """
+
+    identifier: str
+    x: int
+    y: int
+    width: int
+    height: int
+    title: str | None = None
+
+    def xml(self) -> list[str]:
+        crit = f"identifier={quoteattr(self.identifier)}"
+        if self.title is not None:
+            crit += f" title={quoteattr(self.title)}"
+        return [
+            f"    <windowRule {crit}>",
+            f'      <action name="MoveTo" x="{self.x}" y="{self.y}"/>',
+            f'      <action name="ResizeTo" width="{self.width}" height="{self.height}"/>',
+            "    </windowRule>",
+        ]
+
+
+@dataclass(frozen=True)
+class A11yNode:
+    """One node of the overlay's accessible tree, as the probe below reports it."""
+
+    role: str
+    name: str
+    showing: bool
+    actions: tuple[str, ...] = ()
 
 
 def compositor() -> str | None:
@@ -62,17 +105,28 @@ class HeadlessSession:
         width: int = 1280,
         height: int = 720,
         keybind: tuple[str, str] | None = None,
+        keybinds: Sequence[tuple[str, str]] = (),
+        window_rules: Sequence[WindowRule] = (),
+        gtk_settings: dict[str, str] | None = None,
+        tag: str | None = None,
     ) -> None:
         self.config_dir = config_dir
         self.width, self.height = width, height
         # ``(key, wayhint command)``: what the person's own compositor config does, so the path
         # from a key press to the daemon can be driven end to end.
         self.keybind = keybind
+        # More of the same, for a session that needs several (``W-h`` and ``W-C-h``).
+        self.keybinds = tuple(keybinds)
+        # Where the compositor puts the windows that are spawned in here, so a recording of
+        # them is the same on the next run (:class:`WindowRule`).
+        self.window_rules = tuple(window_rules)
+        # ``gtk-4.0/settings.ini`` for the clients inside, e.g. ``gtk-cursor-blink=false``.
+        self.gtk_settings = dict(gtk_settings or {})
         self.compositor = compositor()
         self.display = "wayland-0"
         # AF_UNIX paths are capped at about 108 bytes, so this has to be short; a directory under
         # a temporary root is already too long. It sits beside the real runtime dir, not in it.
-        self.runtime = Path(os.environ["XDG_RUNTIME_DIR"]) / f"wh-t{os.getpid()}"
+        self.runtime = Path(os.environ["XDG_RUNTIME_DIR"]) / f"wh-{tag or 't'}{os.getpid()}"
         self.home = Path(tempfile.mkdtemp(prefix="wayhint-headless-"))
         self._procs: list[subprocess.Popen] = []
         self._bus: subprocess.Popen | None = None
@@ -148,18 +202,36 @@ class HeadlessSession:
         except (ProcessLookupError, PermissionError):
             proc.send_signal(sig)
 
+    def _write_gtk_settings(self) -> None:
+        if not self.gtk_settings:
+            return
+        gtk = self.home / "config" / "gtk-4.0"
+        gtk.mkdir(parents=True, exist_ok=True)
+        rows = "".join(f"{k}={v}\n" for k, v in self.gtk_settings.items())
+        (gtk / "settings.ini").write_text(f"[Settings]\n{rows}")
+
     def _write_compositor_config(self) -> None:
         """Only labwc is configured here; the others are accepted for placement tests only."""
-        if self.keybind is None or self.compositor != "labwc":
+        self._write_gtk_settings()
+        binds = ([self.keybind] if self.keybind is not None else []) + list(self.keybinds)
+        if self.compositor != "labwc" or not (binds or self.window_rules):
             return
-        key, command = self.keybind
         cli = REPO / ".venv" / "bin" / "wayhint"
-        (self.home / "config" / "labwc" / "rc.xml").write_text(
-            '<?xml version="1.0"?>\n<labwc_config>\n  <keyboard>\n'
-            f'    <keybind key="{key}">\n'
-            f'      <action name="Execute" command="{cli} {command}"/>\n'
-            "    </keybind>\n  </keyboard>\n</labwc_config>\n"
-        )
+        lines = ['<?xml version="1.0"?>', "<labwc_config>"]
+        if binds:
+            lines.append("  <keyboard>")
+            for key, command in binds:
+                lines.append(f'    <keybind key="{key}">')
+                lines.append(f'      <action name="Execute" command="{cli} {command}"/>')
+                lines.append("    </keybind>")
+            lines.append("  </keyboard>")
+        if self.window_rules:
+            lines.append("  <windowRules>")
+            for rule in self.window_rules:
+                lines.extend(rule.xml())
+            lines.append("  </windowRules>")
+        lines.append("</labwc_config>")
+        (self.home / "config" / "labwc" / "rc.xml").write_text("\n".join(lines) + "\n")
 
     def press(self, *keys: str) -> None:
         """Send a key to the compositor, the way the person's keyboard would (手法 d).
@@ -174,6 +246,16 @@ class HeadlessSession:
         for key in reversed(keys[:-1]):
             argv += ["-m", key]
         subprocess.run(argv, env=self.env(), check=True, capture_output=True, timeout=15)
+
+    def type_text(self, text: str) -> None:
+        """Type a string into whatever has the keyboard, the way the person would.
+
+        The text is an argument, never a command line: ``wtype`` is started directly, with no
+        shell, so a scenario cannot smuggle anything through it.
+        """
+        subprocess.run(
+            ["wtype", "--", text], env=self.env(), check=True, capture_output=True, timeout=30
+        )
 
     def _start_bus(self) -> None:
         """A session bus of the test's own, so AT-SPI answers for this session and no other."""
@@ -195,6 +277,34 @@ class HeadlessSession:
                 argv, env=env, stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True
             )
         )
+
+    def spawn(self, argv: Sequence[str]) -> subprocess.Popen:
+        """Start a client inside the session and take responsibility for killing it.
+
+        Its output goes nowhere: a program drawing a terminal writes escape sequences, and the
+        session log is read as text. Whatever this returns can be passed to :meth:`stop`; what
+        is not stopped is killed with everything else on the way out.
+        """
+        proc = subprocess.Popen(
+            list(argv),
+            env=self.env(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        self._procs.append(proc)
+        return proc
+
+    def stop(self, proc: subprocess.Popen) -> None:
+        """Kill one client early, by its group, the way :meth:`__exit__` kills the rest."""
+        self._signal_group(proc, signal.SIGTERM)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self._signal_group(proc, signal.SIGKILL)
+            proc.wait(timeout=5)
+        if proc in self._procs:
+            self._procs.remove(proc)
 
     def _wait_for(self, path: Path, what: str) -> None:
         deadline = time.monotonic() + START_TIMEOUT
@@ -288,14 +398,9 @@ class HeadlessSession:
             box = difference_box(self.grab(work / "on.png"), off)
         return box
 
-    def a11y_names(self, role: str) -> list[str]:
-        """Every accessible name with ``role`` under the overlay's frame, in tree order.
-
-        GTK exposes the labels and buttons it built, so this reads what the user would read --
-        without a pixel comparison, which would break on any font or theme the next machine has.
-        """
+    def _a11y(self, *argv: str) -> list[str]:
         done = subprocess.run(
-            ["python3", "-c", _A11Y_PROBE, role],
+            ["python3", "-c", _A11Y_PROBE, *argv],
             env=self.env(),
             capture_output=True,
             text=True,
@@ -304,6 +409,28 @@ class HeadlessSession:
         if done.returncode != 0:
             raise RuntimeError(f"AT-SPI probe failed: {done.stderr.strip()[-800:]}")
         return done.stdout.splitlines()
+
+    def a11y_nodes(self) -> list[A11yNode]:
+        """The overlay's accessible tree, in the order a reader would go through it.
+
+        GTK exposes the labels and buttons it built, so this reads what the user would read --
+        without a pixel comparison, which would break on any font or theme the next machine has.
+        An empty list means the overlay is not on the bus at all, which is how "it is gone"
+        reads here.
+        """
+        return [A11yNode(**json.loads(line)) for line in self._a11y("dump") if line]
+
+    def a11y_names(self, role: str) -> list[str]:
+        """Every accessible name with ``role`` under the overlay's frame, in tree order."""
+        return [node.name for node in self.a11y_nodes() if node.role == role]
+
+    def a11y_press(self, name: str, role: str = "button") -> bool:
+        """Press a widget by the name it publishes. ``False`` when there is no such widget.
+
+        The click is queued, not done: GTK answers the action and runs it on its own loop, so
+        the caller has to wait for the *effect* before doing anything that depends on it.
+        """
+        return self._a11y("press", role, name) == ["ok"]
 
 
 def difference_box(on: Path, off: Path) -> tuple[int, int, int, int] | None:
@@ -339,6 +466,7 @@ def difference_box(on: Path, off: Path) -> tuple[int, int, int, int] | None:
 
 
 _A11Y_PROBE = """
+import json
 import sys
 
 import gi
@@ -347,27 +475,93 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi
 
 Atspi.init()
-wanted = sys.argv[1]
+mode = sys.argv[1]
 
 
-def walk(node, role, out):
-    if node.get_role_name() == role:
-        out.append(node)
-    for i in range(node.get_child_count()):
-        child = node.get_child_at_index(i)
+def walk(node, out):
+    # Every call can fail: the tree is the live widget tree, and a redraw between two of these
+    # calls takes the node away. A dump of what is still there is the right answer -- the
+    # caller is polling, and will ask again.
+    out.append(node)
+    try:
+        count = node.get_child_count()
+    except Exception:
+        return out
+    for i in range(count):
+        try:
+            child = node.get_child_at_index(i)
+        except Exception:
+            continue
         if child is not None:
-            walk(child, role, out)
+            walk(child, out)
     return out
 
 
-desktop = Atspi.get_desktop(0)
-for i in range(desktop.get_child_count()):
-    app = desktop.get_child_at_index(i)
-    if app is None:
-        continue
-    for frame in walk(app, "frame", []):
-        if frame.get_name() != "wayhint":
+def named(node):
+    try:
+        return node.get_role_name(), node.get_name()
+    except Exception:
+        return "", ""
+
+
+def frames():
+    desktop = Atspi.get_desktop(0)
+    found = []
+    for i in range(desktop.get_child_count()):
+        try:
+            app = desktop.get_child_at_index(i)
+        except Exception:
             continue
-        for node in walk(frame, wanted, []):
-            print(node.get_name())
+        if app is None:
+            continue
+        found += [n for n in walk(app, []) if named(n) == ("frame", "wayhint")]
+    return found
+
+
+def actions(node):
+    # Reported for diagnosis only, and defensively: some widgets answer get_n_actions() with
+    # a count they then refuse to name, and a dump must not die on one of those.
+    iface = node.get_action_iface()
+    if iface is None:
+        return []
+    out = []
+    for i in range(iface.get_n_actions()):
+        try:
+            out.append(iface.get_action_name(i))
+        except Exception:
+            pass
+    return out
+
+
+def describe(node):
+    try:
+        return {
+            "role": node.get_role_name(),
+            "name": node.get_name() or "",
+            "showing": node.get_state_set().contains(Atspi.StateType.SHOWING),
+            "actions": actions(node),
+        }
+    except Exception:
+        return None
+
+
+nodes = [n for frame in frames() for n in walk(frame, [])]
+if mode == "dump":
+    for node in nodes:
+        described = describe(node)
+        if described is not None:
+            print(json.dumps(described))
+elif mode == "press":
+    role, name = sys.argv[2], sys.argv[3]
+    for node in nodes:
+        described = describe(node)
+        if described is None or described["role"] != role or described["name"] != name:
+            continue
+        iface = node.get_action_iface()
+        try:
+            if iface is not None and iface.get_n_actions() and iface.do_action(0):
+                print("ok")
+        except Exception as e:
+            print(f"action failed: {e}", file=sys.stderr)
+        break
 """
