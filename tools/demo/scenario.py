@@ -16,6 +16,7 @@ captured frame that many times.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,6 +62,11 @@ KEY_NAMES = {  # a friendly spelling -> the xkb keysym wtype wants
     "right": "Right",
 }
 KEYSYM = re.compile(r"^[A-Za-z0-9_]+$")
+
+NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+"""Step ids and variant names. They become file and directory names under ``out/``, so
+anything that could climb out of it -- a slash, a dot, a space -- is refused here rather than
+guarded against later."""
 
 # ``cli:`` may only ask for a command the daemon already answers. A scenario cannot invent an
 # argument, so no string from the file ever reaches a command line.
@@ -396,9 +402,25 @@ def _int(value: object, where: str, *, minimum: int = 1) -> int:
 
 
 def _number(value: object, where: str, *, minimum: float = 0.0) -> float:
-    if not isinstance(value, int | float) or isinstance(value, bool) or value < minimum:
+    """A real number. ``nan`` and ``inf`` are refused: YAML writes them as ``.nan`` / ``.inf``,
+    they pass every comparison quietly, and the first place they would surface is a frame
+    count."""
+    if not isinstance(value, int | float) or isinstance(value, bool):
         raise ScenarioError(f"{where}: expected a number of at least {minimum:g}")
+    if not math.isfinite(value) or value < minimum:
+        raise ScenarioError(f"{where}: expected a finite number of at least {minimum:g}")
     return float(value)
+
+
+def _name(value: object, where: str) -> str:
+    """An identifier that is safe to use as a file name."""
+    text = _string(value, where)
+    if not NAME.match(text):
+        raise ScenarioError(
+            f"{where}: {text!r} has to be lower-case letters, digits and hyphens "
+            "(it becomes a file name)"
+        )
+    return text
 
 
 def _string(value: object, where: str) -> str:
@@ -457,6 +479,7 @@ def _variants(value: object, steps: dict[str, Step]) -> tuple[Variant, ...]:
     out = []
     for name, raw in doc.items():
         where = f"variants.{name}"
+        _name(name, where)
         item = _mapping(raw, where)
         _unknown(item, {"target", "tolerance", "square", "steps"}, where)
         ids = item.get("steps")
@@ -487,7 +510,7 @@ def _step(doc: object, index: int, demo_bin: Path | None) -> Step:
     if not isinstance(doc, dict):
         raise ScenarioError(f"steps[{index}]: expected a mapping")
     known = {"id", "wait_for", "caption", "hold", "precondition", *ACTIONS}
-    step_id = _string(doc.get("id"), f"steps[{index}].id")
+    step_id = _name(doc.get("id"), f"steps[{index}].id")
     where = f"step {step_id!r}"
     _unknown(doc, known, where)
     present = [name for name in ACTIONS if name in doc]
@@ -501,6 +524,8 @@ def _step(doc: object, index: int, demo_bin: Path | None) -> Step:
     hold = doc.get("hold", 0)
     if not isinstance(hold, int | float) or isinstance(hold, bool) or hold < 0:
         raise ScenarioError(f"{where}: hold has to be a number of seconds, and not negative")
+    if not math.isfinite(hold):
+        raise ScenarioError(f"{where}: hold has to be a finite number of seconds")
     return Step(
         id=step_id,
         action=_action(present[0], doc[present[0]], where, demo_bin),
@@ -681,6 +706,8 @@ def _condition(value: object, where: str) -> Condition:
     timeout = doc.get("timeout", DEFAULT_TIMEOUT)
     if not isinstance(timeout, int | float) or isinstance(timeout, bool) or timeout <= 0:
         raise ScenarioError(f"{where}.timeout: expected a positive number of seconds")
+    if not math.isfinite(timeout):
+        raise ScenarioError(f"{where}.timeout: expected a finite number of seconds")
     doc["timeout"] = float(timeout)
     for key in ("process_name", "active_sheet", "label", "no_label"):
         if key in doc:

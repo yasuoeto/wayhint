@@ -24,6 +24,8 @@ from pathlib import Path
 
 ROLES = {"storyboard": (".md",), "scenario": (".yaml", ".yml")}
 NAME = re.compile(r"^(?P<number>\d+)_(?P<showcase>.+)_(?P<role>[a-z][a-z-]*)$")
+SHOWCASE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+"""A showcase name is a directory name and part of every output file's name."""
 OUT = "out"
 
 
@@ -49,7 +51,7 @@ def discover(root: Path) -> list[Showcase]:
         return []
     found = []
     for entry in sorted(root.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("."):
+        if not entry.is_dir() or not SHOWCASE.match(entry.name):
             continue
         try:
             found.append(load(root, entry.name))
@@ -60,6 +62,10 @@ def discover(root: Path) -> list[Showcase]:
 
 def load(root: Path, name: str) -> Showcase:
     """The showcase called ``name``, with its files resolved by role."""
+    if not SHOWCASE.match(name):
+        raise ShowcaseError(
+            f"{name!r} is not a showcase name: lower-case letters, digits and hyphens only"
+        )
     directory = root / name
     if not directory.is_dir():
         known = ", ".join(p.name for p in sorted(root.iterdir()) if p.is_dir()) or "none"

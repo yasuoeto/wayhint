@@ -168,6 +168,22 @@ def _check_lengths(script: Scenario, variants: list[Variant], *, whole: bool) ->
         raise ScenarioError("a variant is not the length the storyboard asked for:\n" + lines)
 
 
+def _output_dir(show: shc.Showcase, language: str, variant: str) -> Path:
+    """Where this recording goes, emptied first -- after checking that it is where it claims.
+
+    Everything that makes up the path is already restricted to ``[a-z0-9-]`` by the parsers,
+    but this is the one place that *deletes a directory*, so it verifies the result rather
+    than trusting the checks upstream.
+    """
+    root = (show.root / shc.OUT).resolve()
+    out = show.out(language, variant).resolve()
+    if not out.is_relative_to(root) or out == root:
+        raise sess.DemoError(f"refusing to write outside {root}: {out}")
+    if out.exists():
+        shutil.rmtree(out)
+    return out
+
+
 def _record(
     args: argparse.Namespace,
     show: shc.Showcase,
@@ -198,9 +214,7 @@ def _record(
         if typed is not None and "wtype" in str(e):
             raise sess.DemoError(f"{e}\n  step {typed!r} sends a key, which needs wtype") from e
         raise
-    out = show.out(language, variant.name)
-    if out.exists():
-        shutil.rmtree(out)
+    out = _output_dir(show, language, variant.name)
     out.mkdir(parents=True)
     print(f"demo: recording {show.name} {variant.name} in {language} -> {out}")
     work = sess.workspace(show.name, language)

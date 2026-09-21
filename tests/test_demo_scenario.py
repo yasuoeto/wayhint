@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tools.demo import __main__ as cli
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
@@ -90,6 +91,49 @@ class ScenarioTest(unittest.TestCase):
             parse(text)
 
 
+class NameTest(unittest.TestCase):
+    """Step ids, variant names and showcase names become file and directory names."""
+
+    def test_a_variant_name_that_could_climb_out_of_out_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "has to be lower-case"):
+            parse(MINIMAL.replace("  short:", "  ../escape:"))
+
+    def test_a_step_id_with_a_slash_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "has to be lower-case"):
+            parse(MINIMAL.replace("id: show", "id: a/b").replace("steps: [show]", "steps: [a/b]"))
+
+    def test_a_step_id_in_capitals_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "has to be lower-case"):
+            parse(MINIMAL.replace("id: show", "id: Show").replace("steps: [show]", "steps: [Show]"))
+
+    def test_a_showcase_name_that_is_a_path_is_refused(self) -> None:
+        with self.assertRaisesRegex(shc.ShowcaseError, "is not a showcase name"):
+            shc.load(scratch(self), "../elsewhere")
+
+
+class NotANumberTest(unittest.TestCase):
+    """YAML writes ``.nan`` and ``.inf`` as floats; they would pass every comparison."""
+
+    def test_a_nan_target_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "finite"):
+            parse(MINIMAL.replace("target: 2", "target: .nan"))
+
+    def test_an_infinite_tolerance_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "finite"):
+            parse(MINIMAL.replace("tolerance: 0.5", "tolerance: .inf"))
+
+    def test_an_infinite_hold_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "finite"):
+            parse(MINIMAL.replace("hold: 2", "hold: .inf"))
+
+    def test_an_infinite_timeout_is_refused(self) -> None:
+        text = MINIMAL.replace(
+            "wait_for: {overlay: visible}", "wait_for: {overlay: visible, timeout: .inf}"
+        )
+        with self.assertRaisesRegex(scn.ScenarioError, "finite"):
+            parse(text)
+
+
 class VariantLengthTest(unittest.TestCase):
     """``target`` and ``tolerance`` come from the storyboard; drifting off them is an error."""
 
@@ -163,6 +207,31 @@ class FixtureLanguageTest(unittest.TestCase):
     def test_a_language_with_no_sheets_is_refused(self) -> None:
         with self.assertRaisesRegex(sess.DemoError, "no hints for 'en'"):
             sess.prepare_config(self.fixtures("ja"), "en", scratch(self))
+
+
+class OutputDirTest(unittest.TestCase):
+    """The one place that deletes a directory checks where it is, whatever it was told."""
+
+    def showcase(self) -> shc.Showcase:
+        root = scratch(self)
+        (root / "herdr").mkdir()
+        scenario = root / "herdr" / "02_herdr_scenario.yaml"
+        scenario.write_text(MINIMAL)
+        return shc.load(root, "herdr")
+
+    def test_it_prepares_a_directory_under_out(self) -> None:
+        show = self.showcase()
+        out = cli._output_dir(show, "ja", "short")
+        self.assertTrue(out.is_relative_to((show.root / "out").resolve()))
+        self.assertFalse(out.exists())  # cleared, not created; the caller makes it
+
+    def test_it_refuses_a_variant_name_that_climbs_out(self) -> None:
+        with self.assertRaisesRegex(sess.DemoError, "refusing to write outside"):
+            cli._output_dir(self.showcase(), "ja", "../../elsewhere")
+
+    def test_it_refuses_to_delete_the_out_directory_itself(self) -> None:
+        with self.assertRaisesRegex(sess.DemoError, "refusing to write outside"):
+            cli._output_dir(self.showcase(), ".", ".")
 
 
 class ShowcaseTest(unittest.TestCase):
