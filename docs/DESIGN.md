@@ -521,10 +521,37 @@ tools/headless.py ──┬── tests/headless.py ── tests/test_gui_headle
 session に keybind 2 つ・`windowRules`・fixtures の作業コピーを足して使う。**ここを変えると
 `./scripts/check-gui` とデモの両方が動く。**
 
-`tools/demo/` の分担は scenario(読み込みと検証、尺の計算)、session(必要なものの確認と
-fixtures の配置)、actions(action の実行と `wait_for` の判定)、capture(frame-stepping と
-contact sheet)、encode(ffmpeg と SRT)。尺は scenario の `hold` を frame 数に丸めたもので
-決まり、1 step につき 1 frame だけ撮って複製する。scenario の書き方は `demo/README.md`。
+`tools/demo/` の分担は showcase(ディレクトリと役割ファイルの解決)、scenario(読み込みと検証、
+尺の計算)、session(必要なものの確認、fixtures の配置、Herdr の隔離起動と停止)、actions(action の
+実行と `wait_for` の判定)、capture(frame-stepping と contact sheet)、encode(ffmpeg と SRT)。
+尺は scenario の `hold` を frame 数に丸めたもので決まり、1 step につき 1 frame だけ撮って複製する。
+scenario の書き方は `demo/README.md`。
+
+### showcase と variant(DECISIONS 0032)
+
+動画 1 本分を **showcase** とし、`demo/showcases/<name>/` に閉じる。中のファイルは名前の末尾の
+役割で探す(`<NN>_<showcase>_<role>.<ext>`。`storyboard` が台本、`scenario` が実行用)。中央部分が
+ディレクトリ名と違えば警告、同じ役割が 2 つあれば error。生成物は `out/<lang>/<variant>/` で、
+追跡しない。
+
+1 つの scenario は step を 1 回ずつ定義し、**variant**(`60s` / `3min` / `5min`)がその id を並べる。
+variant は *clean session からその列だけを実行して成立する完全な列*で、variant 間で状態を引き継が
+ない。`--dry-run` は各 variant の予定尺を `target ± tolerance` と突き合わせ、外れれば止まる。
+
+### Herdr の隔離(DECISIONS 0032)
+
+showcase `herdr` は**実物の Herdr** を動かす。`tools/demo/session.py` が session の
+`XDG_CONFIG_HOME` に最小の `config.toml`(オンボーディングとテーマ選択、版チェック、tab 名の入力を
+止め、shell と window title を固定)を書き、`HeadlessSession.env()` が **`HERDR_*` を落とす**
+——落とさないと session 内の herdr client が実ユーザーの server に繋がる。Herdr の server は
+daemon 化して session のプロセスグループを抜けるので、session を畳む**前**に `herdr server stop`
+を呼び、残ったら `/proc/*/environ` の `HOME` が session のものである herdr だけを kill する。
+
+### 言語
+
+`hints/<lang>/` と `caption.<lang>` だけが言語ごとで、`config.yaml` は 1 つ。recorder は session 用の
+コピーに `appearance.language` を書き、repository の fixture は変えない。日本語が先で、`--validate`
+は ja の字幕だけを要求する。
 
 ### 実機チェックリスト(§69–§73、手動)
 

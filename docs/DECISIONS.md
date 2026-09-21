@@ -944,6 +944,64 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   wtype は `key:` / `type:` を含む scenario でだけ必須で、無ければその場で fail する
   (CLI に黙って置き換えない。hotkey 経路を見せるのが目的のため)。
 
+## 0032 — 紹介動画は showcase 単位で demo 生成システムから作り、Herdr だけ実物を隔離して動かす
+
+- **Date**: 2026-09-21
+- **Status**: accepted
+- **Context**: 0031 の生成システムができたので、実際の紹介動画(60 秒 / 3 分 / 5 分、字幕のみ・
+  無音、日本語版)を作る。当初は実機 labwc で `wf-recorder` を回す案だった。題材は今後も増える
+  (Herdr、terminal emulator、GUI アプリ)ので、動画 1 本分を 1 つの単位に閉じたい。主役の 3 場面
+  (Herdr の中の Claude Code まで見て切り替わる / focus を奪わない / その場で追記して育てる)は
+  **Herdr の中でしか成立しない**——Herdr の pane を切り替えて sheet が差し替わるところが要点で、
+  stub では `HerdrContextProvider` の経路そのものを見せられない。測定環境は C-A の実測で
+  herdr 0.8.2 / labwc 0.20.2 / GTK 4.22.4 / foot 1.28.0 / ffmpeg 9.0.2。
+- **Decision**: 動画 1 本分を **showcase** とし、`demo/showcases/<name>/` に台本・scenario・生成物を
+  閉じる。showcase の正体はディレクトリ名で、中のファイルは名前の末尾の役割
+  (`<NN>_<showcase>_<role>.<ext>`)で探す。番号は人が工程順に並べるためのもので、ツールは見ない。
+  **`01_*_storyboard.md`(人が書く台本)が訴求・場面・順序の正**、**`02_*_scenario.yaml` が action・
+  `hold`・字幕の実値の正**。字幕と尺は scenario 側で詰めてから台本へ戻す。場面そのものを変える
+  必要が出たら台本を書き換えず報告して止める。
+  **Herdr だけは実物を動かす**(0031 の「実物の Claude Code / Codex / Herdr を使わない」を Herdr に
+  ついてのみ上書き)。ただし session 専用の `HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` の中だけで
+  動かし、**session の環境から `HERDR_*` を落とす**——落とさないと、Herdr の pane から起動した
+  recorder が継承した `HERDR_SOCKET_PATH` を使い、session 内の client が**その人自身の Herdr**に
+  繋がる(C-A で実測)。Claude Code / Codex は引き続き stub で、`demo/bin/` の実行ファイル名と
+  `prctl(PR_SET_NAME)` だけを本物に似せる。
+  scenario からは `herdr:` action で **許可 list にある subcommand だけ**を argv として呼べる。
+  引数も検証する: `pane run` の起動コマンドは `demo/bin` にある実行ファイルの名前のみ(`/` も `..`
+  も不可、実在を確認)、`tab create` などの生成系は `--focus` / `--no-focus` だけで、`--cwd` /
+  `--env` / `--label` は recorder が握る。`server stop` は recorder の後片付け専用で scenario から
+  呼べない。1 本の動画は **variant**(`60s` / `3min` / `5min`)で、それぞれが *clean session から
+  その列だけを順に実行して成立する完全な action 列*でなければならない。variant 間で状態を引き継が
+  ず、hidden setup も自動依存解決も持たない。同じ操作を別の尺で使いたいときは step を複製する。
+  言語は **ja 先行**: `--lang` の既定は ja、`--validate` は ja の字幕だけを要求し、en の欠落は
+  `--record --lang en` のときに落ちる。
+- **Alternatives**: **実機 labwc で wf-recorder**——撮り直しが手作業に戻り、タイムコードを手で
+  打つことになり、本番の daemon と keybind を巻き込む事故の余地が残る。0031 を作った理由がそのまま
+  却下の理由になる。**Herdr も stub にする**——主役の場面が「Herdr の pane を切り替えたら sheet が
+  差し替わった」なので、Herdr を偽物にするとその場面の証拠価値が消える。
+  **Claude Code / Codex も実物にする**——出力が毎回違い再現しない。実際に一度 PATH の設定漏れで
+  本物が起動し、初回テーマ選択の画面が録れてしまった(その経験から `DemoSession` は起動前に
+  `pane run` の解決先が `demo/bin` かを確認する)。**台本を `docs/` に置く**——台本は showcase ごとの
+  作業ファイルで、他の題材が増えるたびに `docs/` が動画の数だけ膨らむ。
+  **Herdr を `cli:` に混ぜる**——`cli:` は wayhint の CLI で、許可の考え方(固定の command 名だけ)が
+  違う。混ぜると Herdr の引数検証が `cli:` 側にも漏れる。**variant ごとに `hold` を上書きする**——
+  「60 秒版だけこの step は 2 秒」を許すと、scenario を読んでも何が録れるか分からなくなる。
+  step の複製は冗長だが、読めば分かる冗長さで済む。
+- **Consequences**: **Herdr の CLI の出力形式が変わると demo が壊れる**。`pane current` /
+  `pane process-info` は製品の adapter も使っているので、壊れれば製品側でも気づく。`tab create` /
+  `pane run` の JSON は demo だけが読む。**fixtures は showcase 共通の 1 セット**なので、次の
+  showcase が sheet を足すと既存の動画の一覧の行数が変わる(`wait_for` の `hints` が落ちて気づく)。
+  分けるかどうかは不便が出てから決める。**scenario は step の複製で長くなる**(今は 61 step、
+  3 variant)。録画は variant ごとに独立した session を立てるので、3 本で 15 分ほどかかる。
+  **`demo/fixtures/hints/en/` は削除した**——0031 の 6 場面用に作った英語 sheet で、この showcase の
+  題材とは合わない。英語版は `hints/en/` を新規に作る別タスクで行う。
+  **0031 の場面④(foot 2 枚を `.p<pid>` 規約で起動し、focus 追従で sheet が差し替わる)は demo から
+  落とし、`tests/test_gui_headless.py` の GUI test 1 本に移した**。動画の題材としては Herdr の
+  pane 切替と重複するが、製品挙動の回帰としては残す価値がある。この test は `demo/bin/` の stub と
+  wrapper を使うので、**test が demo に依存する**(逆ではない)。`./scripts/check-gui` は 5 本から
+  6 本になり、実行時間は 16.8 秒から 18.6 秒に増えた。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):
