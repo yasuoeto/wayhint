@@ -13,7 +13,6 @@ hints:
     title: 実行を承認する
     key: y
     category: 確認
-    favorite: true
   - id: reject
     title: 実行を却下する
     key: n

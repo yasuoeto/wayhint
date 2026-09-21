@@ -247,14 +247,16 @@ steps:
   # The single-key operations come before the form on purpose: saving the form *leaves* edit
   # mode (DECISIONS 0021), so anything pressed after it would land in the terminal instead --
   # which is what the first cut of this did (B-7).
-  - id: pick-hint
-    key: down
-    wait_for: {overlay: visible}
-    hold: 2.0
-
   - id: move-down
-    # `key: J` sends the keysym without a shift level and the window sees `j`; wtype's text
-    # mode is the one that delivers a capital (measured in B-7, labwc 0.20.2 / wtype 0.4).
+    # `type:`, not `key:`. wtype's -k sends the keysym with no shift level and the window sees
+    # `j`; its text mode is what delivers a capital (measured in B-7, labwc 0.20.2 / wtype 0.4).
+    # One press per step: a second one inside the same step lands while the list is still being
+    # rebuilt from the sheet it just wrote, and does nothing.
+    #
+    # The row that moves is the one the cursor is on, and that is the first one: edit mode has
+    # no key that moves the selection (Down and Tab+Down were measured and do not), so every
+    # single-key scene here is about the first row. That is why no hint in `codex.yaml` starts
+    # out with a star -- `f` has to have one to add.
     type: "J"
     wait_for: {overlay: visible}
     caption: {ja: "J / K で並べ替え。YAML の行がそのまま動く"}
@@ -267,7 +269,7 @@ steps:
 
   - id: favorite-hint
     key: f
-    wait_for: {overlay: visible, label: "★ 実行を却下する"}
+    wait_for: {overlay: visible, label: "★ 実行を承認する"}
     caption: {ja: "f で ★。★ の付いた hint は先頭に集まる"}
     hold: 8.0
 
@@ -378,7 +380,7 @@ steps:
     press: {button: copy}
     precondition: {overlay: visible}
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "コピーボタンで command をクリップボードへ"}
+    caption: {ja: "コピーボタンで、選んだ hint をクリップボードへ"}
     hold: 8.0
 
   - id: no-run
@@ -517,7 +519,6 @@ variants:
       - copy-hint
       - no-run
       - edit-mode
-      - pick-hint
       - move-down
       - move-up
       - favorite-hint
