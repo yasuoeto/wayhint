@@ -234,6 +234,11 @@ daemon が読むのはそのコピー。**編集モードの場面と YAML error
 `wayhint validate --config-dir demo/fixtures` が通る状態に保つこと。font は fixtures の側で固定して
 ある(`style.css` と `foot.ini` が Noto を名指しする。このマシンの既定 sans-serif は VL ゴシック)。
 
+`bin/notes` は**GUI アプリの stub**(GTK4)。端末の中のプロセスではなく窓の `app_id`
+(`dev.wayhint.demo.Notes`)で sheet が決まる側を見せるためのもので、`spawn` の許可 list では
+端末 wrapper と別枠の `GUI_STUBS` に入っている(引数は取らない)。中身は label だけ——entry も
+scrolled window もアニメーションも置かない。3 秒空けて 2 回撮って AE=0 を確認してある。
+
 `bin/` の `claude` `codex` `vi` は**本物ではない**。stdin で待つだけの python script で、
 `claude` と `codex` は起動直後の待ち受け画面を出す。`vi` は**引数の sheet を実際に開いて**
 先頭 14 行を固定幅で表示する(5 分版が `match` / `inherit` / `include` と `hints/ja/` を画面で
@@ -259,6 +264,22 @@ symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中�
 shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
 `foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
 wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。
+
+## 字幕帯
+
+字幕は録画のあとで ffmpeg が焼き込む(`tools/demo/encode.py`)。**帯の行はレイアウトから予約して
+ある**——720p では
+
+| | y |
+|---|---|
+| 帯の上端(`caption_band_top`) | **638** |
+| 文字の上端(`caption_text_top`) | 652 |
+| 窓・overlay が使ってよい下端 | **634**(帯の 3px 上まで) |
+
+帯は 2 行ぶんの高さを取ってあるので、字幕が折り返しても下へはみ出さない。窓は scenario の
+`windows` の `height` で、overlay は `fixtures/config.yaml` の `overlay.height` で帯の上に収める
+(実測: 窓の下端 624、overlay の下端 628)。**帯を不透明にして重なりを隠すのではなく、重ならない
+ように置く**——半透明の帯の下にアプリの縁が透けるのは、字幕が窓にかかっているのと同じに見える。
 
 ## Herdr の隔離
 

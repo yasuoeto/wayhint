@@ -10,9 +10,12 @@
 output: {width: 1280, height: 720, fps: 30}
 fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
 
+# Every window ends above the caption band (`tools/demo/encode.py`, demo/README「字幕帯」):
+# at 720p the band starts at y=638, so nothing the compositor draws may reach past y=634.
 windows:
-  - {title: Herdr, x: 32, y: 48, width: 620, height: 580}
+  - {title: Herdr, x: 32, y: 48, width: 620, height: 566}
   - {title: vi, x: 104, y: 214, width: 560, height: 380}
+  - {title: Notes, app_id: "dev.wayhint.demo.Notes", x: 60, y: 120, width: 560, height: 380}
 
 steps:
   # =============================================================================================
@@ -157,26 +160,26 @@ steps:
     key: super+h
     wait_for: {overlay: visible, label: "Claude Code", hints: 10}
     caption: {ja: "hotkey 一発。いつも右上。"}
-    hold: 7.0
+    hold: 6.0
 
   - id: list-layout
     cli: refresh
     wait_for: {overlay: visible, label: "Claude Code"}
     caption: {ja: "★ はよく使うもの。左にキー、右に分類"}
-    hold: 8.0
+    hold: 4.0
 
   - id: detail-pane
     cli: refresh
     wait_for: {overlay: visible, label: "Claude Code"}
     caption: {ja: "補足は下に出る。一覧には出さない"}
-    hold: 7.0
+    hold: 4.0
 
   # --- §3 主役1: 中まで見て切り替わる -------------------------------------------------------------
   - id: whose-hints
     cli: refresh
     wait_for: {overlay: visible, label: "Claude Code"}
     caption: {ja: "見ているのは窓ではなく、中のプロセス"}
-    hold: 8.0
+    hold: 5.0
 
   - id: new-tab
     herdr: [tab, create, --focus]
@@ -345,34 +348,42 @@ steps:
   # 5 分版だけの追加(storyboard §3–§6 の「加えて」の部分)。本編の step 列に差し込む。
   # =============================================================================================
 
-  # --- §3 追加: Herdr が無くても端末の中を見る ------------------------------------------------
-  - id: open-vi
-    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
+  # --- §3 追加: GUI アプリでも同じ ----------------------------------------------------------
+  # 端末の中のプロセスを見る話の裏返し。GUI には覗き込む foreground process が無く、窓の
+  # app_id だけで sheet が決まる(DECISIONS 0024)。`notes` は demo の GTK4 stub。
+  - id: open-notes
+    spawn: {window: Notes, argv: [notes]}
     precondition: {overlay: visible}
-    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: visible, timeout: 30}
-    caption: {ja: "Herdr を使わない、ただの端末を開く"}
+    wait_for:
+      toplevel: "^dev\\.wayhint\\.demo\\.Notes$"
+      context: {active_sheet: notes}
+      timeout: 30
+    caption: {ja: "GUI アプリでも同じ"}
     hold: 5.0
 
-  - id: show-vi
+  - id: notes-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "Herdr が無くても、端末の中のプロセスを見る"}
+    wait_for: {overlay: visible, label: "Notes", hints: 9}
+    caption: {ja: "端末は中のプロセス、GUI は窓の app_id"}
     hold: 9.0
 
-  - id: vi-note
-    cli: refresh
-    wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "端末が複数でも、中のプロセスで見分ける"}
+  - id: notes-wm
+    pause: true
+    wait_for: {overlay: visible, label: "この overlay を出す・消す"}
+    caption: {ja: "窓の操作はどの sheet にも付いてくる"}
     hold: 9.0
 
-  - id: close-vi
-    close: {window: vi}
-    wait_for: {context: {active_sheet: codex}, timeout: 20}
+  - id: close-notes-hints
+    key: super+h
+    wait_for: {overlay: hidden}
     hold: 3.0
 
-  - id: back-to-codex
-    key: super+h
-    wait_for: {overlay: visible, label: "Codex"}
+  - id: quit-notes
+    # The recorder closes the window rather than pressing the stub's own Ctrl+Q: wtype's
+    # modifiers reach labwc's keybinds but not the client's keymap, so the accelerator never
+    # fires (measured in B-8, the same finding as `key: J` arriving as `j`).
+    close: {window: Notes}
+    wait_for: {context: {active_sheet: codex}, overlay: hidden, timeout: 20}
     hold: 4.0
 
   # --- §4 追加: コピー ---------------------------------------------------------------------------
@@ -506,11 +517,11 @@ variants:
       - start-codex
       - switch-pane
       - parent-hints
-      - open-vi
-      - show-vi
-      - vi-note
-      - close-vi
-      - back-to-codex
+      - open-notes
+      - notes-hints
+      - notes-wm
+      - close-notes-hints
+      - quit-notes
       - keep-typing
       - open-search
       - type-search

@@ -1,0 +1,39 @@
+# 端末の中のプロセスではなく、窓の app_id で選ばれる sheet(DECISIONS 0024)。GUI アプリには
+# 覗き込む foreground process が無いので、ここだけは match.wayland が本筋になる。
+id: notes
+title: Notes
+match:
+  wayland:
+    app_id_regex: ["^dev\\.wayhint\\.demo\\.Notes$"]
+include: [wm]
+hints:
+  - id: new-note
+    title: 新しいノート
+    key: Ctrl+N
+    category: ノート
+    favorite: true
+  - id: search
+    title: ノートを探す
+    key: Ctrl+K
+    category: ノート
+  - id: tag
+    title: タグを付ける
+    key: Ctrl+T
+    category: ノート
+  - id: bold
+    title: 太字にする
+    key: Ctrl+B
+    category: 書式
+  - id: list
+    title: 箇条書きにする
+    key: Ctrl+Shift+8
+    category: 書式
+  - id: export
+    title: Markdown で書き出す
+    key: Ctrl+Shift+E
+    category: ファイル
+    remark: 書き出し先は最後に使ったフォルダになる。
+  - id: quit
+    title: 閉じる
+    key: Ctrl+Q
+    category: ファイル

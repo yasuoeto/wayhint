@@ -81,6 +81,33 @@ _H264 = ["-crf", CRF_H264, "-preset", "medium"]
 _VP9 = ["-crf", CRF_VP9, "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2"]
 
 
+BOX_BORDER = 14
+"""``boxborderw``: how far the band reaches past the text on every side."""
+BOX_GAP = 12
+"""How far the band's *text* stays clear of the bottom edge, at two lines of it."""
+
+
+def caption_size(height: int) -> int:
+    """The font size the band is drawn at, from the frame height."""
+    return max(18, round(height / 26))
+
+
+def caption_band_top(height: int) -> int:
+    """The first row the band may cover. Nothing the compositor draws may reach it.
+
+    The band is the one thing burnt into the picture afterwards, so its rows are reserved:
+    windows are placed to end above this (the scenario's ``windows``) and the overlay's height
+    is set so its bottom edge does too (``demo/fixtures/config.yaml``). At 720p that is
+    ``720 - (28 * 2 + 12) - 14 = 638``; see demo/README「字幕帯」.
+    """
+    return caption_text_top(height) - BOX_BORDER
+
+
+def caption_text_top(height: int) -> int:
+    """Where the first line of the caption starts -- ``drawtext``'s ``y``."""
+    return height - (caption_size(height) * 2 + BOX_GAP)
+
+
 def _drawtext(
     captions: list[Caption], out_dir: Path, font_file: str, height: int, prefix: str = ""
 ) -> str:
@@ -94,7 +121,7 @@ def _drawtext(
         return ""
     folder = out_dir / "captions"
     folder.mkdir(parents=True, exist_ok=True)
-    size = max(18, round(height / 26))
+    size = caption_size(height)
     parts = []
     for number, caption in enumerate(captions, start=1):
         path = folder / f"{number:02d}.txt"
@@ -109,12 +136,13 @@ def _drawtext(
                     "fontcolor=white",
                     f"fontsize={size}",
                     "x=(w-text_w)/2",
-                    # Just above the bottom edge: the overlay is tall and the band has to stay
-                    # clear of it (the 60s cut crops to a square, where it matters most).
-                    f"y=h-{size * 2 + 12}",
+                    # A fixed band at the bottom, whose rows the windows and the overlay are
+                    # kept out of (:func:`caption_band_top`). Room for two lines, so a caption
+                    # that wraps does not push the band over anything.
+                    f"y={caption_text_top(height)}",
                     "box=1",
                     "boxcolor=black@0.62",
-                    "boxborderw=14",
+                    f"boxborderw={BOX_BORDER}",
                     f"enable='between(n\\,{caption.first - 1}\\,{caption.last - 1})'",
                 ]
             )
