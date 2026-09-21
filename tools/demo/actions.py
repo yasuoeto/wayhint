@@ -47,7 +47,13 @@ def perform(run: Run, step: Step) -> None:
     kind, payload = step.action.kind, step.action.payload
     session = run.session.session
     if kind == "spawn":
-        argv = [_expand(part, run) for part in payload["argv"]]
+        # The scenario names programs; the recorder turns them into paths. Nothing from the
+        # file reaches PATH resolution, so a stub cannot be shadowed by a real program of the
+        # same name (DECISIONS 0032).
+        argv = [
+            part if index and part.startswith("-") else str(run.demo_bin / part)
+            for index, part in enumerate(payload["argv"])
+        ]
         # The title is how the compositor rule finds this window (scenario ``windows``), so it
         # is put in by the recorder rather than written into every argv in the scenario.
         argv.insert(1, f"--title={payload['window']}")
@@ -80,7 +86,7 @@ def perform(run: Run, step: Step) -> None:
     elif kind == "cli":
         session.wayhint(payload["command"])
     elif kind == "herdr":
-        run.session.herdr(*(_expand(part, run) for part in payload["argv"]))
+        run.session.herdr(*payload["argv"])  # already checked against the allow-list
     elif kind == "pause":
         pass  # the step exists for its caption; ``wait_for`` still has to hold
     else:
@@ -114,8 +120,8 @@ def _inside(root: Path, relative: str, step: Step) -> Path:
 
 
 def _expand(part: str, run: Run) -> str:
-    """The only substitutions a scenario gets. Everything else is taken literally."""
-    return part.replace("{demo_bin}", str(run.demo_bin)).replace("{lang}", run.language)
+    """The only substitution a scenario gets. Everything else is taken literally."""
+    return part.replace("{lang}", run.language)
 
 
 # --- conditions --------------------------------------------------------------------------------

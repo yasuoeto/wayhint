@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""What Herdr starts in every pane, in place of a shell.
+
+A demo types into the terminal on purpose -- that is the whole point of the "it does not take
+the keyboard" scene -- and a recording is driven by a file. Put those together with a shell in
+the pane and the scenario would be able to run anything at all. So there is no shell in the
+session (DECISIONS 0032): Herdr's ``default_shell`` is this, and this only ever starts one of
+the demo's own stubs.
+
+It prints one line, reads lines, and if a line names an executable sitting next to it
+(excluding the ``foot-*`` wrappers, which start terminals) it replaces itself with that one.
+``herdr pane run <pane> claude`` is exactly such a line. Anything else is read and dropped, so
+a ``type:`` step lands in a program that cannot act on it.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ME = Path(__file__).name
+BANNER = "  (demo pane)"
+
+
+def startable() -> set[str]:
+    """The stubs next to this one. Terminal wrappers are not among them."""
+    return {
+        entry.name
+        for entry in HERE.iterdir()
+        if entry.is_file()
+        and os.access(entry, os.X_OK)
+        and entry.name != ME
+        and not entry.name.startswith("foot-")
+    }
+
+
+def main() -> int:
+    sys.stdout.write(BANNER + "\n")
+    sys.stdout.flush()
+    names = startable()
+    for line in sys.stdin:
+        wanted = line.strip()
+        if wanted in names:
+            os.execv(str(HERE / wanted), [wanted])  # noqa: S606 - a name from the set above
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

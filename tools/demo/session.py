@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.demo.scenario import Scenario
+from tools.demo.scenario import programs as scenario_programs
 from tools.headless import HeadlessSession, WindowRule, compositor
 
 APP_ID = "foot*"
@@ -42,6 +43,9 @@ WORK_DIR = "demo"
 """The directory the terminals are started in. Herdr names its workspace after it, and that
 name is on screen, so it is a fixed readable word rather than a temporary path."""
 
+PANE_PROGRAM = "idle"
+"""What Herdr starts in a pane instead of a shell (``demo/bin/idle``, DECISIONS 0032)."""
+
 HERDR_CONFIG = """\
 # Written by tools/demo/session.py for one recording. Everything that would reach the network,
 # ask a question, or put a machine-specific string on screen is turned off (DECISIONS 0032).
@@ -52,12 +56,17 @@ onboarding = false
 name = "catppuccin"
 [update]
 version_check = false
+# Stops the background fetch of agent-detection manifests from herdr.dev: no network, and no
+# difference between a run that fetched and one that did not.
 manifest_check = false
 [ui]
 prompt_new_tab_name = false
-window_title = "{workspace}"
+# Default is "{{hostname}}: {{workspace}}", and the hostname would be in every frame.
+window_title = "{{workspace}}"
 [terminal]
-default_shell = "/bin/sh"
+# Not a shell. A scenario types into the terminal, so a shell in the pane would be a way to
+# run anything; this one only ever starts the stubs beside it (DECISIONS 0032).
+default_shell = "{pane_program}"
 """
 
 FONT_PACKAGES = {
@@ -252,26 +261,24 @@ class DemoSession:
                 shutil.rmtree(home, ignore_errors=True)
 
     def _check_stubs(self) -> None:
-        """Every program the scenario runs in a pane has to resolve to ``demo/bin``.
+        """Nothing outside ``demo/bin`` can be started in this session.
 
-        This is the guard on the one rule that matters most here: the demo runs *stubs*, never
-        the real coding agents (DECISIONS 0032). A missing PATH entry would silently start the
-        real program instead -- it happened once during development -- and the recording would
-        show that program's first-run screen.
+        This is the guard on the rule that matters most here: the demo runs *stubs*, never the
+        real coding agents (DECISIONS 0032). A missing PATH entry would silently start the real
+        program instead -- it happened once during development -- and the recording would show
+        that program's first-run screen. Three routes are checked: what a ``spawn`` starts,
+        what ``herdr pane run`` starts, and what Herdr itself puts in a pane.
         """
         path = self.session.env()["PATH"]
-        for step in self.scenario.steps.values():
-            if step.action.kind != "herdr":
-                continue
-            argv = step.action.payload["argv"]
-            if argv[:2] != ["pane", "run"] or len(argv) < 4:
-                continue
-            command = argv[3]
-            found = shutil.which(command, path=path)
-            if found is None or Path(found).parent != self.demo_bin:
+        wanted = [(step.id, name) for step in self.scenario.steps.values()
+                  for name in scenario_programs(step)]  # fmt: skip
+        wanted.append(("herdr's own panes", PANE_PROGRAM))
+        for where, name in wanted:
+            found = shutil.which(name, path=path)
+            if found is None or Path(found).resolve().parent != self.demo_bin:
                 raise DemoError(
-                    f"step {step.id!r} would run {found or command!r}, not the stub in "
-                    f"{self.demo_bin}; the session PATH is wrong"
+                    f"{where} would run {found or name!r}, not the stub in {self.demo_bin}; "
+                    "the session PATH is wrong"
                 )
 
     # --- herdr ---------------------------------------------------------------------------
@@ -280,7 +287,9 @@ class DemoSession:
         """Herdr reads ``$XDG_CONFIG_HOME/herdr/``, which is inside the session (C-A)."""
         directory = Path(self.session.env()["XDG_CONFIG_HOME"]) / "herdr"
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / "config.toml").write_text(HERDR_CONFIG)
+        (directory / "config.toml").write_text(
+            HERDR_CONFIG.format(pane_program=self.demo_bin / PANE_PROGRAM)
+        )
 
     def herdr(self, *args: str, check: bool = True, timeout: float = 20.0) -> str:
         """Run one Herdr command inside the session. The caller has already allow-listed it."""

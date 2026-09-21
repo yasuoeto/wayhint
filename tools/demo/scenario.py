@@ -144,6 +144,50 @@ def _herdr_one(pattern: re.Pattern, kind: str):
     return check
 
 
+SPAWN_LAUNCHERS = ("foot", "herdr")
+"""What a ``spawn`` may start: a terminal, by one of the wrappers in ``demo/bin``."""
+
+
+def _bare_program(name: str, where: str, demo_bin: Path | None) -> str:
+    """A program named by its file name in ``demo/bin``, and nothing else.
+
+    No path, no ``..``, no absolute name: the demo runs its own stubs, and the guard is that
+    the scenario can only ever name one of them (DECISIONS 0032).
+    """
+    if not name or "/" in name or ".." in name:
+        raise ScenarioError(f"{where}: {name!r} has to be a bare program name in demo/bin")
+    if demo_bin is not None and not (demo_bin / name).is_file():
+        raise ScenarioError(f"{where}: no such program in {demo_bin}: {name}")
+    return name
+
+
+def _spawn_argv(argv: list[str], where: str, demo_bin: Path | None) -> list[str]:
+    """``[foot-herdr]`` or ``[foot-wayhint, vi]``: a launcher, options, and stubs."""
+    head = _bare_program(argv[0], f"{where}[0]", demo_bin)
+    if not any(head == name or head.startswith(f"{name}-") for name in SPAWN_LAUNCHERS):
+        raise ScenarioError(
+            f"{where}[0]: {head!r} has to start a terminal "
+            f"({' or '.join(SPAWN_LAUNCHERS)}, or <that>-<variant>)"
+        )
+    for index, part in enumerate(argv[1:], start=1):
+        if part.startswith("-"):
+            continue  # an option for the terminal; it cannot name a program
+        _bare_program(part, f"{where}[{index}]", demo_bin)
+    return argv
+
+
+def programs(step: Step) -> list[str]:
+    """Every program this step would start, by name. Used to check the session's PATH."""
+    kind, payload = step.action.kind, step.action.payload
+    if kind == "spawn":
+        return [p for i, p in enumerate(payload["argv"]) if i == 0 or not p.startswith("-")]
+    if kind == "herdr":
+        argv = payload["argv"]
+        if argv[:2] == ["pane", "run"] and len(argv) >= 4:
+            return [argv[3]]
+    return []
+
+
 def _herdr_pane_run(rest: list[str], where: str, demo_bin: Path | None) -> None:
     """``pane run <pane id> <command>``: the command is a program in ``demo/bin``, by name.
 
@@ -156,10 +200,7 @@ def _herdr_pane_run(rest: list[str], where: str, demo_bin: Path | None) -> None:
     pane, command = rest
     if not PANE_ID.match(pane):
         raise ScenarioError(f"{where}: {pane!r} is not a pane id like w1:p1")
-    if "/" in command or ".." in command or not command:
-        raise ScenarioError(f"{where}: {command!r} has to be a bare program name in demo/bin")
-    if demo_bin is not None and not (demo_bin / command).is_file():
-        raise ScenarioError(f"{where}: no such program in {demo_bin}: {command}")
+    _bare_program(command, where, demo_bin)
 
 
 def _herdr_status(rest: list[str], where: str, _bin: Path | None) -> None:
@@ -547,11 +588,12 @@ def _action(kind: str, value: object, where: str, demo_bin: Path | None) -> Acti
         argv = doc.get("argv")
         if not isinstance(argv, list) or not argv:
             raise ScenarioError(f"{where}.spawn.argv: expected a non-empty list")
+        parts = [_string(a, f"{where}.spawn.argv[]") for a in argv]
         return Action(
             "spawn",
             {
                 "window": _string(doc.get("window"), f"{where}.spawn.window"),
-                "argv": [_string(a, f"{where}.spawn.argv[]") for a in argv],
+                "argv": _spawn_argv(parts, f"{where}.spawn.argv", demo_bin),
             },
         )
     if kind == "close":

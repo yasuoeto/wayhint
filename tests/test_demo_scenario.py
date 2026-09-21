@@ -234,6 +234,54 @@ class OutputDirTest(unittest.TestCase):
             cli._output_dir(self.showcase(), ".", ".")
 
 
+class SpawnTest(unittest.TestCase):
+    """A spawn starts a terminal from ``demo/bin``, and nothing else."""
+
+    def bin(self) -> Path:
+        demo_bin = scratch(self)
+        for name in ("foot-herdr", "foot-wayhint", "vi", "idle"):
+            (demo_bin / name).write_text("#!/bin/sh\n")
+        return demo_bin
+
+    def spawn(self, argv: str, demo_bin: Path | None = None) -> scn.Scenario:
+        text = MINIMAL.replace("    cli: show\n", f"    spawn: {{window: main, argv: {argv}}}\n")
+        return parse(text, demo_bin)
+
+    def test_a_wrapper_from_demo_bin_is_accepted(self) -> None:
+        script = self.spawn("[foot-herdr]", self.bin())
+        self.assertEqual(script.steps["show"].action.payload["argv"], ["foot-herdr"])
+
+    def test_a_wrapper_with_a_stub_after_it_is_accepted(self) -> None:
+        self.spawn("[foot-wayhint, vi]", self.bin())
+
+    def test_an_absolute_path_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "bare program name"):
+            self.spawn("[/usr/bin/foot]", self.bin())
+
+    def test_a_program_that_is_not_a_terminal_is_refused(self) -> None:
+        """``sh`` would be a shell in the session, which is the thing there must not be."""
+        demo_bin = self.bin()
+        (demo_bin / "sh").write_text("#!/bin/sh\n")
+        with self.assertRaisesRegex(scn.ScenarioError, "has to start a terminal"):
+            self.spawn("[sh]", demo_bin)
+
+    def test_a_stub_that_is_not_in_demo_bin_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "no such program"):
+            self.spawn("[foot-wayhint, bash]", self.bin())
+
+    def test_options_are_left_alone(self) -> None:
+        self.spawn("[foot-wayhint, --hold, vi]", self.bin())
+
+    def test_programs_lists_what_a_step_would_start(self) -> None:
+        """What ``session._check_stubs`` walks before a compositor is up."""
+        script = self.spawn("[foot-wayhint, --hold, vi]", self.bin())
+        self.assertEqual(scn.programs(script.steps["show"]), ["foot-wayhint", "vi"])
+        run = parse(
+            MINIMAL.replace("    cli: show\n", "    herdr: [pane, run, 'w1:p1', vi]\n"), self.bin()
+        )
+        self.assertEqual(scn.programs(run.steps["show"]), ["vi"])
+
+
 class ShowcaseTest(unittest.TestCase):
     """Files are found by the role at the end of their name; the directory is the identity."""
 

@@ -20,7 +20,7 @@ steps:
   # 持たない設計。demo/README.md「variant の完全列」)。
   # =============================================================================================
   - id: open-herdr-60
-    spawn: {window: Herdr, argv: ["{demo_bin}/foot-herdr"]}
+    spawn: {window: Herdr, argv: [foot-herdr]}
     wait_for:
       toplevel: "^foot-herdr$"
       context: {active_sheet: herdr}
@@ -122,7 +122,7 @@ steps:
 
   # --- §1 課題 ---------------------------------------------------------------------------------
   - id: open-herdr
-    spawn: {window: Herdr, argv: ["{demo_bin}/foot-herdr"]}
+    spawn: {window: Herdr, argv: [foot-herdr]}
     wait_for:
       toplevel: "^foot-herdr$"
       context: {active_sheet: herdr}
@@ -318,7 +318,7 @@ steps:
 
   # --- §3 追加: Herdr が無くても端末の中を見る ------------------------------------------------
   - id: open-vi
-    spawn: {window: vi, argv: ["{demo_bin}/foot-wayhint", "{demo_bin}/vi"]}
+    spawn: {window: vi, argv: [foot-wayhint, vi]}
     precondition: {overlay: visible}
     wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: visible, timeout: 30}
     caption: {ja: "Herdr を使わない、ただの端末を開く"}
@@ -387,7 +387,7 @@ steps:
 
   # --- §6 追加: 仕組みと設定 -----------------------------------------------------------------------
   - id: open-yaml
-    spawn: {window: vi, argv: ["{demo_bin}/foot-wayhint", "{demo_bin}/vi"]}
+    spawn: {window: vi, argv: [foot-wayhint, vi]}
     wait_for: {context: {active_sheet: vi, process_name: vi}, timeout: 30}
     caption: {ja: "sheet は 1 アプリ 1 YAML"}
     hold: 7.0
