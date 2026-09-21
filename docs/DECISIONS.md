@@ -1039,6 +1039,9 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   よいか」とは別の問い。symlink も拒否する(trusted 側なので範囲外だが数行)。**名前の検査を 1 つに
   する**——`tools/demo/names.py` の `validate_name` を scenario・showcase・CLI(`--showcase`
   `--variant` `--only` `--from`)が通る。`re.match` は末尾の改行を通すので `fullmatch` にした。
+  **後片付けを起動の逆順にする**——`HeadlessSession` は bus → compositor → daemon の順に上げるのに、
+  停止の list を `[*_procs, _bus]` で組んでいたので bus が最初に落ちていた。生きている compositor
+  の足元から session bus を抜くのが、AT-SPI client が終了時に固まる形。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot

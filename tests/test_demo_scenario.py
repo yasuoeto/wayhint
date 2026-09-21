@@ -15,6 +15,7 @@ import importlib.util
 import io
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -584,6 +585,43 @@ class StartupUnwindTest(unittest.TestCase):
         session._tear_down = lambda: torn.append(True)
         self.assertIs(session.__enter__(), session)
         self.assertEqual(torn, [])
+
+    def test_the_session_is_stopped_in_the_reverse_of_the_order_it_started(self) -> None:
+        """The bus is given to the two after it, so it has to be the last one left running."""
+
+        class Proc:
+            def __init__(self, name: str) -> None:
+                self.name, self.pid = name, 0
+
+            def poll(self):
+                return None
+
+            def wait(self, timeout=None):
+                return 0
+
+        session = self.headless()
+        started: list[str] = []
+        stopped: list[str] = []
+
+        def start_bus() -> None:
+            started.append("bus")
+            session._bus = Proc("bus")
+
+        def spawn(argv, _env) -> None:
+            started.append(Path(argv[0]).name)
+            session._procs.append(Proc(Path(argv[0]).name))
+
+        session._start_bus = start_bus
+        session._spawn = spawn
+        session._wait_for = lambda path, what: None
+        session.wayhint = lambda *args: ""
+        session._signal_group = lambda proc, sig: (
+            stopped.append(proc.name) if sig == signal.SIGTERM else None
+        )
+        session.__enter__()
+        self.assertEqual(started, ["bus", "labwc", "wayhintd"])
+        session.__exit__()
+        self.assertEqual(stopped, list(reversed(started)))
 
     def test_a_demo_session_closes_the_headless_one_when_a_check_fails(self) -> None:
         class Fake:

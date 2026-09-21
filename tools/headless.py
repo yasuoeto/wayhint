@@ -214,7 +214,12 @@ class HeadlessSession:
         # By the group, not by the process: a compositor that re-execs or forks leaves a child
         # behind when only its own pid is signalled, and an orphaned compositor holding the
         # runtime directory is exactly the mess these tests must not leave on the machine.
-        started = [*self._procs, *filter(None, [self._bus])]
+        #
+        # In the order they were started -- bus, compositor, daemon -- and stopped in the
+        # reverse of it below. The bus went up first because the two after it are given its
+        # address, so it is the last thing that may go down: taking it out from under a live
+        # compositor is what makes AT-SPI clients hang on the way out.
+        started = [*filter(None, [self._bus]), *self._procs]
         for proc in reversed(started):
             self._signal_group(proc, signal.SIGTERM)
         for proc in reversed(started):
