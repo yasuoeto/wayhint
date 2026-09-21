@@ -1024,6 +1024,21 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   この 3 つに当たらない指摘、たとえば `demo/bin/` に細工した symlink を置く経路は trusted 側の話
   なので、以降のレビューでは対象外とする。`demo/bin/idle` の symlink 拒否(下記)は修正が数行で
   済んだから入れただけで、範囲を広げたわけではない。
+- **再レビューを受けた修正(2026-09-21、2 回目)**: 上の脅威モデルに照らして 6 件塞いだ。
+  **`out/` の symlink を追わない**——削除の直前に `out/` / `out/<lang>/` / `out/<lang>/<variant>/`
+  を *resolve する前に* 見て、どれかが symlink なら録らずに止める。`out/` を別ディスクへ向けるのは
+  普通にやることで、追うと消す先がそちらに移る。別の場所に置く `--out-dir` は未実装(STATUS の
+  残件)。**端末 wrapper の引数を許可 list にする**——`spawn` の argv は wrapper 名(`foot-wayhint`
+  か `foot-herdr`。prefix 一致をやめて 1 つずつ列挙)、`--app-id=foot-<名前>`、そして
+  `foot-wayhint` の場合だけ `-e <stub>` の形に限る。command を書かない foot は login shell を
+  開くので、これが「session に shell を置かない」の最後の穴だった。wrapper 側も `"$@"` を foot に
+  素通しするのをやめ、同じ list で受ける。**Herdr の絶対パスを wrapper へ環境変数で渡す**
+  (`WAYHINT_DEMO_HERDR_BIN`)——`foot-herdr` の末尾が裸の `herdr` だったので、PATH 先頭の
+  `demo/bin` を見に行く余地が残っていた。未設定なら wrapper は exit 1。**`idle` が exec できる
+  名前を静的に書く**——ディレクトリの列挙は「隣に何があるか」を答えるだけで「pane が何を起動して
+  よいか」とは別の問い。symlink も拒否する(trusted 側なので範囲外だが数行)。**名前の検査を 1 つに
+  する**——`tools/demo/names.py` の `validate_name` を scenario・showcase・CLI(`--showcase`
+  `--variant` `--only` `--from`)が通る。`re.match` は末尾の改行を通すので `fullmatch` にした。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot

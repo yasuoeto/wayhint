@@ -135,7 +135,7 @@ variants:
 
 | action | 書き方 | すること |
 |---|---|---|
-| `spawn` | `{window: <名前>, argv: [foot-herdr]}` | 窓を起動する。argv[0] は `demo/bin` の端末 wrapper、以降は `-` 始まりのオプションか `demo/bin` の stub 名。**すべて名前だけ**(絶対パス不可) |
+| `spawn` | `{window: <名前>, argv: [foot-herdr]}` / `{…, argv: [foot-wayhint, -e, vi]}` | 窓を起動する。argv[0] は `demo/bin` の端末 wrapper(`foot-wayhint` か `foot-herdr`)。`foot-wayhint` は **`-e <stub 名>` が必須**——command 無しの foot は login shell を開くので拒否する。`foot-herdr` は Herdr 自身を起動するので command を取らない。オプションは `--app-id=foot-<名前>` だけ。**すべて名前だけ**(絶対パス不可) |
 | `close` | `{window: <名前>}` | その窓を閉じる。focus が下の窓へ戻るので、別のアプリを見せて帰ってこられる |
 | `key` | `super+ctrl+h` | wtype で compositor に送る。修飾は `super` `ctrl` `shift` `alt` |
 | `type` | `"文字列"` または `{ja: …, en: …}` | wtype で文字を打つ |
@@ -249,6 +249,13 @@ process として答えられてしまう。
 `bin/foot-herdr` は Herdr 用(app_id に `herdr` を含める。`docs/TERMINALS.md` の前提)。どちらも
 `fixtures/foot.ini` を読む。
 
+**どちらの wrapper も引数を素通ししない。** 受け取るのは `--app-id=` と `--title=` だけで、
+`foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` のいずれかで、
+symlink は拒否)。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
+shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
+`foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
+wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。
+
 ## Herdr の隔離
 
 showcase `herdr` は**実物の Herdr を動かす**(DECISIONS 0032)。使う binary は録画の開始時に
@@ -270,7 +277,7 @@ PATH から 1 回だけ解決し(このマシンでは `~/.local/bin/herdr`、0.
 | `[terminal] default_shell = <demo_bin>/idle` | pane に shell を置かない(下記) |
 
 **session に shell は無い。** `default_shell` は `demo/bin/idle` で、これは 1 行出して stdin を
-読み、行が隣の stub の名前ならそれに `exec` するだけ。`herdr pane run <pane> claude` がまさに
+読み、行が `claude` `codex` `vi`(`idle` 内に静的に書いた list)ならそれに `exec` するだけ。`herdr pane run <pane> claude` がまさに
 その 1 行になる。脚本は端末に文字を打つ(「キーボードを奪わない」場面)ので、shell が居ると
 そこから何でも実行できてしまう。録画中に session 内の `comm` を数えて、`sh` / `bash` / `dash` が
 1 つも無いことを確かめてある。

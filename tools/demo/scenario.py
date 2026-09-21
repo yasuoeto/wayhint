@@ -24,6 +24,8 @@ from pathlib import Path
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
+from tools.demo import names
+
 LANGUAGES = ("ja", "en")
 DEFAULT_LANGUAGE = "ja"
 REQUIRED_LANGUAGE = "ja"
@@ -63,10 +65,6 @@ KEY_NAMES = {  # a friendly spelling -> the xkb keysym wtype wants
 }
 KEYSYM = re.compile(r"^[A-Za-z0-9_]+$")
 
-NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-"""Step ids and variant names. They become file and directory names under ``out/``, so
-anything that could climb out of it -- a slash, a dot, a space -- is refused here rather than
-guarded against later."""
 
 # ``cli:`` may only ask for a command the daemon already answers. A scenario cannot invent an
 # argument, so no string from the file ever reaches a command line.
@@ -144,8 +142,18 @@ def _herdr_one(pattern: re.Pattern, kind: str):
     return check
 
 
-SPAWN_LAUNCHERS = ("foot", "herdr")
-"""What a ``spawn`` may start: a terminal, by one of the wrappers in ``demo/bin``."""
+TERMINALS = {"foot-wayhint": "command", "foot-herdr": "no command"}
+"""The wrappers in ``demo/bin`` a ``spawn`` may start, and whether each takes a program.
+
+``foot-wayhint`` is a bare terminal, so it has to be told what to run: foot with no command
+starts the login shell, and this session is built not to have one (DECISIONS 0032).
+``foot-herdr`` starts Herdr itself and therefore takes none. Named one by one rather than
+matched on a prefix -- a prefix would accept the next wrapper somebody adds, whatever it does.
+"""
+
+APP_ID = re.compile(r"^foot(-[a-z0-9]+|\.p\{pid\})?$")
+"""What ``--app-id`` may be set to: the naming convention in docs/TERMINALS.md, and nothing
+that would make the window look like another application's to the daemon."""
 
 
 def _bare_program(name: str, where: str, demo_bin: Path | None) -> str:
@@ -161,19 +169,50 @@ def _bare_program(name: str, where: str, demo_bin: Path | None) -> str:
     return name
 
 
-def _spawn_argv(argv: list[str], where: str, demo_bin: Path | None) -> list[str]:
-    """``[foot-herdr]`` or ``[foot-wayhint, vi]``: a launcher, options, and stubs."""
-    head = _bare_program(argv[0], f"{where}[0]", demo_bin)
-    if not any(head == name or head.startswith(f"{name}-") for name in SPAWN_LAUNCHERS):
+def _spawn_option(part: str, where: str) -> None:
+    """The one option a scenario may hand a terminal wrapper.
+
+    An allow list, not "anything that starts with a dash". ``--override=shell=/bin/sh`` puts
+    the shell back that DECISIONS 0032 took out, and ``--config``, ``--server`` and ``--term``
+    each reach past the fixtures in their own way.
+    """
+    if not part.startswith("--app-id="):
         raise ScenarioError(
-            f"{where}[0]: {head!r} has to start a terminal "
-            f"({' or '.join(SPAWN_LAUNCHERS)}, or <that>-<variant>)"
+            f"{where}: {part!r} is not allowed here; a spawn may pass --app-id=<id> and nothing "
+            "else (the recorder puts in the title, the config and the program)"
         )
-    for index, part in enumerate(argv[1:], start=1):
-        if part.startswith("-"):
-            continue  # an option for the terminal; it cannot name a program
-        _bare_program(part, f"{where}[{index}]", demo_bin)
-    return argv
+    app_id = part[len("--app-id=") :]
+    if not APP_ID.match(app_id):
+        raise ScenarioError(
+            f"{where}: {app_id!r} is not an app_id this demo uses (foot, or foot-<name>)"
+        )
+
+
+def _spawn_argv(argv: list[str], where: str, demo_bin: Path | None) -> list[str]:
+    """``[foot-herdr]`` or ``[foot-wayhint, -e, vi]``: one wrapper, options, one stub."""
+    head = _bare_program(argv[0], f"{where}[0]", demo_bin)
+    if head not in TERMINALS:
+        raise ScenarioError(
+            f"{where}[0]: {head!r} has to start a terminal ({', '.join(sorted(TERMINALS))})"
+        )
+    rest = list(argv[1:])
+    cut = rest.index("-e") if "-e" in rest else len(rest)
+    options, command = rest[:cut], rest[cut + 1 :]
+    for index, part in enumerate(options, start=1):
+        _spawn_option(part, f"{where}[{index}]")
+    if TERMINALS[head] == "no command":
+        if cut != len(rest):
+            raise ScenarioError(
+                f"{where}: {head!r} starts its own program, so it takes no -e"
+            )
+        return list(argv)
+    if len(command) != 1:
+        raise ScenarioError(
+            f"{where}: {head!r} needs -e <program> last; a terminal with no command starts the "
+            "login shell, and a scenario types into the terminal (DECISIONS 0032)"
+        )
+    _bare_program(command[0], f"{where}[{len(argv) - 1}]", demo_bin)
+    return list(argv)
 
 
 def programs(step: Step) -> list[str]:
@@ -453,15 +492,12 @@ def _number(value: object, where: str, *, minimum: float = 0.0) -> float:
     return float(value)
 
 
-def _name(value: object, where: str) -> str:
-    """An identifier that is safe to use as a file name."""
-    text = _string(value, where)
-    if not NAME.match(text):
-        raise ScenarioError(
-            f"{where}: {text!r} has to be lower-case letters, digits and hyphens "
-            "(it becomes a file name)"
-        )
-    return text
+def _name(value: object, kind: str, where: str) -> str:
+    """A step id or a variant name: safe to use as a file name (``names.validate_name``)."""
+    try:
+        return names.validate_name(kind, _string(value, where))
+    except names.BadName as e:
+        raise ScenarioError(f"{where}: {e}") from e
 
 
 def _string(value: object, where: str) -> str:
@@ -520,7 +556,7 @@ def _variants(value: object, steps: dict[str, Step]) -> tuple[Variant, ...]:
     out = []
     for name, raw in doc.items():
         where = f"variants.{name}"
-        _name(name, where)
+        _name(name, "variant name", where)
         item = _mapping(raw, where)
         _unknown(item, {"target", "tolerance", "square", "steps"}, where)
         ids = item.get("steps")
@@ -551,7 +587,7 @@ def _step(doc: object, index: int, demo_bin: Path | None) -> Step:
     if not isinstance(doc, dict):
         raise ScenarioError(f"steps[{index}]: expected a mapping")
     known = {"id", "wait_for", "caption", "hold", "precondition", *ACTIONS}
-    step_id = _name(doc.get("id"), f"steps[{index}].id")
+    step_id = _name(doc.get("id"), "step id", f"steps[{index}].id")
     where = f"step {step_id!r}"
     _unknown(doc, known, where)
     present = [name for name in ACTIONS if name in doc]

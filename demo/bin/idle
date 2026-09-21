@@ -7,10 +7,14 @@ the pane and the scenario would be able to run anything at all. So there is no s
 session (DECISIONS 0032): Herdr's ``default_shell`` is this, and this only ever starts one of
 the demo's own stubs.
 
-It prints one line, reads lines, and if a line names an executable sitting next to it
-(excluding the ``foot-*`` wrappers, which start terminals) it replaces itself with that one.
-``herdr pane run <pane> claude`` is exactly such a line. Anything else is read and dropped, so
-a ``type:`` step lands in a program that cannot act on it.
+It prints one line, reads lines, and if a line is the name of one of the stubs in
+:data:`STARTABLE` it replaces itself with that one. ``herdr pane run <pane> claude`` is exactly
+such a line. Anything else is read and dropped, so a ``type:`` step lands in a program that
+cannot act on it.
+
+The names are written out here rather than read off the directory: a listing answers "what is
+next to me", which is a different question from "what may a pane start", and it would quietly
+grow the answer every time somebody adds a file to ``demo/bin``.
 """
 
 import os
@@ -18,30 +22,36 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ME = Path(__file__).name
 BANNER = "  (demo pane)"
 
+STARTABLE = ("claude", "codex", "vi")
+"""The stubs a pane may be told to run. Not the ``foot-*`` wrappers: those start terminals."""
 
-def startable() -> set[str]:
-    """The stubs next to this one. Terminal wrappers are not among them."""
-    return {
-        entry.name
-        for entry in HERE.iterdir()
-        if entry.is_file()
-        and os.access(entry, os.X_OK)
-        and entry.name != ME
-        and not entry.name.startswith("foot-")
-    }
+
+def target(name: str, here: Path = HERE) -> Path | None:
+    """The stub to exec for a typed line, or ``None`` when there is nothing to start.
+
+    ``None`` rather than an error: everything a pane cannot act on is read and dropped, and a
+    name that is not a stub is just more of that. The file itself is checked as well as the
+    name -- a symlink would run whatever it points at under a stub's name.
+    """
+    if name not in STARTABLE:
+        return None
+    path = here / name
+    if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK):
+        return None
+    if path.resolve().parent != here.resolve():
+        return None
+    return path
 
 
 def main() -> int:
     sys.stdout.write(BANNER + "\n")
     sys.stdout.flush()
-    names = startable()
     for line in sys.stdin:
-        wanted = line.strip()
-        if wanted in names:
-            os.execv(str(HERE / wanted), [wanted])  # noqa: S606 - a name from the set above
+        stub = target(line.strip())
+        if stub is not None:
+            os.execv(str(stub), [stub.name])  # noqa: S606 - a name from STARTABLE
     return 0
 
 

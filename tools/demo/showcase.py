@@ -22,10 +22,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tools.demo import names
+
 ROLES = {"storyboard": (".md",), "scenario": (".yaml", ".yml")}
 NAME = re.compile(r"^(?P<number>\d+)_(?P<showcase>.+)_(?P<role>[a-z][a-z-]*)$")
-SHOWCASE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-"""A showcase name is a directory name and part of every output file's name."""
 OUT = "out"
 
 
@@ -51,7 +51,7 @@ def discover(root: Path) -> list[Showcase]:
         return []
     found = []
     for entry in sorted(root.iterdir()):
-        if not entry.is_dir() or not SHOWCASE.match(entry.name):
+        if not entry.is_dir() or not names.is_name(entry.name):
             continue
         try:
             found.append(load(root, entry.name))
@@ -62,10 +62,12 @@ def discover(root: Path) -> list[Showcase]:
 
 def load(root: Path, name: str) -> Showcase:
     """The showcase called ``name``, with its files resolved by role."""
-    if not SHOWCASE.match(name):
+    try:
+        names.validate_name("showcase name", name)
+    except names.BadName:
         raise ShowcaseError(
             f"{name!r} is not a showcase name: lower-case letters, digits and hyphens only"
-        )
+        ) from None
     directory = root / name
     if not directory.is_dir():
         known = ", ".join(p.name for p in sorted(root.iterdir()) if p.is_dir()) or "none"
@@ -89,8 +91,8 @@ def load(root: Path, name: str) -> Showcase:
         by_role[role].append(path)
     for role, paths in by_role.items():
         if len(paths) > 1:
-            names = ", ".join(p.name for p in paths)
-            raise ShowcaseError(f"{directory}: two files claim the {role} role ({names})")
+            both = ", ".join(p.name for p in paths)
+            raise ShowcaseError(f"{directory}: two files claim the {role} role ({both})")
     if not by_role["scenario"]:
         raise ShowcaseError(
             f"{directory}: no scenario; it needs a file named <NN>_{name}_scenario.yaml"

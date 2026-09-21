@@ -11,7 +11,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from tools.demo import actions, capture, encode
+from tools.demo import actions, capture, encode, names
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
@@ -28,6 +28,7 @@ INJECT_ACTIONS = ("key", "type")
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        _check_names(args)
         if not args.showcase:
             return _list_showcases(args)
         show = shc.load(args.showcases, args.showcase)
@@ -45,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
             for variant in chosen:
                 _record(args, show, script, variant, language)
         return 0
-    except (ScenarioError, shc.ShowcaseError, sess.DemoError) as e:
+    except (ScenarioError, shc.ShowcaseError, sess.DemoError, names.BadName) as e:
         print(f"demo: {e}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
@@ -76,6 +77,23 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--fixtures", type=Path, default=DEMO / "fixtures")
     p.add_argument("--bin", type=Path, default=DEMO / "bin", dest="bin_dir")
     return p
+
+
+def _check_names(args: argparse.Namespace) -> None:
+    """Every name off the command line, by the rule the scenario's own names follow.
+
+    They end up in the same two places -- a directory under ``out/`` and a lookup in the
+    scenario -- and the command line is as untrusted as the file (DECISIONS 0032).
+    """
+    for flag, value in (
+        ("--showcase", args.showcase),
+        ("--variant", args.variant),
+        ("--from", getattr(args, "from")),
+    ):
+        if value is not None:
+            names.validate_name(f"{flag} value", value)
+    for value in _steps_named(args.only) or []:
+        names.validate_name("--only value", value)
 
 
 def _steps_named(value: str | None) -> list[str] | None:
@@ -174,9 +192,24 @@ def _output_dir(show: shc.Showcase, language: str, variant: str) -> Path:
     Everything that makes up the path is already restricted to ``[a-z0-9-]`` by the parsers,
     but this is the one place that *deletes a directory*, so it verifies the result rather
     than trusting the checks upstream.
+
+    The directories are looked at *before* they are resolved. ``out/`` is a plausible thing
+    for somebody to point at another disk with a symlink, and following it would move the
+    delete to wherever it lands -- so a symlink anywhere on the way down is refused instead
+    (DECISIONS 0032's threat model: ``out/`` is state this has to survive, not trust).
     """
-    root = (show.root / shc.OUT).resolve()
-    out = show.out(language, variant).resolve()
+    root = show.root / shc.OUT
+    out = show.out(language, variant)
+    for path in (root, root / language, out):
+        if path.is_symlink():
+            raise sess.DemoError(
+                f"{path} is a symlink to {path.readlink()}; refusing to empty it.\n"
+                "  A recording deletes its output directory first, so every step of "
+                f"{shc.OUT}/<language>/<variant> has to be a real directory in the showcase.\n"
+                "  (Putting the results elsewhere would need an --out-dir option; there is "
+                "none yet -- see STATUS.md, Remaining work.)"
+            )
+    root, out = root.resolve(), out.resolve()
     if not out.is_relative_to(root) or out == root:
         raise sess.DemoError(f"refusing to write outside {root}: {out}")
     if out.exists():

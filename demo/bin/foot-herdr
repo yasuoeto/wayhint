@@ -2,8 +2,43 @@
 # Herdr in a terminal, the way docs/TERMINALS.md says to start it: the window's app_id has to
 # contain "herdr" or wayhint never asks Herdr which pane is focused. The foot settings and the
 # fixed app_id are what make two recordings of this look the same.
+#
+# Herdr is named by $WAYHINT_DEMO_HERDR_BIN, an absolute path the recorder resolved once before
+# it put demo/bin on the session's PATH. A bare "herdr" here would be looked up on that PATH,
+# which is exactly the lookup the recorder resolved early to avoid (DECISIONS 0032).
+#
+# Like foot-wayhint, the arguments are an allow list rather than "$@" into foot: what a spawn
+# step says comes out of the scenario, and the scenario is data.
 set -eu
 CDPATH=''
 dir=$(cd -- "$(dirname -- "$0")" && pwd)
-# "$@" goes where foot's own options do: the recorder adds --title=<placement> there.
-exec /usr/bin/foot --app-id=foot-herdr --config "$dir/../fixtures/foot.ini" "$@" herdr
+
+die() {
+    echo "foot-herdr: $1" >&2
+    echo "usage: WAYHINT_DEMO_HERDR_BIN=<path> foot-herdr [--app-id=<id>] [--title=<title>]" >&2
+    exit 1
+}
+
+herdr=${WAYHINT_DEMO_HERDR_BIN:-}
+[ -n "$herdr" ] || die "WAYHINT_DEMO_HERDR_BIN is not set; the recorder sets it to the herdr it resolved"
+case $herdr in
+    /*) ;;
+    *) die "WAYHINT_DEMO_HERDR_BIN has to be an absolute path, got $herdr" ;;
+esac
+[ -x "$herdr" ] || die "$herdr is not an executable file"
+
+app_id=foot-herdr
+title=''
+while [ $# -gt 0 ]; do
+    case $1 in
+        --app-id=*) app_id=${1#--app-id=} ;;
+        --title=*) title=${1#--title=} ;;
+        -*) die "option not allowed: $1" ;;
+        *) die "this wrapper starts Herdr and takes no command, got $1" ;;
+    esac
+    shift
+done
+
+set -- --app-id="$app_id" --config "$dir/../fixtures/foot.ini"
+[ -z "$title" ] || set -- "$@" --title="$title"
+exec /usr/bin/foot "$@" "$herdr"

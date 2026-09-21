@@ -2,7 +2,54 @@
 # The wrapper from README「Terminal の複数窓」: the window names the pid that draws it in its
 # app_id, which is how wayhint finds the process running inside it. The demo goes through the
 # same path a person's terminal does -- there is no demo-only route into the daemon.
+#
+# It takes an allow list rather than passing its arguments on: a scenario decides what a
+# spawn step says, and "$@" straight into foot would let it choose the shell (--override=
+# shell=...), another config file, or no command at all -- and foot with no command starts the
+# login shell, which is the one thing this session must not have (DECISIONS 0032).
 set -eu
 CDPATH=''
 dir=$(cd -- "$(dirname -- "$0")" && pwd)
-exec /usr/bin/foot --app-id "foot.p$$" --config "$dir/../fixtures/foot.ini" "$@"
+STUBS='claude codex vi'
+
+die() {
+    echo "foot-wayhint: $1" >&2
+    echo "usage: foot-wayhint [--app-id=<id>] [--title=<title>] -e <program in demo/bin>" >&2
+    exit 1
+}
+
+app_id="foot.p$$"
+title=''
+program=''
+while [ $# -gt 0 ]; do
+    case $1 in
+        --app-id=*) app_id=${1#--app-id=} ;;
+        --title=*) title=${1#--title=} ;;
+        -e) ;;
+        -*) die "option not allowed: $1" ;;
+        *)
+            [ -z "$program" ] || die "one program at a time, got $program and $1"
+            program=$1
+            ;;
+    esac
+    shift
+done
+
+[ -n "$program" ] || die "no program given; foot would start the login shell"
+# Named or given by path, it has to be one of the stubs sitting next to this file. The recorder
+# passes the path it resolved itself; a person running this by hand can use the name.
+name=$(basename -- "$program")
+case " $STUBS " in
+    *" $name "*) ;;
+    *) die "not one of the demo's stubs ($STUBS): $program" ;;
+esac
+case $program in
+    "$name" | "$dir/$name") program="$dir/$name" ;;
+    *) die "a stub is started from $dir, not from $(dirname -- "$program")" ;;
+esac
+[ ! -L "$program" ] || die "$program is a symlink"
+[ -x "$program" ] || die "$program is not executable"
+
+set -- --app-id="$app_id" --config "$dir/../fixtures/foot.ini"
+[ -z "$title" ] || set -- "$@" --title="$title"
+exec /usr/bin/foot "$@" "$program"

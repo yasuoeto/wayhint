@@ -41,6 +41,9 @@ HERDR = "herdr"
 """The name looked up on PATH once, at the start of a recording. After that the resolved path
 is used, so nothing later -- including ``demo/bin`` being first on the session PATH -- can put
 a different program in its place."""
+HERDR_BIN_ENV = "WAYHINT_DEMO_HERDR_BIN"
+"""How that resolved path reaches ``demo/bin/foot-herdr``, which starts Herdr in a terminal.
+The wrapper refuses to run without it rather than falling back to a bare ``herdr``."""
 HERDR_STOP_TIMEOUT = 15.0
 HERDR_GONE_TIMEOUT = 5.0
 WORK_DIR = "demo"
@@ -225,8 +228,10 @@ class DemoSession:
         self.work_dir = work_dir
         self.demo_bin = demo_bin.resolve()
         # Resolved here rather than on every call: the session's own PATH starts with
-        # demo/bin, and this must not be something that turned up in there.
-        self.herdr_path = shutil.which(HERDR) or HERDR
+        # demo/bin, and this must not be something that turned up in there. ``None`` when
+        # Herdr is not installed -- a scenario that needs it has already been stopped by
+        # ``check_requirements``, and one that does not is recorded without it.
+        self.herdr_path = shutil.which(HERDR)
         self.session = HeadlessSession(
             config_dir,
             width=scenario.output.width,
@@ -240,10 +245,18 @@ class DemoSession:
             # that animates makes two recordings of the same scenario differ (DECISIONS 0031).
             gtk_settings={"gtk-cursor-blink": "false"},
             # demo/bin first: a command typed into a pane is echoed on screen, so it is typed
-            # by name, and the name has to reach the stub rather than the real program.
-            extra_env={"PATH": f"{self.demo_bin}:{os.environ.get('PATH', '')}"},
+            # by name, and the name has to reach the stub rather than the real program. The
+            # one program that is *not* found that way is Herdr, whose path was resolved
+            # above and is handed to the wrapper instead.
+            extra_env=self._env(),
             tag="d",
         )
+
+    def _env(self) -> dict[str, str]:
+        env = {"PATH": f"{self.demo_bin}:{os.environ.get('PATH', '')}"}
+        if self.herdr_path is not None:
+            env[HERDR_BIN_ENV] = self.herdr_path
+        return env
 
     def __enter__(self) -> DemoSession:
         """Bring the session up, undoing each stage if a later one fails."""
@@ -300,6 +313,8 @@ class DemoSession:
 
     def herdr(self, *args: str, check: bool = True, timeout: float = 20.0) -> str:
         """Run one Herdr command inside the session. The caller has already allow-listed it."""
+        if self.herdr_path is None:
+            raise DemoError(f"herdr {' '.join(args)}: herdr is not on PATH")
         done = subprocess.run(
             [self.herdr_path, *args],
             env=self.session.env(),

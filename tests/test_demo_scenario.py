@@ -9,16 +9,27 @@ naming rules -- every case here builds its own directory in a temporary one.
 
 from __future__ import annotations
 
+import contextlib
+import importlib.machinery
+import importlib.util
+import io
+import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from tools import headless as headless_mod
 from tools.demo import __main__ as cli
+from tools.demo import names as nm
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
+
+BIN = Path(__file__).resolve().parent.parent / "demo" / "bin"
+"""The real ``demo/bin``. The wrappers are read and run here for their *refusals* only, which
+happen before anything is exec'd -- no terminal and no Herdr is started by this file."""
 
 MINIMAL = """
 windows: [{title: main, x: 0, y: 0, width: 100, height: 100}]
@@ -127,6 +138,11 @@ class NotANumberTest(unittest.TestCase):
         with self.assertRaisesRegex(scn.ScenarioError, "finite"):
             parse(MINIMAL.replace("hold: 2", "hold: .inf"))
 
+    def test_a_nan_frame_rate_is_refused(self) -> None:
+        """``fps`` divides the frame count; a float there would make every length a float."""
+        with self.assertRaisesRegex(scn.ScenarioError, "expected an integer"):
+            parse("output: {fps: .nan}\n" + MINIMAL)
+
     def test_an_infinite_timeout_is_refused(self) -> None:
         text = MINIMAL.replace(
             "wait_for: {overlay: visible}", "wait_for: {overlay: visible, timeout: .inf}"
@@ -234,13 +250,43 @@ class OutputDirTest(unittest.TestCase):
         with self.assertRaisesRegex(sess.DemoError, "refusing to write outside"):
             cli._output_dir(self.showcase(), ".", ".")
 
+    def test_it_refuses_an_out_that_is_a_symlink(self) -> None:
+        """Somebody's ``out/`` may well point at another disk; the delete must not follow it."""
+        show = self.showcase()
+        elsewhere = scratch(self)
+        (elsewhere / "ja" / "short").mkdir(parents=True)
+        (show.root / "out").symlink_to(elsewhere)
+        with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
+            cli._output_dir(show, "ja", "short")
+        self.assertTrue((elsewhere / "ja" / "short").is_dir(), "it deleted through the symlink")
+
+    def test_it_refuses_an_intermediate_directory_that_is_a_symlink(self) -> None:
+        show = self.showcase()
+        elsewhere = scratch(self)
+        (elsewhere / "short").mkdir()
+        (show.root / "out").mkdir()
+        (show.root / "out" / "ja").symlink_to(elsewhere)
+        with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
+            cli._output_dir(show, "ja", "short")
+        self.assertTrue((elsewhere / "short").is_dir(), "it deleted through the symlink")
+
+    def test_it_refuses_the_variant_directory_itself_being_a_symlink(self) -> None:
+        show = self.showcase()
+        elsewhere = scratch(self)
+        (elsewhere / "kept").mkdir()
+        (show.root / "out" / "ja").mkdir(parents=True)
+        (show.root / "out" / "ja" / "short").symlink_to(elsewhere)
+        with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
+            cli._output_dir(show, "ja", "short")
+        self.assertTrue((elsewhere / "kept").is_dir(), "it deleted through the symlink")
+
 
 class SpawnTest(unittest.TestCase):
     """A spawn starts a terminal from ``demo/bin``, and nothing else."""
 
     def bin(self) -> Path:
         demo_bin = scratch(self)
-        for name in ("foot-herdr", "foot-wayhint", "vi", "idle"):
+        for name in ("foot-herdr", "foot-wayhint", "vi", "claude", "idle"):
             (demo_bin / name).write_text("#!/bin/sh\n")
         return demo_bin
 
@@ -253,7 +299,35 @@ class SpawnTest(unittest.TestCase):
         self.assertEqual(script.steps["show"].action.payload["argv"], ["foot-herdr"])
 
     def test_a_wrapper_with_a_stub_after_it_is_accepted(self) -> None:
-        self.spawn("[foot-wayhint, vi]", self.bin())
+        self.spawn("[foot-wayhint, -e, vi]", self.bin())
+
+    def test_a_terminal_with_no_command_is_refused(self) -> None:
+        """foot with no command starts the login shell, and that is the hole D1 closed."""
+        with self.assertRaisesRegex(scn.ScenarioError, "needs -e <program> last"):
+            self.spawn("[foot-wayhint]", self.bin())
+
+    def test_an_option_outside_the_allow_list_is_refused(self) -> None:
+        """``--override=shell=...`` is how a scenario would put the shell back."""
+        for option in ("--override=shell=/bin/sh", "--config=/tmp/foot.ini", "--server", "--hold"):
+            with self.subTest(option=option), self.assertRaisesRegex(
+                scn.ScenarioError, "is not allowed here"
+            ):
+                self.spawn(f"[foot-wayhint, {option}, -e, vi]", self.bin())
+
+    def test_an_app_id_outside_the_convention_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "is not an app_id"):
+            self.spawn("[foot-wayhint, --app-id=evil, -e, vi]", self.bin())
+
+    def test_the_one_allowed_option_is_accepted(self) -> None:
+        script = self.spawn("[foot-wayhint, --app-id=foot-herdr, -e, claude]", self.bin())
+        self.assertEqual(
+            script.steps["show"].action.payload["argv"],
+            ["foot-wayhint", "--app-id=foot-herdr", "-e", "claude"],
+        )
+
+    def test_the_wrapper_that_starts_herdr_takes_no_command(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "takes no -e"):
+            self.spawn("[foot-herdr, -e, vi]", self.bin())
 
     def test_an_absolute_path_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "bare program name"):
@@ -268,14 +342,11 @@ class SpawnTest(unittest.TestCase):
 
     def test_a_stub_that_is_not_in_demo_bin_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "no such program"):
-            self.spawn("[foot-wayhint, bash]", self.bin())
-
-    def test_options_are_left_alone(self) -> None:
-        self.spawn("[foot-wayhint, --hold, vi]", self.bin())
+            self.spawn("[foot-wayhint, -e, bash]", self.bin())
 
     def test_programs_lists_what_a_step_would_start(self) -> None:
         """What ``session._check_stubs`` walks before a compositor is up."""
-        script = self.spawn("[foot-wayhint, --hold, vi]", self.bin())
+        script = self.spawn("[foot-wayhint, --app-id=foot-x, -e, vi]", self.bin())
         self.assertEqual(scn.programs(script.steps["show"]), ["foot-wayhint", "vi"])
         run = parse(
             MINIMAL.replace("    cli: show\n", "    herdr: [pane, run, 'w1:p1', vi]\n"), self.bin()
@@ -326,6 +397,149 @@ class ShowcaseTest(unittest.TestCase):
         root = self.showcases("herdr", "empty")
         (root / "herdr" / "02_herdr_scenario.yaml").write_text(MINIMAL)
         self.assertEqual([s.name for s in shc.discover(root)], ["herdr"])
+
+
+class PaneProgramTest(unittest.TestCase):
+    """``demo/bin/idle`` is what a pane runs instead of a shell, so what it may exec is fixed."""
+
+    def idle(self):
+        loader = importlib.machinery.SourceFileLoader("demo_idle", str(BIN / "idle"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_the_startable_names_are_written_out_not_listed(self) -> None:
+        """A listing would grow the answer every time somebody adds a file to demo/bin."""
+        self.assertEqual(self.idle().STARTABLE, ("claude", "codex", "vi"))
+
+    def test_a_name_outside_the_list_starts_nothing(self) -> None:
+        idle = self.idle()
+        for name in ("foot-wayhint", "idle", "sh", "", "../vi"):
+            with self.subTest(name=name):
+                self.assertIsNone(idle.target(name))
+
+    def test_the_demos_own_stubs_are_startable(self) -> None:
+        idle = self.idle()
+        for name in idle.STARTABLE:
+            with self.subTest(name=name):
+                self.assertEqual(idle.target(name), BIN / name)
+
+    def test_a_stub_that_is_a_symlink_starts_nothing(self) -> None:
+        """The name is checked, and then the file: a symlink runs something else under it."""
+        here = scratch(self)
+        (here / "claude").symlink_to("/bin/echo")
+        self.assertIsNone(self.idle().target("claude", here))
+
+
+class WrapperTest(unittest.TestCase):
+    """The terminal wrappers in ``demo/bin``, on the paths that refuse and exec nothing.
+
+    Every case here stops in the wrapper's own argument checking, before ``exec foot``, so no
+    terminal and no Herdr is started -- which is what makes these safe in ``./scripts/check``.
+    """
+
+    def run_wrapper(self, wrapper: Path, *args: str, herdr: str | None = None):
+        env = {k: v for k, v in os.environ.items() if k != sess.HERDR_BIN_ENV}
+        if herdr is not None:
+            env[sess.HERDR_BIN_ENV] = herdr
+        return subprocess.run(
+            [str(wrapper), *args], capture_output=True, text=True, timeout=30, env=env
+        )
+
+    def test_the_herdr_wrapper_refuses_to_run_without_the_resolved_path(self) -> None:
+        done = self.run_wrapper(BIN / "foot-herdr")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn(sess.HERDR_BIN_ENV, done.stderr)
+
+    def test_the_herdr_wrapper_refuses_a_relative_herdr(self) -> None:
+        done = self.run_wrapper(BIN / "foot-herdr", herdr="herdr")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("absolute path", done.stderr)
+
+    def test_the_herdr_wrapper_refuses_an_option_outside_its_list(self) -> None:
+        done = self.run_wrapper(BIN / "foot-herdr", "--override=shell=/bin/sh", herdr="/bin/true")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("option not allowed", done.stderr)
+
+    def test_the_herdr_wrapper_takes_no_command(self) -> None:
+        done = self.run_wrapper(BIN / "foot-herdr", "vi", herdr="/bin/true")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("takes no command", done.stderr)
+
+    def test_the_terminal_wrapper_refuses_to_start_without_a_program(self) -> None:
+        done = self.run_wrapper(BIN / "foot-wayhint")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("login shell", done.stderr)
+
+    def test_the_terminal_wrapper_refuses_an_option_outside_its_list(self) -> None:
+        for option in ("--override=shell=/bin/sh", "--config=/tmp/foot.ini", "--server"):
+            with self.subTest(option=option):
+                done = self.run_wrapper(BIN / "foot-wayhint", option, "-e", "vi")
+                self.assertEqual(done.returncode, 1)
+                self.assertIn("option not allowed", done.stderr)
+
+    def test_the_terminal_wrapper_refuses_a_program_that_is_not_a_stub(self) -> None:
+        done = self.run_wrapper(BIN / "foot-wayhint", "-e", "/bin/sh")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("not one of the demo's stubs", done.stderr)
+
+    def test_the_terminal_wrapper_refuses_a_stub_from_another_directory(self) -> None:
+        done = self.run_wrapper(BIN / "foot-wayhint", "-e", "/tmp/vi")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("started from", done.stderr)
+
+    def test_the_terminal_wrapper_refuses_a_stub_that_is_a_symlink(self) -> None:
+        """Run from a copy of the directory: the real ``demo/bin`` is left as it is."""
+        here = scratch(self)
+        shutil.copy(BIN / "foot-wayhint", here / "foot-wayhint")
+        (here / "vi").symlink_to("/bin/echo")
+        done = self.run_wrapper(here / "foot-wayhint", "-e", "vi")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("is a symlink", done.stderr)
+
+
+class CommandLineNameTest(unittest.TestCase):
+    """``--showcase`` and friends become paths too, so they follow the scenario's own rule."""
+
+    def run_cli(self, *argv: str) -> tuple[int, str]:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = cli.main([*argv, "--showcases", str(scratch(self))])
+        return code, err.getvalue()
+
+    def test_a_name_that_is_not_one_is_refused(self) -> None:
+        for flag, value in (
+            ("--showcase", "show\n"),
+            ("--showcase", "Show"),
+            ("--showcase", "sh ow"),
+            ("--variant", "../escape"),
+            ("--only", "a,Show"),
+            ("--from", "sh ow"),
+        ):
+            with self.subTest(flag=flag, value=value):
+                code, err = self.run_cli(flag, value)
+                self.assertEqual(code, 1)
+                self.assertIn("has to be lower-case", err)
+
+    def test_every_name_on_the_command_line_goes_through_the_one_check(self) -> None:
+        seen: list[tuple[str, str]] = []
+        original = nm.validate_name
+        self.addCleanup(setattr, nm, "validate_name", original)
+        nm.validate_name = lambda kind, value: (seen.append((kind, value)), value)[1]
+        self.run_cli("--showcase", "herdr", "--variant", "60s", "--only", "a,b", "--from", "a")
+        self.assertEqual(
+            seen[:5],
+            [
+                ("--showcase value", "herdr"),
+                ("--variant value", "60s"),
+                ("--from value", "a"),
+                ("--only value", "a"),
+                ("--only value", "b"),
+            ],
+        )
+        # ... and the showcase resolver reaches the same function, rather than its own regex.
+        self.assertIn(("showcase name", "herdr"), seen)
 
 
 class StartupUnwindTest(unittest.TestCase):
