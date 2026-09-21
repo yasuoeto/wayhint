@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tools import headless as headless_mod
 from tools.demo import __main__ as cli
 from tools.demo import scenario as scn
 from tools.demo import session as sess
@@ -325,6 +326,76 @@ class ShowcaseTest(unittest.TestCase):
         root = self.showcases("herdr", "empty")
         (root / "herdr" / "02_herdr_scenario.yaml").write_text(MINIMAL)
         self.assertEqual([s.name for s in shc.discover(root)], ["herdr"])
+
+
+class StartupUnwindTest(unittest.TestCase):
+    """A failure before ``with`` begins has to take down whatever already started.
+
+    Until ``__enter__`` returns there is no ``with`` block, so nothing would call ``__exit__``
+    -- and a compositor started two lines earlier would be left running with its socket in a
+    directory nobody removes. Both sessions build themselves on an ``ExitStack`` for this.
+    """
+
+    def headless(self) -> headless_mod.HeadlessSession:
+        session = headless_mod.HeadlessSession(scratch(self))
+        session.compositor = "labwc"  # nothing is actually started; the spawn is stubbed
+        self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, session.runtime, ignore_errors=True)
+        return session
+
+    def test_a_socket_that_never_appears_tears_the_session_down(self) -> None:
+        session = self.headless()
+        started: list[str] = []
+        torn: list[bool] = []
+
+        def never(path, what):
+            raise RuntimeError(what)
+
+        session._start_bus = lambda: started.append("bus")
+        session._spawn = lambda argv, env: started.append(argv[0])
+        session._wait_for = never
+        session._tear_down = lambda: torn.append(True)
+        with self.assertRaises(RuntimeError):
+            session.__enter__()
+        self.assertEqual(started, ["bus", "labwc"])
+        self.assertTrue(torn, "the compositor was left running")
+
+    def test_a_session_that_starts_is_not_torn_down(self) -> None:
+        session = self.headless()
+        torn: list[bool] = []
+        session._start_bus = lambda: None
+        session._spawn = lambda argv, env: None
+        session._wait_for = lambda path, what: None
+        session.wayhint = lambda *args: ""
+        session._tear_down = lambda: torn.append(True)
+        self.assertIs(session.__enter__(), session)
+        self.assertEqual(torn, [])
+
+    def test_a_demo_session_closes_the_headless_one_when_a_check_fails(self) -> None:
+        class Fake:
+            def __init__(self, home: Path) -> None:
+                self.home, self.entered, self.exited = home, False, False
+
+            def __enter__(self):
+                self.entered = True
+                return self
+
+            def __exit__(self, *_exc):
+                self.exited = True
+
+            def env(self, **_kw):
+                return {"XDG_CONFIG_HOME": str(self.home), "PATH": ""}
+
+        work = scratch(self)
+        demo = sess.DemoSession(parse(MINIMAL), work, work, work)
+        fake = Fake(work)
+        demo.session = fake
+        demo._check_stubs = lambda: (_ for _ in ()).throw(sess.DemoError("no stub"))
+        demo.stop_herdr = lambda: None
+        with self.assertRaisesRegex(sess.DemoError, "no stub"):
+            demo.__enter__()
+        self.assertTrue(fake.entered)
+        self.assertTrue(fake.exited, "the headless session was left running")
 
 
 if __name__ == "__main__":

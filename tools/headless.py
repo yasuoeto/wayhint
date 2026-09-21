@@ -17,6 +17,7 @@ seconds rather than milliseconds. ``./scripts/check-gui`` is the test entry poin
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -134,6 +135,8 @@ class HeadlessSession:
         self.home = Path(tempfile.mkdtemp(prefix="wayhint-headless-"))
         self._procs: list[subprocess.Popen] = []
         self._bus: subprocess.Popen | None = None
+        self._bus_address = ""
+        self.log: object | None = None
 
     # --- environment -----------------------------------------------------------------------
 
@@ -161,36 +164,53 @@ class HeadlessSession:
     # --- lifecycle -------------------------------------------------------------------------
 
     def __enter__(self) -> HeadlessSession:
-        self._bus_address = ""
-        self.runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
-        (self.home / "config" / self.compositor).mkdir(parents=True, exist_ok=True)
-        (self.home / "config" / self.compositor / "autostart").write_text("")
-        self._write_compositor_config()
-        self.log = open(self.home / "session.log", "w+")
-        self._start_bus()
-        self._spawn(
-            [self.compositor],
-            {
-                **self.env(inside=False),
-                "WLR_BACKENDS": "headless",
-                "WLR_LIBINPUT_NO_DEVICES": "1",
-                "WLR_HEADLESS_OUTPUTS": "1",
-                "WLR_RENDERER": "pixman",
-            },
-        )
-        self._wait_for(self.runtime / self.display, "the compositor's socket")
-        self._spawn(
-            [str(REPO / ".venv" / "bin" / "wayhintd"), "--config-dir", str(self.config_dir), "-v"],
-            self.env(),
-        )
-        self._wait_for(self.runtime / "wayhint.sock", "the daemon's socket")
-        # The first map of a GTK surface pulls in the renderer and can take a second. Doing it
-        # once here means no measurement has to carry that cost or race it.
-        self.wayhint("show")
-        self.wayhint("hide")
+        """Start the session, and take down whatever started if any of it fails.
+
+        Every step after the first can fail -- a compositor that exits, a socket that never
+        appears -- and until this returns there is no ``with`` block to run ``__exit__``. The
+        stack undoes what has been done so far and is dismissed only on the way out.
+        """
+        with contextlib.ExitStack() as stack:
+            stack.callback(self._tear_down)
+            self._bus_address = ""
+            self.runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+            (self.home / "config" / self.compositor).mkdir(parents=True, exist_ok=True)
+            (self.home / "config" / self.compositor / "autostart").write_text("")
+            self._write_compositor_config()
+            self.log = open(self.home / "session.log", "w+")
+            self._start_bus()
+            self._spawn(
+                [self.compositor],
+                {
+                    **self.env(inside=False),
+                    "WLR_BACKENDS": "headless",
+                    "WLR_LIBINPUT_NO_DEVICES": "1",
+                    "WLR_HEADLESS_OUTPUTS": "1",
+                    "WLR_RENDERER": "pixman",
+                },
+            )
+            self._wait_for(self.runtime / self.display, "the compositor's socket")
+            self._spawn(
+                [
+                    str(REPO / ".venv" / "bin" / "wayhintd"),
+                    "--config-dir",
+                    str(self.config_dir),
+                    "-v",
+                ],
+                self.env(),
+            )
+            self._wait_for(self.runtime / "wayhint.sock", "the daemon's socket")
+            # The first map of a GTK surface pulls in the renderer and can take a second. Doing
+            # it once here means no measurement has to carry that cost or race it.
+            self.wayhint("show")
+            self.wayhint("hide")
+            stack.pop_all()
         return self
 
     def __exit__(self, *_exc) -> None:
+        self._tear_down()
+
+    def _tear_down(self) -> None:
         # By the group, not by the process: a compositor that re-execs or forks leaves a child
         # behind when only its own pid is signalled, and an orphaned compositor holding the
         # runtime directory is exactly the mess these tests must not leave on the machine.
@@ -203,7 +223,9 @@ class HeadlessSession:
             except subprocess.TimeoutExpired:
                 self._signal_group(proc, signal.SIGKILL)
                 proc.wait(timeout=5)
-        self.log.close()
+        if self.log is not None:
+            self.log.close()
+            self.log = None
         shutil.rmtree(self.runtime, ignore_errors=True)
         shutil.rmtree(self.home, ignore_errors=True)
 
@@ -272,9 +294,15 @@ class HeadlessSession:
         )
 
     def _start_bus(self) -> None:
-        """A session bus of the test's own, so AT-SPI answers for this session and no other."""
+        """A session bus of the test's own, so AT-SPI answers for this session and no other.
+
+        Started with the session's environment, not the one this process happens to have:
+        whatever the bus activates later -- the AT-SPI launcher above all -- inherits it, and
+        would otherwise put its socket in the *real* ``XDG_RUNTIME_DIR``.
+        """
         self._bus = subprocess.Popen(
             ["dbus-daemon", "--session", "--print-address", "--nofork"],
+            env=self.env(inside=False),
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,

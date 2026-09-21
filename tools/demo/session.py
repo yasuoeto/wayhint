@@ -14,6 +14,7 @@ person's own server, and it is stopped before the session is torn down.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import signal
@@ -239,14 +240,14 @@ class DemoSession:
         )
 
     def __enter__(self) -> DemoSession:
-        self.session.__enter__()
-        try:
+        """Bring the session up, undoing each stage if a later one fails."""
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(self.session)
+            stack.callback(self.stop_herdr)
             self._write_herdr_config()
             self._check_stubs()
             self._check_output()
-        except Exception:
-            self.__exit__(None, None, None)
-            raise
+            stack.pop_all()
         return self
 
     def __exit__(self, *exc) -> None:
