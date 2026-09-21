@@ -38,6 +38,9 @@ KEYBINDS = (("W-h", "toggle"), ("W-C-h", "edit-mode"))
 """What the person's own compositor config does (README, compositor の設定)."""
 
 HERDR = "herdr"
+"""The name looked up on PATH once, at the start of a recording. After that the resolved path
+is used, so nothing later -- including ``demo/bin`` being first on the session PATH -- can put
+a different program in its place."""
 HERDR_STOP_TIMEOUT = 15.0
 HERDR_GONE_TIMEOUT = 5.0
 WORK_DIR = "demo"
@@ -221,6 +224,9 @@ class DemoSession:
         self.config_dir = config_dir
         self.work_dir = work_dir
         self.demo_bin = demo_bin.resolve()
+        # Resolved here rather than on every call: the session's own PATH starts with
+        # demo/bin, and this must not be something that turned up in there.
+        self.herdr_path = shutil.which(HERDR) or HERDR
         self.session = HeadlessSession(
             config_dir,
             width=scenario.output.width,
@@ -295,7 +301,7 @@ class DemoSession:
     def herdr(self, *args: str, check: bool = True, timeout: float = 20.0) -> str:
         """Run one Herdr command inside the session. The caller has already allow-listed it."""
         done = subprocess.run(
-            [HERDR, *args],
+            [self.herdr_path, *args],
             env=self.session.env(),
             capture_output=True,
             text=True,

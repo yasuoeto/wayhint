@@ -995,7 +995,20 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   分けるかどうかは不便が出てから決める。**scenario は step の複製で長くなる**(今は 61 step、
   3 variant)。録画は variant ごとに独立した session を立てるので、3 本で 15 分ほどかかる。
   **`demo/fixtures/hints/en/` は削除した**——0031 の 6 場面用に作った英語 sheet で、この showcase の
-  題材とは合わない。英語版は `hints/en/` を新規に作る別タスクで行う。
+  題材とは合わない。英語版は `hints/en/` を新規に作る別タスクで行う。0031 が書いている
+  `demo/scenario.yaml` と `demo/out/` は、それぞれ `demo/showcases/<name>/02_<name>_scenario.yaml`
+  と `demo/showcases/<name>/out/` に移った。脚本の中でプログラムを指す `{demo_bin}` も無くなり、
+  名前だけを書いて recorder が解決する形になった(下記のレビュー修正)。
+- **レビューを受けた修正(2026-09-21)**: Codex のレビューで挙がった穴を塞いだ。
+  **session に shell を置かない**——`default_shell` を `demo/bin/idle` にした。脚本は端末に文字を
+  打つので、pane に shell が居ると脚本から任意のコマンドを実行できる。`idle` は隣の stub の名前
+  だけに反応し、それ以外の入力は読み捨てる。`spawn` の argv も名前だけに限り(絶対パスと `..` を
+  拒否)、解決は recorder が行う。**名前を file 名として安全な形に限定**——showcase 名・variant 名・
+  step id は `[a-z0-9-]` のみ。出力先を消す前に `resolve()` して `out/` 配下か確かめる。
+  **数値は有限に限る**——`.nan` / `.inf` は静かに比較を通り、最初に表に出るのが frame 数になる。
+  **session bus に session の環境を渡す**——渡していなかったので、AT-SPI launcher が実
+  `XDG_RUNTIME_DIR` に socket を作っていた。**起動途中の失敗でも畳む**——`__enter__` が返る前の
+  失敗では `with` が始まっておらず `__exit__` が呼ばれないので、両 session を `ExitStack` で組んだ。
   **0031 の場面④(foot 2 枚を `.p<pid>` 規約で起動し、focus 追従で sheet が差し替わる)は demo から
   落とし、`tests/test_gui_headless.py` の GUI test 1 本に移した**。動画の題材としては Herdr の
   pane 切替と重複するが、製品挙動の回帰としては残す価値がある。この test は `demo/bin/` の stub と

@@ -505,7 +505,8 @@ daemon 側は `_reload_config` で `appearance.language` の変化を見て呼�
 
 ## Demo generation
 
-紹介動画は `./scripts/demo --record` が `demo/scenario.yaml` から生成する(DECISIONS 0031)。
+紹介動画は `./scripts/demo --showcase <name> --record` が
+`demo/showcases/<name>/02_<name>_scenario.yaml` から生成する(DECISIONS 0031、0032)。
 テストと同じ基盤の上に乗っている:
 
 ```

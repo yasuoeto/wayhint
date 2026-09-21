@@ -135,7 +135,7 @@ variants:
 
 | action | 書き方 | すること |
 |---|---|---|
-| `spawn` | `{window: <名前>, argv: [...]}` | 窓を起動する。`argv` の `{demo_bin}` は `demo/bin` に展開 |
+| `spawn` | `{window: <名前>, argv: [foot-herdr]}` | 窓を起動する。argv[0] は `demo/bin` の端末 wrapper、以降は `-` 始まりのオプションか `demo/bin` の stub 名。**すべて名前だけ**(絶対パス不可) |
 | `close` | `{window: <名前>}` | その窓を閉じる。focus が下の窓へ戻るので、別のアプリを見せて帰ってこられる |
 | `key` | `super+ctrl+h` | wtype で compositor に送る。修飾は `super` `ctrl` `shift` `alt` |
 | `type` | `"文字列"` または `{ja: …, en: …}` | wtype で文字を打つ |
@@ -145,8 +145,9 @@ variants:
 | `write` | `{file: "hints/{lang}/herdr.yaml", text: …}` または `{…, source: "fixtures/…"}` | fixtures の作業コピーを書き換える(自動 reload を見せる用) |
 | `pause` | `true` | 何もしない。**字幕だけを出す step** に使う |
 
-`{demo_bin}` と `{lang}` 以外の置換は無い。脚本の文字列が command として実行されることも無い
-(action は固定集合、argv も検証済み、`shell=True` は使わない)。
+置換は `{lang}` だけ。プログラムは**名前で**書き、パスへの解決は recorder が行うので、脚本の
+文字列が PATH 解決に触れることも、command として実行されることも無い(action は固定集合、argv も
+検証済み、`shell=True` は使わない)。
 
 ### `herdr:` の許可 list
 
@@ -250,10 +251,29 @@ process として答えられてしまう。
 
 ## Herdr の隔離
 
-showcase `herdr` は**実物の Herdr を動かす**(DECISIONS 0032)。録画のたびに session 専用の
-`XDG_CONFIG_HOME` へ最小の `config.toml` が書かれる(`tools/demo/session.py` の `HERDR_CONFIG`)。
-止めているのは、初回オンボーディング、テーマ選択、herdr.dev への版チェック、tab 名の入力、そして
-window title のホスト名。shell は `/bin/sh` に固定する。
+showcase `herdr` は**実物の Herdr を動かす**(DECISIONS 0032)。使う binary は録画の開始時に
+PATH から 1 回だけ解決し(このマシンでは `~/.local/bin/herdr`、0.8.2)、以降はその絶対パスで
+呼ぶ——session の PATH は `demo/bin` が先頭なので、名前で呼び続けるとそこに置かれたものに
+すり替わりうる。
+
+録画のたびに session 専用の `XDG_CONFIG_HOME` へ最小の `config.toml` が書かれる
+(`tools/demo/session.py` の `HERDR_CONFIG`)。効かせている設定と理由:
+
+| 設定 | 理由 |
+|---|---|
+| `onboarding = false` | 初回のオンボーディング画面を出さない |
+| `[theme] name = "catppuccin"` | 決めないと初回にテーマ選択を聞かれ、それが録画に写る |
+| `[update] version_check = false` | herdr.dev への版チェックを止める(ネットワーク到達) |
+| `[update] manifest_check = false` | herdr.dev からの agent-detection manifest の取得を止める。**ネットワーク到達を防ぐと同時に**、取得の有無で agent 判定が変わる非決定性も防ぐ。session の state は空なので同梱版が使われる |
+| `[ui] prompt_new_tab_name = false` | `tab create` が名前を聞かずに済む(生成名 `1` `2` になる) |
+| `[ui] window_title = "{workspace}"` | 既定は `"{hostname}: {workspace}"` で、**ホスト名が窓 title として全 frame に写る** |
+| `[terminal] default_shell = <demo_bin>/idle` | pane に shell を置かない(下記) |
+
+**session に shell は無い。** `default_shell` は `demo/bin/idle` で、これは 1 行出して stdin を
+読み、行が隣の stub の名前ならそれに `exec` するだけ。`herdr pane run <pane> claude` がまさに
+その 1 行になる。脚本は端末に文字を打つ(「キーボードを奪わない」場面)ので、shell が居ると
+そこから何でも実行できてしまう。録画中に session 内の `comm` を数えて、`sh` / `bash` / `dash` が
+1 つも無いことを確かめてある。
 
 session の環境からは **`HERDR_*` をすべて落とす**。落とさないと、Herdr の pane から
 `./scripts/demo` を実行したときに `HERDR_SOCKET_PATH` が継承され、session 内の herdr client が
