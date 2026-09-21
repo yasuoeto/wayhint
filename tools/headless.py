@@ -108,6 +108,7 @@ class HeadlessSession:
         keybinds: Sequence[tuple[str, str]] = (),
         window_rules: Sequence[WindowRule] = (),
         gtk_settings: dict[str, str] | None = None,
+        extra_env: dict[str, str] | None = None,
         tag: str | None = None,
     ) -> None:
         self.config_dir = config_dir
@@ -122,6 +123,9 @@ class HeadlessSession:
         self.window_rules = tuple(window_rules)
         # ``gtk-4.0/settings.ini`` for the clients inside, e.g. ``gtk-cursor-blink=false``.
         self.gtk_settings = dict(gtk_settings or {})
+        # Environment for everything started in here, applied before the session's own
+        # variables so that those cannot be overridden by accident. A PATH belongs here.
+        self.extra_env = dict(extra_env or {})
         self.compositor = compositor()
         self.display = "wayland-0"
         # AF_UNIX paths are capped at about 108 bytes, so this has to be short; a directory under
@@ -134,7 +138,17 @@ class HeadlessSession:
     # --- environment -----------------------------------------------------------------------
 
     def env(self, *, inside: bool = True) -> dict[str, str]:
-        env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY")}
+        # ``HERDR_*`` goes too. A session started from inside a Herdr pane inherits
+        # ``HERDR_SOCKET_PATH``, and a herdr client started in here would then talk to the
+        # *person's own* server instead of the one in this session -- measured, not feared.
+        # The adapter strips these as well (DECISIONS 0028), but that only covers the daemon's
+        # own calls, not a terminal the session starts.
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("DISPLAY", "WAYLAND_DISPLAY") and not k.startswith("HERDR_")
+        }
+        env.update(self.extra_env)
         env["XDG_RUNTIME_DIR"] = str(self.runtime)
         env["XDG_CONFIG_HOME"] = str(self.home / "config")
         env["HOME"] = str(self.home)
@@ -278,16 +292,18 @@ class HeadlessSession:
             )
         )
 
-    def spawn(self, argv: Sequence[str]) -> subprocess.Popen:
+    def spawn(self, argv: Sequence[str], *, cwd: Path | None = None) -> subprocess.Popen:
         """Start a client inside the session and take responsibility for killing it.
 
         Its output goes nowhere: a program drawing a terminal writes escape sequences, and the
         session log is read as text. Whatever this returns can be passed to :meth:`stop`; what
-        is not stopped is killed with everything else on the way out.
+        is not stopped is killed with everything else on the way out. ``cwd`` matters more than
+        it looks: a terminal multiplexer names things after it and puts that name on screen.
         """
         proc = subprocess.Popen(
             list(argv),
             env=self.env(),
+            cwd=str(cwd) if cwd is not None else None,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,

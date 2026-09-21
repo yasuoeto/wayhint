@@ -1,7 +1,7 @@
-"""``./scripts/demo`` -- read a scenario, and (with ``--record``) record it.
+"""``./scripts/demo`` -- read a showcase's scenario, and (with ``--record``) record it.
 
 Recording starts a compositor, so it is opt-in the way ``./scripts/setup-terminals --apply``
-is: with no arguments this only reads the scenario and prints what it would do.
+is: with no arguments this only reads what is there and prints it.
 """
 
 from __future__ import annotations
@@ -14,11 +14,12 @@ from pathlib import Path
 from tools.demo import actions, capture, encode
 from tools.demo import scenario as scn
 from tools.demo import session as sess
-from tools.demo.scenario import Scenario, ScenarioError, Step
+from tools.demo import showcase as shc
+from tools.demo.scenario import Scenario, ScenarioError, Step, Variant
 
 REPO = Path(__file__).resolve().parent.parent.parent
 DEMO = REPO / "demo"
-LANGUAGES = ("en", "ja")
+SHOWCASES = DEMO / "showcases"
 RECORD_TOOLS = ("grim", "magick", "montage", "foot", "ffmpeg")
 INJECT_ACTIONS = ("key", "type")
 """Actions that go in through the virtual keyboard, and so need ``wtype``."""
@@ -27,16 +28,24 @@ INJECT_ACTIONS = ("key", "type")
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        script = scn.load(args.scenario)
+        if not args.showcase:
+            return _list_showcases(args)
+        show = shc.load(args.showcases, args.showcase)
+        for warning in show.warnings:
+            print(f"demo: warning: {warning}", file=sys.stderr)
+        script = scn.load(show.scenario, demo_bin=args.bin_dir)
+        variants = _variants(script, args.variant)
         only = _steps_named(args.only)
-        selected = script.select(only, getattr(args, "from"))
+        chosen = [v.select(only, getattr(args, "from")) for v in variants]
+        whole = not only and not getattr(args, "from")
         if not args.record:
-            _print_plan(args.scenario, selected, _languages(args.lang), validate=args.validate)
-            return 0
+            return _print_plan(show, script, chosen, args, whole=whole)
+        _check_lengths(script, chosen, whole=whole)
         for language in _languages(args.lang):
-            _record(args, selected, language)
+            for variant in chosen:
+                _record(args, show, script, variant, language)
         return 0
-    except (ScenarioError, sess.DemoError) as e:
+    except (ScenarioError, shc.ShowcaseError, sess.DemoError) as e:
         print(f"demo: {e}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
@@ -47,9 +56,11 @@ def main(argv: list[str] | None = None) -> int:
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="./scripts/demo",
-        description="Record the wayhint demo from demo/scenario.yaml. "
-        "With no arguments it only reads the scenario and prints the plan.",
+        description="Record a demo video from demo/showcases/<name>/. With no arguments it "
+        "lists the showcases and records nothing.",
     )
+    p.add_argument("--showcase", help="which showcase to read; required by --record")
+    p.add_argument("--variant", default="all", help="a variant name, or all (the default)")
     p.add_argument("--record", action="store_true", help="actually record (starts a compositor)")
     p.add_argument(
         "--validate", action="store_true", help="check the scenario and say nothing else"
@@ -57,13 +68,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dry-run", action="store_true", help="the default: print the plan, record nothing"
     )
-    p.add_argument("--lang", default="all", choices=("en", "ja", "all"), help="default: all")
+    p.add_argument("--lang", default=scn.DEFAULT_LANGUAGE, choices=scn.LANGUAGES)
     p.add_argument("--only", help="record these steps only, comma separated")
     p.add_argument("--from", help="start at this step")
     p.add_argument("--keep", action="store_true", help="keep the captured frames")
-    p.add_argument("--no-burn", action="store_true", help="do not burn the captions into the video")
-    p.add_argument("--scenario", type=Path, default=DEMO / "scenario.yaml")
-    p.add_argument("--out", type=Path, default=DEMO / "out", help="default: demo/out")
+    p.add_argument("--showcases", type=Path, default=SHOWCASES)
     p.add_argument("--fixtures", type=Path, default=DEMO / "fixtures")
     p.add_argument("--bin", type=Path, default=DEMO / "bin", dest="bin_dir")
     return p
@@ -77,39 +86,110 @@ def _steps_named(value: str | None) -> list[str] | None:
 
 
 def _languages(choice: str) -> tuple[str, ...]:
-    return LANGUAGES if choice == "all" else (choice,)
+    return (choice,)
+
+
+def _variants(script: Scenario, choice: str) -> list[Variant]:
+    return list(script.variants) if choice == "all" else [script.variant(choice)]
+
+
+def _list_showcases(args: argparse.Namespace) -> int:
+    if args.record:
+        names = ", ".join(s.name for s in shc.discover(args.showcases)) or "none yet"
+        print(
+            f"demo: --record needs --showcase <name> (there is: {names})",
+            file=sys.stderr,
+        )
+        return 1
+    found = shc.discover(args.showcases)
+    if not found:
+        print(f"demo: no showcases in {args.showcases}")
+        return 0
+    print(f"showcases in {args.showcases}:")
+    for show in found:
+        try:
+            script = scn.load(show.scenario, demo_bin=args.bin_dir)
+            fps = script.output.fps
+            variants = ", ".join(f"{v.name} {v.seconds(fps):.0f}s" for v in script.variants)
+            story = "storyboard" if show.storyboard else "no storyboard"
+            print(f"  {show.name:<12} {variants}   ({story}, {show.scenario.name})")
+        except ScenarioError as e:
+            print(f"  {show.name:<12} unreadable: {e}")
+    print("nothing was recorded; add --showcase <name> --record")
+    return 0
 
 
 def _print_plan(
-    path: Path, script: Scenario, languages: tuple[str, ...], *, validate: bool
-) -> None:
-    if validate:
-        print(f"demo: {path} is a valid scenario ({len(script.steps)} steps)")
-        return
+    show: shc.Showcase,
+    script: Scenario,
+    variants: list[Variant],
+    args: argparse.Namespace,
+    *,
+    whole: bool,
+) -> int:
     fps = script.output.fps
-    print(f"scenario: {path}")
+    if args.validate:
+        _check_lengths(script, variants, whole=whole)
+        steps = len(script.steps)
+        print(f"demo: {show.scenario} is valid ({steps} steps, {len(script.variants)} variants)")
+        return 0
+    print(f"showcase: {show.name} ({show.root})")
+    print(f"scenario: {show.scenario.name}")
     print(f"output:   {script.output.width}x{script.output.height} at {fps} fps")
-    print(f"steps:    {len(script.steps)}")
-    for number, step in enumerate(script.steps, start=1):
-        frames = step.frames(fps)
+    print(f"language: {args.lang}")
+    for variant in variants:
+        off = variant.off_target(fps)
+        verdict = "ok" if not off else f"OFF TARGET by {off:.1f}s"
+        square = ", square" if variant.square else ""
         print(
-            f"  {number:02d} {step.id:<18} {step.action.kind:<6} "
-            f"{step.hold:>5.1f}s {frames:>5}f  wait: {step.wait_for.describe()}"
+            f"\n  {variant.name}: {len(variant.steps)} steps, {variant.seconds(fps):.1f}s "
+            f"(target {variant.target:g} ±{variant.tolerance:g}{square}) [{verdict}]"
         )
-    print(f"total:    {script.seconds():.1f}s ({script.frames()} frames) per language")
-    where = ", ".join(f"demo/out/{lang}" for lang in languages)
-    print(f"languages: {', '.join(languages)}  ->  {where}")
-    print("nothing was recorded; add --record")
+        for number, step in enumerate(variant.steps, start=1):
+            caption = step.caption.get(args.lang, "")
+            print(
+                f"    {number:02d} {step.id:<16} {step.action.kind:<6} "
+                f"{step.hold:>5.1f}s {step.frames(fps):>5}f  {caption[:44]}"
+            )
+    where = show.root / shc.OUT / args.lang
+    print(f"\nnothing was recorded; add --record  ->  {where}/<variant>/")
+    return 1 if any(v.off_target(fps) for v in variants) and whole else 0
 
 
-def _record(args: argparse.Namespace, script: Scenario, language: str) -> None:
+def _check_lengths(script: Scenario, variants: list[Variant], *, whole: bool) -> None:
+    if not whole:
+        return  # --only / --from record a part on purpose; the target is about the whole
+    fps = script.output.fps
+    bad = [v for v in variants if v.off_target(fps)]
+    if bad:
+        lines = "\n".join(
+            f"  {v.name}: {v.seconds(fps):.1f}s, wanted {v.target:g} ±{v.tolerance:g}" for v in bad
+        )
+        raise ScenarioError("a variant is not the length the storyboard asked for:\n" + lines)
+
+
+def _record(
+    args: argparse.Namespace,
+    show: shc.Showcase,
+    script: Scenario,
+    variant: Variant,
+    language: str,
+) -> None:
+    missing = [s.id for s in variant.steps if s.caption and language not in s.caption]
+    if missing:
+        raise sess.DemoError(
+            f"no {language} caption for: {', '.join(missing)} "
+            f"(write caption.{language}, or record --lang {scn.DEFAULT_LANGUAGE})"
+        )
     tools = RECORD_TOOLS
-    typed = next((s.id for s in script.steps if s.action.kind in INJECT_ACTIONS), None)
+    typed = next((s.id for s in variant.steps if s.action.kind in INJECT_ACTIONS), None)
     if typed is not None:
         # Only when the scenario actually presses keys. The point of those steps is the path
         # from a key to the daemon, so they are never quietly replaced by the CLI: without
         # wtype the recording stops here and says so (DECISIONS 0031).
         tools = (*tools, "wtype")
+    if any(s.action.kind == "herdr" for s in variant.steps):
+        tools = (*tools, sess.HERDR)
     try:
         sess.check_requirements(
             sess.Requirements(tools=tools, fonts=(script.fonts.ui, script.fonts.mono))
@@ -118,22 +198,22 @@ def _record(args: argparse.Namespace, script: Scenario, language: str) -> None:
         if typed is not None and "wtype" in str(e):
             raise sess.DemoError(f"{e}\n  step {typed!r} sends a key, which needs wtype") from e
         raise
-    out = args.out / language
+    out = show.out(language, variant.name)
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    print(f"demo: recording {language} -> {out}")
-    work = sess.workspace(language)
+    print(f"demo: recording {show.name} {variant.name} in {language} -> {out}")
+    work = sess.workspace(show.name, language)
     try:
         config = sess.prepare_config(args.fixtures, language, work)
-        with sess.DemoSession(script, config) as demo:
+        with sess.DemoSession(script, config, work / sess.WORK_DIR, args.bin_dir) as demo:
             run = actions.Run(
                 session=demo, language=language, demo_bin=args.bin_dir.resolve(), windows={}
             )
             recorder = capture.Recorder(out, script)
-            for number, step in enumerate(script.steps, start=1):
-                _run_step(run, recorder, step, number)
-        _finish(args, script, recorder, out, language)
+            for number, step in enumerate(variant.steps, start=1):
+                _run_step(run, recorder, step, number, script.output.fps)
+        _finish(args, script, recorder, out, language, show, variant)
     finally:
         shutil.rmtree(work, ignore_errors=True)
         # A run that failed before it captured anything leaves a directory where a recording
@@ -142,7 +222,7 @@ def _record(args: argparse.Namespace, script: Scenario, language: str) -> None:
             shutil.rmtree(out)
 
 
-def _run_step(run: actions.Run, recorder: capture.Recorder, step: Step, number: int) -> None:
+def _run_step(run: actions.Run, recorder: capture.Recorder, step: Step, number: int, fps: int):
     if step.precondition is not None:
         ok, seen = actions.satisfied(run, step.precondition)
         if not ok:
@@ -154,8 +234,7 @@ def _run_step(run: actions.Run, recorder: capture.Recorder, step: Step, number: 
     actions.perform(run, step)
     seen = actions.wait_until(run, step.wait_for, f"step {step.id!r}")
     recorder.record(run.session.session, step, number)
-    frames = step.frames(recorder.scenario.output.fps)
-    print(f"  {number:02d} {step.id:<18} {frames:>5}f  {seen}")
+    print(f"  {number:02d} {step.id:<16} {step.frames(fps):>5}f  {seen}")
 
 
 def _finish(
@@ -164,23 +243,27 @@ def _finish(
     recorder: capture.Recorder,
     out: Path,
     language: str,
+    show: shc.Showcase,
+    variant: Variant,
 ) -> None:
     font = sess.font_file(script.fonts.ui)
     captions = encode.captions_for(recorder.spans(), language)
+    stem = f"wayhint-{show.name}-{variant.name}.{language}"
     videos = encode.encode(
         recorder.frames_dir,
         out,
         script,
         captions,
         font_file=font,
-        burn=not args.no_burn,
+        stem=stem,
+        square=variant.square,
     )
-    encode.write_srt(out / "captions.srt", captions, script.output.fps)
+    encode.write_srt(out / f"{stem}.srt", captions, script.output.fps)
     sheet = capture.contact_sheet(recorder, out / "contact-sheet.png", font)
     if not args.keep:
         shutil.rmtree(recorder.frames_dir)
-        # The per-caption text files are ffmpeg's input, not a result; captions.srt is the
-        # copy worth keeping.
+        # The per-caption text files are ffmpeg's input, not a result; the .srt is the copy
+        # worth keeping.
         shutil.rmtree(out / "captions", ignore_errors=True)
     names = ", ".join(path.name for path in [*videos, sheet])
     print(f"demo: {recorder.frames} frames ({recorder.frames / script.output.fps:.1f}s) -> {names}")

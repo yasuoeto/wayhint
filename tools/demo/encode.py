@@ -1,8 +1,14 @@
-"""Frames in, one video out -- and the captions, both burnt in and beside it.
+"""Frames in, the videos out -- and the captions, both burnt in and beside them.
 
 ffmpeg only ever joins what ``capture`` produced: the frame rate it is given matches the one
 the frames were counted at, so the length of the result is the number of files on disk divided
 by the fps, and nothing here can change it.
+
+Four files come out of one recording, because they are wanted for different things
+(DECISIONS 0032): the plain video for anyone who wants to add their own subtitles, the burnt-in
+one for posting as it is, a WebM of the same for a page that cannot play H.264, and -- for a
+variant marked ``square`` -- a square crop for feeds that show one. The ``.srt`` is written
+whatever happens, so the plain video is usable without re-encoding anything.
 """
 
 from __future__ import annotations
@@ -15,6 +21,8 @@ from tools.demo.scenario import Scenario, Step
 
 CRF_H264 = "20"
 CRF_VP9 = "32"
+SQUARE_CROP = "crop=ih:ih:iw-ih:0"
+"""A square taken from the right-hand edge: the overlay lives there, and it has to be whole."""
 
 
 @dataclass(frozen=True)
@@ -39,48 +47,43 @@ def encode(
     captions: list[Caption],
     *,
     font_file: str,
-    burn: bool = True,
-    stem: str = "wayhint-demo",
+    stem: str,
+    square: bool = False,
 ) -> list[Path]:
-    """Write ``<stem>.mp4`` and ``<stem>.webm`` from the frames, captions burnt in or not."""
+    """Write the plain, subtitled, WebM and (optionally) square videos. Returns their paths."""
     if not any(frames_dir.iterdir()):
         raise ValueError("no frames to encode")
     fps = str(scenario.output.fps)
-    filters = _drawtext(captions, out_dir, font_file, scenario) if burn else ""
-    common = ["-framerate", fps, "-i", str(frames_dir / "%06d.png")]
-    if filters:
-        common += ["-vf", filters]
+    burn = _drawtext(captions, out_dir, font_file, scenario.output.height)
+    square_burn = _drawtext(
+        captions, out_dir, font_file, scenario.output.height, prefix=f"{SQUARE_CROP},"
+    )
+    jobs = [
+        (f"{stem}.mp4", "libx264", "", _H264),
+        (f"{stem}.sub.mp4", "libx264", burn, _H264),
+        (f"{stem}.webm", "libvpx-vp9", burn, _VP9),
+        *([(f"{stem}.square.mp4", "libx264", square_burn or SQUARE_CROP, _H264)] if square else []),
+    ]
     written = []
-    for name, codec, extra in (
-        ("mp4", "libx264", ["-crf", CRF_H264, "-preset", "medium"]),
-        ("webm", "libvpx-vp9", ["-crf", CRF_VP9, "-b:v", "0", "-row-mt", "1"]),
-    ):
-        target = out_dir / f"{stem}.{name}"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-loglevel",
-                "error",
-                *common,
-                "-c:v",
-                codec,
-                *extra,
-                "-pix_fmt",
-                "yuv420p",
-                "-r",
-                fps,
-                str(target),
-            ],
-            check=True,
-            capture_output=True,
-            timeout=900,
-        )
+    for name, codec, filters, extra in jobs:
+        target = out_dir / name
+        argv = ["ffmpeg", "-y", "-loglevel", "error", "-framerate", fps, "-i",
+                str(frames_dir / "%06d.png")]  # fmt: skip
+        if filters:
+            argv += ["-vf", filters]
+        argv += ["-c:v", codec, *extra, "-pix_fmt", "yuv420p", "-r", fps, str(target)]
+        subprocess.run(argv, check=True, capture_output=True, timeout=3600)
         written.append(target)
     return written
 
 
-def _drawtext(captions: list[Caption], out_dir: Path, font_file: str, scenario: Scenario) -> str:
+_H264 = ["-crf", CRF_H264, "-preset", "medium"]
+_VP9 = ["-crf", CRF_VP9, "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2"]
+
+
+def _drawtext(
+    captions: list[Caption], out_dir: Path, font_file: str, height: int, prefix: str = ""
+) -> str:
     """One ``drawtext`` per caption, each switched on for the frames of its step.
 
     The text goes in a file rather than in the filter string: a caption is prose, with colons
@@ -91,7 +94,7 @@ def _drawtext(captions: list[Caption], out_dir: Path, font_file: str, scenario: 
         return ""
     folder = out_dir / "captions"
     folder.mkdir(parents=True, exist_ok=True)
-    size = max(18, round(scenario.output.height / 26))
+    size = max(18, round(height / 26))
     parts = []
     for number, caption in enumerate(captions, start=1):
         path = folder / f"{number:02d}.txt"
@@ -106,7 +109,9 @@ def _drawtext(captions: list[Caption], out_dir: Path, font_file: str, scenario: 
                     "fontcolor=white",
                     f"fontsize={size}",
                     "x=(w-text_w)/2",
-                    f"y=h-{size * 3}",
+                    # Just above the bottom edge: the overlay is tall and the band has to stay
+                    # clear of it (the 60s cut crops to a square, where it matters most).
+                    f"y=h-{size * 2 + 12}",
                     "box=1",
                     "boxcolor=black@0.62",
                     "boxborderw=14",
@@ -114,7 +119,7 @@ def _drawtext(captions: list[Caption], out_dir: Path, font_file: str, scenario: 
                 ]
             )
         )
-    return ",".join(parts)
+    return prefix + ",".join(parts)
 
 
 def _escape(value: str) -> str:
@@ -123,7 +128,7 @@ def _escape(value: str) -> str:
 
 
 def write_srt(path: Path, captions: list[Caption], fps: int) -> Path:
-    """The same captions as a sidecar, for a recording made with ``--no-burn``."""
+    """The same captions as a sidecar, so the plain video can be used as it is."""
     blocks = []
     for number, caption in enumerate(captions, start=1):
         start = _timestamp((caption.first - 1) / fps)

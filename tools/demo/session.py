@@ -5,23 +5,60 @@ its own runtime directory, config home, HOME and session bus, and all of it is r
 way out. The fixtures are copied into that throwaway HOME first, because the demo edits them --
 the edit-mode scene writes a hint and the YAML-error scene breaks a sheet on purpose, and
 ``demo/fixtures/`` has to come out of a recording unchanged.
+
+Herdr is the one real program a recording runs (DECISIONS 0032), and it gets the same treatment:
+its config, socket, logs and state all live under the session's ``XDG_CONFIG_HOME``, it is
+started with ``HERDR_*`` stripped from the environment so a client in here cannot reach the
+person's own server, and it is stopped before the session is torn down.
 """
 
 from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from tools.demo.scenario import Scenario
 from tools.headless import HeadlessSession, WindowRule, compositor
 
-APP_ID = "foot.p*"
+APP_ID = "foot*"
+"""Every terminal the demo starts, whatever suffix it carries.
+
+The placement rules tell the windows apart by *title*, which the recorder sets from the
+scenario, so the app_id only has to be wide enough to catch them all: ``foot.p<pid>`` from the
+pid-suffix convention and ``foot-herdr`` from the one Herdr runs in (docs/TERMINALS.md)."""
 KEYBINDS = (("W-h", "toggle"), ("W-C-h", "edit-mode"))
 """What the person's own compositor config does (README, compositor の設定)."""
+
+HERDR = "herdr"
+HERDR_STOP_TIMEOUT = 15.0
+HERDR_GONE_TIMEOUT = 5.0
+WORK_DIR = "demo"
+"""The directory the terminals are started in. Herdr names its workspace after it, and that
+name is on screen, so it is a fixed readable word rather than a temporary path."""
+
+HERDR_CONFIG = """\
+# Written by tools/demo/session.py for one recording. Everything that would reach the network,
+# ask a question, or put a machine-specific string on screen is turned off (DECISIONS 0032).
+onboarding = false
+[theme]
+# Pinned, or Herdr asks the user to choose one on first run and that question is what the
+# recording would show instead of the terminal.
+name = "catppuccin"
+[update]
+version_check = false
+manifest_check = false
+[ui]
+prompt_new_tab_name = false
+window_title = "{workspace}"
+[terminal]
+default_shell = "/bin/sh"
+"""
 
 FONT_PACKAGES = {
     "Noto Sans CJK JP": "fonts-noto-cjk",
@@ -37,6 +74,7 @@ TOOL_PACKAGES = {
     "foot": "foot",
     "labwc": "labwc",
 }
+TOOL_NOTES = {"herdr": "herdr is not an apt package; see https://herdr.dev"}
 
 
 class DemoError(Exception):
@@ -55,9 +93,12 @@ def check_requirements(need: Requirements) -> None:
     """Fail before a compositor is started, naming the package to install."""
     missing_tools = [name for name in need.tools if shutil.which(name) is None]
     if missing_tools:
-        packages = sorted({TOOL_PACKAGES.get(name, name) for name in missing_tools})
+        notes = [TOOL_NOTES[name] for name in missing_tools if name in TOOL_NOTES]
+        packages = sorted({TOOL_PACKAGES[name] for name in missing_tools if name in TOOL_PACKAGES})
+        hint = f" -- sudo apt install {' '.join(packages)}" if packages else ""
         raise DemoError(
-            f"not on PATH: {', '.join(missing_tools)} -- sudo apt install {' '.join(packages)}"
+            f"not on PATH: {', '.join(missing_tools)}{hint}"
+            + ("".join(f"\n  {note}" for note in notes))
         )
     if compositor() is None:
         raise DemoError("no compositor on PATH -- sudo apt install labwc")
@@ -95,7 +136,7 @@ def font_file(family: str) -> str:
     return done.stdout.strip()
 
 
-def workspace(language: str) -> Path:
+def workspace(showcase: str, language: str) -> Path:
     """The throwaway directory a recording runs in -- at a *fixed* path, and emptied first.
 
     Fixed because the overlay shows the path of a sheet it could not read, and the demo records
@@ -103,9 +144,10 @@ def workspace(language: str) -> Path:
     screen every run and there goes frame-for-frame reproducibility. The uid keeps two people
     on one machine out of each other's way.
     """
-    root = Path(tempfile.gettempdir()) / f"wayhint-demo-{os.getuid()}-{language}"
+    root = Path(tempfile.gettempdir()) / f"wayhint-demo-{os.getuid()}-{showcase}-{language}"
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(mode=0o700, parents=True)
+    (root / WORK_DIR).mkdir()
     return root
 
 
@@ -118,6 +160,12 @@ def prepare_config(fixtures: Path, language: str, into: Path) -> Path:
     """
     root = into / "config"
     shutil.copytree(fixtures, root)
+    hints = root / "hints" / language
+    if not hints.is_dir():
+        raise DemoError(
+            f"no hints for {language!r}: {fixtures / 'hints' / language} does not exist "
+            f"(the sheets are written per language; see demo/README.md)"
+        )
     config = root / "config.yaml"
     text = config.read_text()
     lines = [
@@ -130,12 +178,39 @@ def prepare_config(fixtures: Path, language: str, into: Path) -> Path:
     return root
 
 
+def session_herdr_pids(home: Path) -> list[int]:
+    """Herdr processes belonging to *this* session, found by their HOME.
+
+    The server daemonises out of the session's process group, so it survives the kill that
+    takes the compositor down, and it cannot be found by name either -- the person's own Herdr
+    is running too and must not be touched. The environment is the one thing that separates
+    them.
+    """
+    want = f"HOME={home}".encode()
+    pids = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "comm").read_bytes().strip() != HERDR.encode():
+                continue
+            if want in (entry / "environ").read_bytes().split(b"\0"):
+                pids.append(int(entry.name))
+        except OSError:
+            continue  # it exited while we looked at it
+    return pids
+
+
 class DemoSession:
     """A headless session with the demo's keybinds, window placement and fixtures."""
 
-    def __init__(self, scenario: Scenario, config_dir: Path) -> None:
+    def __init__(
+        self, scenario: Scenario, config_dir: Path, work_dir: Path, demo_bin: Path
+    ) -> None:
         self.scenario = scenario
         self.config_dir = config_dir
+        self.work_dir = work_dir
+        self.demo_bin = demo_bin.resolve()
         self.session = HeadlessSession(
             config_dir,
             width=scenario.output.width,
@@ -148,21 +223,108 @@ class DemoSession:
             # The overlay's own text cursor blinks in the search box and in the form. Anything
             # that animates makes two recordings of the same scenario differ (DECISIONS 0031).
             gtk_settings={"gtk-cursor-blink": "false"},
+            # demo/bin first: a command typed into a pane is echoed on screen, so it is typed
+            # by name, and the name has to reach the stub rather than the real program.
+            extra_env={"PATH": f"{self.demo_bin}:{os.environ.get('PATH', '')}"},
             tag="d",
         )
-        self._temp: Path | None = None
 
     def __enter__(self) -> DemoSession:
         self.session.__enter__()
         try:
+            self._write_herdr_config()
+            self._check_stubs()
             self._check_output()
         except Exception:
-            self.session.__exit__(None, None, None)
+            self.__exit__(None, None, None)
             raise
         return self
 
     def __exit__(self, *exc) -> None:
-        self.session.__exit__(*exc)
+        home = self.session.home
+        try:
+            self.stop_herdr()
+        finally:
+            self.session.__exit__(*exc)
+            # A Herdr that had to be killed writes its session file on the way out, which
+            # re-creates the directory the line above just removed (measured in C-A).
+            if home.exists():
+                shutil.rmtree(home, ignore_errors=True)
+
+    def _check_stubs(self) -> None:
+        """Every program the scenario runs in a pane has to resolve to ``demo/bin``.
+
+        This is the guard on the one rule that matters most here: the demo runs *stubs*, never
+        the real coding agents (DECISIONS 0032). A missing PATH entry would silently start the
+        real program instead -- it happened once during development -- and the recording would
+        show that program's first-run screen.
+        """
+        path = self.session.env()["PATH"]
+        for step in self.scenario.steps.values():
+            if step.action.kind != "herdr":
+                continue
+            argv = step.action.payload["argv"]
+            if argv[:2] != ["pane", "run"] or len(argv) < 4:
+                continue
+            command = argv[3]
+            found = shutil.which(command, path=path)
+            if found is None or Path(found).parent != self.demo_bin:
+                raise DemoError(
+                    f"step {step.id!r} would run {found or command!r}, not the stub in "
+                    f"{self.demo_bin}; the session PATH is wrong"
+                )
+
+    # --- herdr ---------------------------------------------------------------------------
+
+    def _write_herdr_config(self) -> None:
+        """Herdr reads ``$XDG_CONFIG_HOME/herdr/``, which is inside the session (C-A)."""
+        directory = Path(self.session.env()["XDG_CONFIG_HOME"]) / "herdr"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "config.toml").write_text(HERDR_CONFIG)
+
+    def herdr(self, *args: str, check: bool = True, timeout: float = 20.0) -> str:
+        """Run one Herdr command inside the session. The caller has already allow-listed it."""
+        done = subprocess.run(
+            [HERDR, *args],
+            env=self.session.env(),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if check and done.returncode != 0:
+            raise DemoError(f"herdr {' '.join(args)}: {done.stderr.strip()[-400:]}")
+        return done.stdout.strip()
+
+    def stop_herdr(self) -> None:
+        """Ask Herdr to stop, then make sure it did -- without touching anyone else's."""
+        home = self.session.home
+        if not session_herdr_pids(home):
+            return
+        try:
+            self.herdr("server", "stop", check=False, timeout=HERDR_STOP_TIMEOUT)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if self._wait_gone(home):
+            return
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            for pid in session_herdr_pids(home):
+                try:
+                    os.kill(pid, sig)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            if self._wait_gone(home):
+                return
+
+    @staticmethod
+    def _wait_gone(home: Path) -> bool:
+        deadline = time.monotonic() + HERDR_GONE_TIMEOUT
+        while time.monotonic() < deadline:
+            if not session_herdr_pids(home):
+                return True
+            time.sleep(0.2)
+        return not session_herdr_pids(home)
+
+    # --- the output ----------------------------------------------------------------------
 
     def _check_output(self) -> None:
         """The recording is only reproducible if every frame is the size the scenario says."""

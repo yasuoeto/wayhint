@@ -51,7 +51,17 @@ def perform(run: Run, step: Step) -> None:
         # The title is how the compositor rule finds this window (scenario ``windows``), so it
         # is put in by the recorder rather than written into every argv in the scenario.
         argv.insert(1, f"--title={payload['window']}")
-        run.windows[payload["window"]] = session.spawn(argv)
+        # Always the same working directory: Herdr names its workspace after it and shows that
+        # name in the sidebar, so a temporary path would differ between runs (DECISIONS 0032).
+        run.windows[payload["window"]] = session.spawn(argv, cwd=run.session.work_dir)
+    elif kind == "close":
+        # The counterpart of ``spawn``: with the window gone the compositor gives the focus
+        # back to the one underneath, which is how a scene can visit another application and
+        # return without a pointer or a window-switcher binding.
+        window = run.windows.pop(payload["window"], None)
+        if window is None:
+            raise DemoError(f"step {step.id!r}: no window called {payload['window']!r} is open")
+        session.stop(window)
     elif kind == "key":
         session.press(*payload["keys"])
     elif kind == "type":
@@ -69,6 +79,10 @@ def perform(run: Run, step: Step) -> None:
             )
     elif kind == "cli":
         session.wayhint(payload["command"])
+    elif kind == "herdr":
+        run.session.herdr(*(_expand(part, run) for part in payload["argv"]))
+    elif kind == "pause":
+        pass  # the step exists for its caption; ``wait_for`` still has to hold
     else:
         _write(run, step)
 

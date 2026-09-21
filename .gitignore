@@ -19,4 +19,4 @@ __pycache__/
 *.egg-info/
 
 # demo
-demo/out/
+demo/showcases/*/out/

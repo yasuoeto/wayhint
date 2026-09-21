@@ -1,10 +1,15 @@
-"""The script of the demo: what happens, in what order, and for how long.
+"""The script of a showcase: what happens, in what order, and for how long.
 
-A scenario is data. Nothing in it is ever executed as a command -- the only substitution is
-``{demo_bin}``, and the actions it can ask for are a fixed set with fixed argv (DECISIONS 0031).
-Reading it does not need a compositor, so ``--validate`` and ``--dry-run`` work anywhere.
+A scenario is data. Nothing in it is ever executed as a command -- the actions it can ask for
+are a fixed set, their arguments are checked against an allow-list, and the only substitutions
+are ``{demo_bin}`` and ``{lang}`` (DECISIONS 0031, 0032).
 
-The length of the recording is decided here, in frames, and not by how fast the machine runs:
+One scenario holds every step of a showcase once, and each ``variant`` (60s / 3min / 5min) is a
+list of step ids. A variant is a *complete* sequence: running exactly those steps from a clean
+session has to work, so nothing is inherited from another variant and there are no hidden setup
+steps. Two lengths of the same moment are two steps with two ids.
+
+The length of a recording is decided here, in frames, and not by how fast the machine runs:
 ``hold`` is seconds in the file, rounded to frames on the way in, and the recorder repeats one
 captured frame that many times.
 """
@@ -18,12 +23,20 @@ from pathlib import Path
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
-LANGUAGES = ("en", "ja")
-ACTIONS = ("spawn", "key", "type", "press", "cli", "write")
+LANGUAGES = ("ja", "en")
+DEFAULT_LANGUAGE = "ja"
+REQUIRED_LANGUAGE = "ja"
+"""Japanese is written first and English follows in its own task (DECISIONS 0032).
+
+``--validate`` therefore only insists on ``ja``; a missing ``en`` is an error at ``--record
+--lang en`` and nowhere else, so an unfinished translation cannot quietly ship in a recording.
+"""
+
+ACTIONS = ("spawn", "close", "key", "type", "press", "cli", "write", "herdr", "pause")
 
 # What ``press: {button: ...}`` and ``wait_for: {button: ...}`` may name, and the English label
 # the widget carries. The label itself is looked up per language through ``wayhint.i18n``, so a
-# scenario never spells out "検索" and the ja recording presses the same button as the en one.
+# scenario never spells out "検索" and the en recording presses the same button as the ja one.
 BUTTONS = {
     "search": "Search",
     "done": "Done",
@@ -53,12 +66,121 @@ KEYSYM = re.compile(r"^[A-Za-z0-9_]+$")
 # argument, so no string from the file ever reaches a command line.
 CLI_COMMANDS = ("toggle", "show", "hide", "refresh", "reload", "ping", "context", "edit-mode")
 
-DEFAULT_TIMEOUT = 10.0
-OVERLAY_STATES = ("visible", "hidden")
+# --- herdr -------------------------------------------------------------------------------------
+
+PANE_ID = re.compile(r"^w\d+:p\d+$")
+TAB_ID = re.compile(r"^w\d+:t\d+$")
+WORKSPACE_ID = re.compile(r"^w\d+$")
+DIRECTIONS = ("left", "right", "up", "down")
+
+RUNNER_ONLY_HERDR = {("server", "stop")}
+"""Herdr commands the recorder uses itself and a scenario may not (``session.py`` teardown)."""
 
 
 class ScenarioError(Exception):
     """A scenario that cannot be recorded. The message says which step and what is wrong."""
+
+
+def _herdr_no_args(rest: list[str], where: str, _bin: Path | None) -> None:
+    if rest:
+        raise ScenarioError(f"{where}: takes no further arguments, got {' '.join(rest)}")
+
+
+def _herdr_focus_flags(rest: list[str], where: str, _bin: Path | None) -> None:
+    """``--focus`` / ``--no-focus`` only. ``--cwd`` / ``--env`` / ``--label`` stay with the
+    recorder: they would let a scenario choose a path, an environment or on-screen text."""
+    for arg in rest:
+        if arg not in ("--focus", "--no-focus"):
+            raise ScenarioError(f"{where}: only --focus / --no-focus are allowed, got {arg!r}")
+
+
+def _herdr_pane_selector(rest: list[str], where: str, _bin: Path | None) -> None:
+    if rest == ["--current"]:
+        return
+    if len(rest) == 2 and rest[0] == "--pane" and PANE_ID.match(rest[1]):
+        return
+    raise ScenarioError(f"{where}: expected --current or --pane <wN:pN>, got {' '.join(rest)}")
+
+
+def _herdr_pane_focus(rest: list[str], where: str, _bin: Path | None) -> None:
+    if len(rest) < 2 or rest[0] != "--direction" or rest[1] not in DIRECTIONS:
+        raise ScenarioError(f"{where}: expected --direction {'|'.join(DIRECTIONS)} first")
+    _herdr_pane_selector(rest[2:], where, None)
+
+
+def _herdr_pane_split(rest: list[str], where: str, _bin: Path | None) -> None:
+    allowed = {"--focus", "--no-focus", "--current"}
+    index = 0
+    seen_direction = False
+    while index < len(rest):
+        arg = rest[index]
+        if arg == "--direction":
+            if index + 1 >= len(rest) or rest[index + 1] not in ("right", "down"):
+                raise ScenarioError(f"{where}: --direction takes right or down")
+            seen_direction, index = True, index + 2
+        elif arg == "--pane":
+            if index + 1 >= len(rest) or not PANE_ID.match(rest[index + 1]):
+                raise ScenarioError(f"{where}: --pane takes a pane id like w1:p1")
+            index += 2
+        elif arg in allowed:
+            index += 1
+        else:
+            raise ScenarioError(f"{where}: {arg!r} is not allowed here")
+    if not seen_direction:
+        raise ScenarioError(f"{where}: --direction is required")
+
+
+def _herdr_one(pattern: re.Pattern, kind: str):
+    def check(rest: list[str], where: str, _bin: Path | None) -> None:
+        if len(rest) != 1 or not pattern.match(rest[0]):
+            raise ScenarioError(f"{where}: expected exactly one {kind} id, got {' '.join(rest)}")
+
+    return check
+
+
+def _herdr_pane_run(rest: list[str], where: str, demo_bin: Path | None) -> None:
+    """``pane run <pane id> <command>``: the command is a program in ``demo/bin``, by name.
+
+    This is the one Herdr command that starts something, so it is the one that has to be
+    pinned. A bare name means the recorder's own ``demo/bin`` (it is first on PATH) and nothing
+    else can be reached: no path, no ``..``, and the file has to be there.
+    """
+    if len(rest) != 2:
+        raise ScenarioError(f"{where}: expected <pane id> <command>, got {' '.join(rest)}")
+    pane, command = rest
+    if not PANE_ID.match(pane):
+        raise ScenarioError(f"{where}: {pane!r} is not a pane id like w1:p1")
+    if "/" in command or ".." in command or not command:
+        raise ScenarioError(f"{where}: {command!r} has to be a bare program name in demo/bin")
+    if demo_bin is not None and not (demo_bin / command).is_file():
+        raise ScenarioError(f"{where}: no such program in {demo_bin}: {command}")
+
+
+def _herdr_status(rest: list[str], where: str, _bin: Path | None) -> None:
+    if rest not in ([], ["--json"]):
+        raise ScenarioError(f"{where}: only --json is allowed, got {' '.join(rest)}")
+
+
+HERDR_COMMANDS = {
+    ("pane", "list"): _herdr_no_args,
+    ("pane", "current"): _herdr_no_args,
+    ("pane", "process-info"): _herdr_pane_selector,
+    ("pane", "run"): _herdr_pane_run,
+    ("pane", "split"): _herdr_pane_split,
+    ("pane", "focus"): _herdr_pane_focus,
+    ("pane", "close"): _herdr_one(PANE_ID, "pane"),
+    ("tab", "create"): _herdr_focus_flags,
+    ("tab", "list"): _herdr_no_args,
+    ("tab", "focus"): _herdr_one(TAB_ID, "tab"),
+    ("workspace", "create"): _herdr_focus_flags,
+    ("workspace", "list"): _herdr_no_args,
+    ("workspace", "focus"): _herdr_one(WORKSPACE_ID, "workspace"),
+    ("status",): _herdr_status,
+}
+"""Every Herdr command a scenario may run, and what each may be given (DECISIONS 0032)."""
+
+DEFAULT_TIMEOUT = 10.0
+OVERLAY_STATES = ("visible", "hidden")
 
 
 @dataclass(frozen=True)
@@ -147,35 +269,68 @@ class Step:
 
 
 @dataclass(frozen=True)
-class Scenario:
-    output: Output
-    fonts: Fonts
-    windows: tuple[Window, ...]
+class Variant:
+    """One cut of the showcase: a length, and the steps that make it up."""
+
+    name: str
+    target: float
+    tolerance: float
+    square: bool
     steps: tuple[Step, ...]
 
-    def frames(self) -> int:
-        return sum(step.frames(self.output.fps) for step in self.steps)
+    def frames(self, fps: int) -> int:
+        return sum(step.frames(fps) for step in self.steps)
 
-    def seconds(self) -> float:
-        return self.frames() / self.output.fps
+    def seconds(self, fps: int) -> float:
+        return self.frames(fps) / fps
 
-    def select(self, only: list[str] | None, start: str | None) -> Scenario:
+    def off_target(self, fps: int) -> float:
+        """How far outside ``target ± tolerance`` this is, in seconds. 0 when it fits."""
+        return max(0.0, abs(self.seconds(fps) - self.target) - self.tolerance)
+
+    def select(self, only: list[str] | None, start: str | None) -> Variant:
         """The steps ``--only`` / ``--from`` asked for, in scenario order."""
         ids = [step.id for step in self.steps]
         for wanted in [*(only or []), *([start] if start else [])]:
             if wanted not in ids:
-                raise ScenarioError(f"no step {wanted!r}; the scenario has: {', '.join(ids)}")
+                raise ScenarioError(
+                    f"variant {self.name!r} has no step {wanted!r}; it has: {', '.join(ids)}"
+                )
         steps = self.steps
         if start is not None:
             steps = steps[ids.index(start) :]
         if only:
             steps = tuple(step for step in steps if step.id in only)
         if not steps:
-            raise ScenarioError("that selection leaves no steps to record")
-        return Scenario(self.output, self.fonts, self.windows, steps)
+            raise ScenarioError(f"that selection leaves no steps in variant {self.name!r}")
+        return Variant(self.name, self.target, self.tolerance, self.square, steps)
 
 
-def load(path: Path) -> Scenario:
+@dataclass(frozen=True)
+class Scenario:
+    output: Output
+    fonts: Fonts
+    windows: tuple[Window, ...]
+    steps: dict[str, Step]
+    variants: tuple[Variant, ...]
+
+    def variant(self, name: str) -> Variant:
+        for item in self.variants:
+            if item.name == name:
+                return item
+        names = ", ".join(v.name for v in self.variants)
+        raise ScenarioError(f"no variant {name!r}; the scenario has: {names}")
+
+    def languages(self) -> list[str]:
+        """Every language the captions are written in, most complete first."""
+        return [
+            lang
+            for lang in LANGUAGES
+            if all(not step.caption or lang in step.caption for step in self.steps.values())
+        ]
+
+
+def load(path: Path, demo_bin: Path | None = None) -> Scenario:
     """Read and check a scenario file. Raises :class:`ScenarioError` with the reason."""
     try:
         text = path.read_text()
@@ -187,27 +342,26 @@ def load(path: Path) -> Scenario:
         raise ScenarioError(f"{path}: {e}") from e
     if not isinstance(doc, dict):
         raise ScenarioError(f"{path}: the top level has to be a mapping")
-    return parse(doc)
+    return parse(doc, demo_bin)
 
 
-def parse(doc: dict) -> Scenario:
-    _unknown(doc, {"output", "fonts", "windows", "steps"}, "the scenario")
+def parse(doc: dict, demo_bin: Path | None = None) -> Scenario:
+    _unknown(doc, {"output", "fonts", "windows", "steps", "variants"}, "the scenario")
     output = _output(_mapping(doc.get("output"), "output"))
     fonts = _fonts(_mapping(doc.get("fonts"), "fonts"))
     windows = _windows(doc.get("windows"))
     raw = doc.get("steps")
     if not isinstance(raw, list) or not raw:
         raise ScenarioError("steps: expected a non-empty list")
-    steps, seen = [], set()
+    steps: dict[str, Step] = {}
     for index, item in enumerate(raw):
-        step = _step(item, index)
-        if step.id in seen:
+        step = _step(item, index, demo_bin)
+        if step.id in steps:
             raise ScenarioError(f"step {step.id!r}: two steps with the same id")
-        seen.add(step.id)
-        steps.append(step)
+        steps[step.id] = step
     placements = {window.title for window in windows}
-    for step in steps:
-        if step.action.kind != "spawn":
+    for step in steps.values():
+        if step.action.kind not in ("spawn", "close"):
             continue
         where = step.action.payload["window"]
         if where not in placements:
@@ -215,7 +369,13 @@ def parse(doc: dict) -> Scenario:
                 f"step {step.id!r}: window {where!r} is not in windows "
                 f"({', '.join(sorted(placements))})"
             )
-    return Scenario(output, fonts, tuple(windows), tuple(steps))
+    variants = _variants(doc.get("variants"), steps)
+    unused = sorted(set(steps) - {s.id for v in variants for s in v.steps})
+    if unused:
+        raise ScenarioError(
+            f"steps in no variant: {', '.join(unused)} (a step nobody records is dead weight)"
+        )
+    return Scenario(output, fonts, tuple(windows), steps, variants)
 
 
 # --- pieces ------------------------------------------------------------------------------------
@@ -233,6 +393,12 @@ def _int(value: object, where: str, *, minimum: int = 1) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
         raise ScenarioError(f"{where}: expected an integer of at least {minimum}")
     return value
+
+
+def _number(value: object, where: str, *, minimum: float = 0.0) -> float:
+    if not isinstance(value, int | float) or isinstance(value, bool) or value < minimum:
+        raise ScenarioError(f"{where}: expected a number of at least {minimum:g}")
+    return float(value)
 
 
 def _string(value: object, where: str) -> str:
@@ -284,7 +450,40 @@ def _windows(value: object) -> list[Window]:
     return out
 
 
-def _step(doc: object, index: int) -> Step:
+def _variants(value: object, steps: dict[str, Step]) -> tuple[Variant, ...]:
+    doc = _mapping(value, "variants")
+    if not doc:
+        raise ScenarioError("variants: expected at least one variant")
+    out = []
+    for name, raw in doc.items():
+        where = f"variants.{name}"
+        item = _mapping(raw, where)
+        _unknown(item, {"target", "tolerance", "square", "steps"}, where)
+        ids = item.get("steps")
+        if not isinstance(ids, list) or not ids:
+            raise ScenarioError(f"{where}.steps: expected a non-empty list of step ids")
+        chosen = []
+        for step_id in ids:
+            if not isinstance(step_id, str) or step_id not in steps:
+                raise ScenarioError(
+                    f"{where}.steps: no step {step_id!r} is defined (defined: {', '.join(steps)})"
+                )
+            chosen.append(steps[step_id])
+        if len({s.id for s in chosen}) != len(chosen):
+            raise ScenarioError(f"{where}.steps: the same step id appears twice")
+        out.append(
+            Variant(
+                name=str(name),
+                target=_number(item.get("target"), f"{where}.target", minimum=1),
+                tolerance=_number(item.get("tolerance", 0), f"{where}.tolerance"),
+                square=bool(item.get("square", False)),
+                steps=tuple(chosen),
+            )
+        )
+    return tuple(out)
+
+
+def _step(doc: object, index: int, demo_bin: Path | None) -> Step:
     if not isinstance(doc, dict):
         raise ScenarioError(f"steps[{index}]: expected a mapping")
     known = {"id", "wait_for", "caption", "hold", "precondition", *ACTIONS}
@@ -304,7 +503,7 @@ def _step(doc: object, index: int) -> Step:
         raise ScenarioError(f"{where}: hold has to be a number of seconds, and not negative")
     return Step(
         id=step_id,
-        action=_action(present[0], doc[present[0]], where),
+        action=_action(present[0], doc[present[0]], where, demo_bin),
         wait_for=_condition(doc["wait_for"], f"{where}.wait_for"),
         hold=float(hold),
         caption=_caption(doc.get("caption"), where),
@@ -316,7 +515,7 @@ def _step(doc: object, index: int) -> Step:
     )
 
 
-def _action(kind: str, value: object, where: str) -> Action:
+def _action(kind: str, value: object, where: str, demo_bin: Path | None) -> Action:
     if kind == "spawn":
         doc = _mapping(value, f"{where}.spawn")
         _unknown(doc, {"argv", "window"}, f"{where}.spawn")
@@ -330,6 +529,10 @@ def _action(kind: str, value: object, where: str) -> Action:
                 "argv": [_string(a, f"{where}.spawn.argv[]") for a in argv],
             },
         )
+    if kind == "close":
+        doc = _mapping(value, f"{where}.close")
+        _unknown(doc, {"window"}, f"{where}.close")
+        return Action("close", {"window": _string(doc.get("window"), f"{where}.close.window")})
     if kind == "key":
         return Action("key", {"keys": _keys(_string(value, f"{where}.key"), where)})
     if kind == "type":
@@ -343,6 +546,12 @@ def _action(kind: str, value: object, where: str) -> Action:
         if command not in CLI_COMMANDS:
             raise ScenarioError(f"{where}.cli: {command!r} is not one of {', '.join(CLI_COMMANDS)}")
         return Action("cli", {"command": command})
+    if kind == "herdr":
+        return Action("herdr", {"argv": _herdr(value, f"{where}.herdr", demo_bin)})
+    if kind == "pause":
+        if value is not True:
+            raise ScenarioError(f"{where}.pause: write `pause: true` (it does nothing on purpose)")
+        return Action("pause", {})
     doc = _mapping(value, f"{where}.write")
     _unknown(doc, {"file", "text", "source"}, f"{where}.write")
     target = _relative(_string(doc.get("file"), f"{where}.write.file"), f"{where}.write.file")
@@ -356,11 +565,30 @@ def _action(kind: str, value: object, where: str) -> Action:
     return Action("write", {"file": target, "text": doc["text"]})
 
 
+def _herdr(value: object, where: str, demo_bin: Path | None) -> list[str]:
+    """One Herdr command, as argv, checked against the allow-list (DECISIONS 0032)."""
+    if not isinstance(value, list) or not value:
+        raise ScenarioError(f"{where}: expected a non-empty argv list, e.g. [tab, focus, w1:t1]")
+    argv = [_string(part, f"{where}[]") for part in value]
+    head2, head1 = tuple(argv[:2]), tuple(argv[:1])
+    if head2 in RUNNER_ONLY_HERDR:
+        raise ScenarioError(
+            f"{where}: {' '.join(head2)} is the recorder's own (it tears the session down)"
+        )
+    for head in (head2, head1):
+        check = HERDR_COMMANDS.get(head)
+        if check is not None:
+            check(argv[len(head) :], f"{where} ({' '.join(head)})", demo_bin)
+            return argv
+    allowed = ", ".join(sorted(" ".join(k) for k in HERDR_COMMANDS))
+    raise ScenarioError(f"{where}: {' '.join(argv[:2])!r} is not allowed. Allowed: {allowed}")
+
+
 def _relative(value: str, where: str) -> str:
     """A path inside the working copy of the fixtures, and nowhere else.
 
-    ``{lang}`` is substituted when the step runs, so the same scenario writes to
-    ``hints/en/`` and ``hints/ja/``; the check below is repeated on the result.
+    ``{lang}`` is substituted when the step runs, so the same scenario writes to ``hints/ja/``
+    and ``hints/en/``; the check below is repeated on the result.
     """
     path = Path(value)
     if path.is_absolute() or ".." in path.parts:
@@ -404,23 +632,15 @@ def _per_language(value: object, where: str) -> dict[str, str]:
         return dict.fromkeys(LANGUAGES, value)
     doc = _mapping(value, where)
     _unknown(doc, set(LANGUAGES), where)
-    for lang in LANGUAGES:
-        if lang not in doc:
-            raise ScenarioError(f"{where}: {lang} is missing (write every language)")
-    return {lang: _string(doc[lang], f"{where}.{lang}") for lang in LANGUAGES}
+    if REQUIRED_LANGUAGE not in doc:
+        raise ScenarioError(f"{where}: {REQUIRED_LANGUAGE} is required")
+    return {lang: _string(doc[lang], f"{where}.{lang}") for lang in LANGUAGES if lang in doc}
 
 
 def _caption(value: object, where: str) -> dict[str, str]:
     if value is None:
         return {}
-    doc = _mapping(value, f"{where}.caption")
-    _unknown(doc, set(LANGUAGES), f"{where}.caption")
-    if not doc:
-        return {}
-    for lang in LANGUAGES:
-        if lang not in doc:
-            raise ScenarioError(f"{where}.caption: {lang} is missing (write every language)")
-    return {lang: _string(doc[lang], f"{where}.caption.{lang}") for lang in LANGUAGES}
+    return _per_language(value, f"{where}.caption")
 
 
 def _condition(value: object, where: str) -> Condition:
