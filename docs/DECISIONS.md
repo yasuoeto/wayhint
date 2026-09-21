@@ -1014,6 +1014,16 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   pane 切替と重複するが、製品挙動の回帰としては残す価値がある。この test は `demo/bin/` の stub と
   wrapper を使うので、**test が demo に依存する**(逆ではない)。`./scripts/check-gui` は 5 本から
   6 本になり、実行時間は 16.8 秒から 18.6 秒に増えた。
+- **脅威モデル(2026-09-21 追記)**: demo 生成システムのレビューはこの範囲で行う。
+  **untrusted(data として扱う)**——scenario の内容、`./scripts/demo` の CLI 引数、`type:` で送る
+  文字列、`out/` の状態(symlink も既存ファイルも含む。人が別ディスクへ向けていることがある)。
+  **trusted(code として扱う)**——`tools/`、`demo/bin/` の中身、`demo/fixtures/`、Herdr と foot の
+  binary。ここに細工を置ける者は `tools/` 自体を書き換えられるので、防御の対象にしない。
+  **守ること**——(a) untrusted な入力から shell に到達できない、(b) `out/` の外を削除しない、
+  (c) 実ユーザーの環境(`~/.config/*`、`~/.claude*`、実 `XDG_RUNTIME_DIR`)を読み書きしない。
+  この 3 つに当たらない指摘、たとえば `demo/bin/` に細工した symlink を置く経路は trusted 側の話
+  なので、以降のレビューでは対象外とする。`demo/bin/idle` の symlink 拒否(下記)は修正が数行で
+  済んだから入れただけで、範囲を広げたわけではない。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
