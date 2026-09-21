@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.demo.scenario import BUTTONS, Condition, Step
+from tools.demo.scenario import spawn_command as scenario_command
 from tools.demo.session import DemoError, DemoSession
 from wayhint import ipc
 from wayhint.i18n import translator
@@ -50,13 +51,19 @@ def perform(run: Run, step: Step) -> None:
         # The scenario names programs; the recorder turns them into paths. Nothing from the
         # file reaches PATH resolution, so a stub cannot be shadowed by a real program of the
         # same name (DECISIONS 0032).
-        argv = [
-            part if index and part.startswith("-") else str(run.demo_bin / part)
-            for index, part in enumerate(payload["argv"])
-        ]
+        parts = list(payload["argv"])
         # The title is how the compositor rule finds this window (scenario ``windows``), so it
         # is put in by the recorder rather than written into every argv in the scenario.
-        argv.insert(1, f"--title={payload['window']}")
+        argv = [str(run.demo_bin / parts[0]), f"--title={payload['window']}"]
+        command = scenario_command(parts)
+        argv += parts[1 : len(parts) - len(command) - 1] if command else parts[1:]
+        if command:
+            argv += ["-e", str(run.demo_bin / command[0])]
+            # A file for the stub to show: inside the session's fixtures, and nowhere else.
+            argv += [
+                str(_inside(run.session.config_dir, _expand(part, run), step))
+                for part in command[1:]
+            ]
         # Always the same working directory: Herdr names its workspace after it and shows that
         # name in the sidebar, so a temporary path would differ between runs (DECISIONS 0032).
         run.windows[payload["window"]] = session.spawn(argv, cwd=run.session.work_dir)

@@ -41,6 +41,8 @@ HERDR = "herdr"
 """The name looked up on PATH once, at the start of a recording. After that the resolved path
 is used, so nothing later -- including ``demo/bin`` being first on the session PATH -- can put
 a different program in its place."""
+CONFIG_ENV = "WAYHINT_DEMO_CONFIG"
+"""Where the session's copy of the fixtures is, for the one stub that opens a file in it."""
 HERDR_BIN_ENV = "WAYHINT_DEMO_HERDR_BIN"
 """How that resolved path reaches ``demo/bin/foot-herdr``, which starts Herdr in a terminal.
 The wrapper refuses to run without it rather than falling back to a bare ``herdr``."""
@@ -276,7 +278,10 @@ class DemoSession:
         )
 
     def _env(self) -> dict[str, str]:
-        env = {"PATH": f"{self.demo_bin}:{os.environ.get('PATH', '')}"}
+        env = {
+            "PATH": f"{self.demo_bin}:{os.environ.get('PATH', '')}",
+            CONFIG_ENV: str(self.config_dir),
+        }
         if self.herdr_path is not None:
             env[HERDR_BIN_ENV] = self.herdr_path
         return env

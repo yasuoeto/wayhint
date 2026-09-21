@@ -207,20 +207,30 @@ def _spawn_argv(argv: list[str], where: str, demo_bin: Path | None) -> list[str]
         if cut != len(rest):
             raise ScenarioError(f"{where}: {head!r} starts its own program, so it takes no -e")
         return list(argv)
-    if len(command) != 1:
+    if not 1 <= len(command) <= 2:
         raise ScenarioError(
-            f"{where}: {head!r} needs -e <program> last; a terminal with no command starts the "
-            "login shell, and a scenario types into the terminal (DECISIONS 0032)"
+            f"{where}: {head!r} needs -e <program> [<file>] last; a terminal with no command "
+            "starts the login shell, and a scenario types into the terminal (DECISIONS 0032)"
         )
-    _bare_program(command[0], f"{where}[{len(argv) - 1}]", demo_bin)
+    _bare_program(command[0], f"{where}[{len(argv) - len(command)}]", demo_bin)
+    if len(command) == 2:
+        # The one argument a stub may be given: a file in the session's copy of the fixtures,
+        # which is what ``vi`` puts on screen. Same rule as ``write.file``.
+        _relative(command[1], f"{where}[{len(argv) - 1}]")
     return list(argv)
+
+
+def spawn_command(argv: list[str]) -> list[str]:
+    """What a ``spawn`` runs inside the terminal: ``[]``, ``[program]`` or ``[program, file]``."""
+    rest = list(argv[1:])
+    return rest[rest.index("-e") + 1 :] if "-e" in rest else []
 
 
 def programs(step: Step) -> list[str]:
     """Every program this step would start, by name. Used to check the session's PATH."""
     kind, payload = step.action.kind, step.action.payload
     if kind == "spawn":
-        return [p for i, p in enumerate(payload["argv"]) if i == 0 or not p.startswith("-")]
+        return [payload["argv"][0], *spawn_command(payload["argv"])[:1]]
     if kind == "herdr":
         argv = payload["argv"]
         if argv[:2] == ["pane", "run"] and len(argv) >= 4:

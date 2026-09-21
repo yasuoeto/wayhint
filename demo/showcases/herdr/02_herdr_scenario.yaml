@@ -47,7 +47,7 @@ steps:
   - id: whose-hints-60
     cli: refresh
     wait_for: {overlay: visible, label: "Claude Code"}
-    caption: {ja: "端末の中で動いてるものまで見て切り替わる"}
+    caption: {ja: "見ているのは窓ではなく、端末の中で動いているもの"}
     hold: 7.0
 
   - id: keep-typing-60
@@ -200,7 +200,7 @@ steps:
   - id: parent-hints
     cli: refresh
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "後ろは Herdr の hint。タグで絞ってある"}
+    caption: {ja: "後ろに続くのは、窓そのもの(Herdr)の hint"}
     hold: 8.0
 
   # --- §4 主役2: 奪わない ------------------------------------------------------------------------
@@ -243,6 +243,33 @@ steps:
       label: "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
     caption: {ja: "忘れていた操作を見つけたら、その場で書く"}
     hold: 5.0
+
+  # The single-key operations come before the form on purpose: saving the form *leaves* edit
+  # mode (DECISIONS 0021), so anything pressed after it would land in the terminal instead --
+  # which is what the first cut of this did (B-7).
+  - id: pick-hint
+    key: down
+    wait_for: {overlay: visible}
+    hold: 2.0
+
+  - id: move-down
+    # `key: J` sends the keysym without a shift level and the window sees `j`; wtype's text
+    # mode is the one that delivers a capital (measured in B-7, labwc 0.20.2 / wtype 0.4).
+    type: "J"
+    wait_for: {overlay: visible}
+    caption: {ja: "J / K で並べ替え。YAML の行がそのまま動く"}
+    hold: 7.0
+
+  - id: move-up
+    type: "K"
+    wait_for: {overlay: visible}
+    hold: 4.0
+
+  - id: favorite-hint
+    key: f
+    wait_for: {overlay: visible, label: "★ 実行を却下する"}
+    caption: {ja: "f で ★。★ の付いた hint は先頭に集まる"}
+    hold: 8.0
 
   - id: open-form
     key: a
@@ -318,7 +345,7 @@ steps:
 
   # --- §3 追加: Herdr が無くても端末の中を見る ------------------------------------------------
   - id: open-vi
-    spawn: {window: vi, argv: [foot-wayhint, -e, vi]}
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
     precondition: {overlay: visible}
     wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: visible, timeout: 30}
     caption: {ja: "Herdr を使わない、ただの端末を開く"}
@@ -333,7 +360,7 @@ steps:
   - id: vi-note
     cli: refresh
     wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "窓が複数なら app_id に .p<pid> を付ける"}
+    caption: {ja: "端末が複数でも、中のプロセスで見分ける"}
     hold: 9.0
 
   - id: close-vi
@@ -351,7 +378,7 @@ steps:
     press: {button: copy}
     precondition: {overlay: visible}
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "コピーは copy → command → key の順"}
+    caption: {ja: "コピーボタンで command をクリップボードへ"}
     hold: 8.0
 
   - id: no-run
@@ -361,33 +388,9 @@ steps:
     hold: 7.0
 
   # --- §5 追加: favorite と並べ替え ---------------------------------------------------------------
-  - id: favorite-hint
-    key: f
-    precondition: {overlay: visible}
-    wait_for: {overlay: visible}
-    caption: {ja: "f で ★。★ の付いた hint は先頭に集まる"}
-    hold: 8.0
-
-  - id: move-down
-    key: J
-    wait_for: {overlay: visible}
-    caption: {ja: "J / K で並べ替え。YAML の行がそのまま動く"}
-    hold: 7.0
-
-  - id: move-up
-    key: K
-    wait_for: {overlay: visible}
-    hold: 4.0
-
-  - id: stay-in-edit
-    pause: true
-    wait_for: {overlay: visible}
-    caption: {ja: "編集モードのまま続けられる"}
-    hold: 7.0
-
   # --- §6 追加: 仕組みと設定 -----------------------------------------------------------------------
   - id: open-yaml
-    spawn: {window: vi, argv: [foot-wayhint, -e, vi]}
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
     wait_for: {context: {active_sheet: vi, process_name: vi}, timeout: 30}
     caption: {ja: "sheet は 1 アプリ 1 YAML"}
     hold: 7.0
@@ -486,8 +489,8 @@ variants:
       - stack
 
   5min:
-    target: 300
-    tolerance: 30
+    target: 270
+    tolerance: 20
     steps:
       - open-herdr
       - start-claude
@@ -514,15 +517,15 @@ variants:
       - copy-hint
       - no-run
       - edit-mode
+      - pick-hint
+      - move-down
+      - move-up
+      - favorite-hint
       - open-form
       - type-title
       - next-field
       - type-key
       - save-hint
-      - favorite-hint
-      - move-down
-      - move-up
-      - stay-in-edit
       - break-yaml
       - fix-yaml
       - close

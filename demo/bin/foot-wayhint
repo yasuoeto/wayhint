@@ -14,13 +14,14 @@ STUBS='claude codex vi'
 
 die() {
     echo "foot-wayhint: $1" >&2
-    echo "usage: foot-wayhint [--app-id=<id>] [--title=<title>] -e <program in demo/bin>" >&2
+    echo "usage: foot-wayhint [--app-id=<id>] [--title=<title>] -e <program in demo/bin> [file]" >&2
     exit 1
 }
 
 app_id="foot.p$$"
 title=''
 program=''
+file=''
 while [ $# -gt 0 ]; do
     case $1 in
         --app-id=*) app_id=${1#--app-id=} ;;
@@ -28,8 +29,13 @@ while [ $# -gt 0 ]; do
         -e) ;;
         -*) die "option not allowed: $1" ;;
         *)
-            [ -z "$program" ] || die "one program at a time, got $program and $1"
-            program=$1
+            if [ -z "$program" ]; then
+                program=$1
+            elif [ -z "$file" ]; then
+                file=$1
+            else
+                die "one program and at most one file, got $1 as well"
+            fi
             ;;
     esac
     shift
@@ -50,6 +56,23 @@ esac
 [ ! -L "$program" ] || die "$program is a symlink"
 [ -x "$program" ] || die "$program is not executable"
 
+# The one argument a stub may be handed is a file to show, and it has to live in the session's
+# own copy of the fixtures. The scenario names it, and a scenario is data (DECISIONS 0032).
+if [ -n "$file" ]; then
+    [ -n "${WAYHINT_DEMO_CONFIG:-}" ] || die "a file needs WAYHINT_DEMO_CONFIG; the recorder sets it"
+    case $file in
+        "$WAYHINT_DEMO_CONFIG"/*) ;;
+        *) die "a file has to be inside $WAYHINT_DEMO_CONFIG, got $file" ;;
+    esac
+    case $file in
+        *..*) die "no .. in a file name: $file" ;;
+    esac
+    [ ! -L "$file" ] || die "$file is a symlink"
+    [ -f "$file" ] || die "no such file: $file"
+fi
+
 set -- --app-id="$app_id" --config "$dir/../fixtures/foot.ini"
 [ -z "$title" ] || set -- "$@" --title="$title"
-exec /usr/bin/foot "$@" "$program"
+[ -z "$file" ] || set -- "$@" "$program" "$file"
+[ -n "$file" ] || set -- "$@" "$program"
+exec /usr/bin/foot "$@"

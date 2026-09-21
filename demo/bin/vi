@@ -2,30 +2,34 @@
 """A stand-in for vi, so the demo can show a terminal with no Herdr in it. See ``claude`` next
 to it for why the real program is not used and why the file name and ``comm`` both matter.
 
-What it draws is a hint sheet, because that is what the 5-minute cut talks about while it is on
-screen. The text is the demo's own fixture, not anything from the person's machine.
+It opens the file it is given and shows the top of it, because the 5-minute cut reads that file
+out loud while it is on screen -- ``match``, ``inherit``, ``include`` and the language in the
+path all have to be *there*, not just in the subtitle. Earlier this printed a hard-coded
+excerpt and the captions talked about keys that were not on screen (B-7).
+
+The file has to sit inside the session's own config directory (``$WAYHINT_DEMO_CONFIG``), which
+is a throwaway copy of ``demo/fixtures``. A scenario names the file, and a scenario is data: it
+does not get to put an arbitrary file of the person's on screen.
 """
 
 import ctypes
 import os
 import sys
+import unicodedata
+from pathlib import Path
 
 KEY = "\033[38;5;180m"
 TEXT = "\033[38;5;252m"
+NOTE = "\033[38;5;103m"
 TILDE = "\033[38;5;103m"
 STATUS = "\033[7m"
 OFF = "\033[0m"
 
-LINES = [
-    f"{KEY}id{OFF}{TEXT}: claude-code{OFF}",
-    f"{KEY}title{OFF}{TEXT}: Claude Code{OFF}",
-    f"{KEY}hints{OFF}{TEXT}:{OFF}",
-    f"{TEXT}  - {KEY}id{OFF}{TEXT}: compact{OFF}",
-    f"{TEXT}    {KEY}title{OFF}{TEXT}: 会話を要約して畳む{OFF}",
-    f"{TEXT}    {KEY}command{OFF}{TEXT}: /compact{OFF}",
-    *[f"{TILDE}~{OFF}"] * 4,
-    f'{STATUS}"hints/ja/claude-code.yaml" 32L, 641B{OFF}',
-]
+ROOT_ENV = "WAYHINT_DEMO_CONFIG"
+ROWS = 14
+"""How many lines of the file fit in the window the scenario places (560x380)."""
+COLUMNS = 56
+"""Cut at a fixed width so that one long line cannot reflow the window between runs."""
 
 
 def rename() -> None:
@@ -35,9 +39,59 @@ def rename() -> None:
         pass
 
 
+def clip(text: str, columns: int = COLUMNS) -> str:
+    out = ""
+    used = 0
+    for char in text:
+        step = 2 if unicodedata.east_asian_width(char) in "WF" else 1
+        if used + step > columns:
+            break
+        out, used = out + char, used + step
+    return out
+
+
+def paint(line: str) -> str:
+    """Enough colour to read as YAML: comments, and the key in front of a colon."""
+    if line.lstrip().startswith("#"):
+        return f"{NOTE}{line}{OFF}"
+    body = line.lstrip("- ") if line.lstrip().startswith("- ") else line
+    indent = line[: len(line) - len(body)]
+    key, sep, rest = body.partition(":")
+    if not sep or " " in key:
+        return f"{TEXT}{line}{OFF}"
+    return f"{TEXT}{indent}{OFF}{KEY}{key}{OFF}{TEXT}:{rest}{OFF}"
+
+
+def opened(argv: list[str]) -> tuple[Path | None, str]:
+    """The file to show and the name to put in the status line, or ``(None, "")``."""
+    if not argv:
+        return None, ""
+    root = os.environ.get(ROOT_ENV)
+    if not root:
+        sys.stderr.write(f"vi: {ROOT_ENV} is not set\n")
+        raise SystemExit(1)
+    base = Path(root).resolve()
+    path = (base / argv[0]).resolve()
+    if not path.is_relative_to(base) or not path.is_file() or path.is_symlink():
+        sys.stderr.write(f"vi: {argv[0]} is not a file in {base}\n")
+        raise SystemExit(1)
+    return path, argv[0]
+
+
+def screen(path: Path | None, name: str) -> list[str]:
+    if path is None:
+        return [*[f"{TILDE}~{OFF}"] * ROWS, f'{STATUS}"" 0L, 0B{OFF}']
+    raw = path.read_bytes()
+    lines = path.read_text().splitlines()
+    shown = [paint(clip(line)) for line in lines[:ROWS]]
+    shown += [f"{TILDE}~{OFF}"] * (ROWS - len(shown))
+    return [*shown, f'{STATUS}"{clip(name)}" {len(lines)}L, {len(raw)}B{OFF}']
+
+
 def main() -> int:
     rename()
-    sys.stdout.write("\n".join(LINES) + "\n")
+    path, name = opened(sys.argv[1:])
+    sys.stdout.write("\n".join(screen(path, name)) + "\n")
     sys.stdout.flush()
     try:
         sys.stdin.read()

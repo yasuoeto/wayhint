@@ -348,7 +348,7 @@ class SpawnTest(unittest.TestCase):
 
     def test_a_terminal_with_no_command_is_refused(self) -> None:
         """foot with no command starts the login shell, and that is the hole D1 closed."""
-        with self.assertRaisesRegex(scn.ScenarioError, "needs -e <program> last"):
+        with self.assertRaisesRegex(scn.ScenarioError, "needs -e <program>"):
             self.spawn("[foot-wayhint]", self.bin())
 
     def test_an_option_outside_the_allow_list_is_refused(self) -> None:
@@ -390,6 +390,29 @@ class SpawnTest(unittest.TestCase):
         (demo_bin / "sh").write_text("#!/bin/sh\n")
         with self.assertRaisesRegex(scn.ScenarioError, "has to start a terminal"):
             self.spawn("[sh]", demo_bin)
+
+    def test_a_stub_may_be_given_one_file_from_the_fixtures(self) -> None:
+        script = self.spawn('[foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]', self.bin())
+        self.assertEqual(
+            script.steps["show"].action.payload["argv"][-1], "hints/{lang}/claude-code.yaml"
+        )
+
+    def test_the_file_a_stub_is_given_cannot_leave_the_fixtures(self) -> None:
+        for name in ("/etc/passwd", "../../etc/passwd"):
+            with (
+                self.subTest(name=name),
+                self.assertRaisesRegex(scn.ScenarioError, "relative path without"),
+            ):
+                self.spawn(f'[foot-wayhint, -e, vi, "{name}"]', self.bin())
+
+    def test_a_stub_is_not_given_two_files(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "needs -e <program>"):
+            self.spawn('[foot-wayhint, -e, vi, "a.yaml", "b.yaml"]', self.bin())
+
+    def test_a_file_is_not_mistaken_for_a_program(self) -> None:
+        """``session._check_stubs`` walks what ``programs`` returns and resolves it on PATH."""
+        script = self.spawn('[foot-wayhint, -e, vi, "hints/ja/x.yaml"]', self.bin())
+        self.assertEqual(scn.programs(script.steps["show"]), ["foot-wayhint", "vi"])
 
     def test_a_stub_that_is_not_in_demo_bin_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "no such program"):
@@ -483,6 +506,72 @@ class PaneProgramTest(unittest.TestCase):
         self.assertIsNone(self.idle().target("claude", here))
 
 
+class SheetViewerTest(unittest.TestCase):
+    """``demo/bin/vi`` shows a real sheet, because the 5-minute cut reads it out loud."""
+
+    def viewer(self):
+        loader = importlib.machinery.SourceFileLoader("demo_vi", str(BIN / "vi"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def root(self, **files: str) -> Path:
+        root = scratch(self)
+        for name, text in files.items():
+            (root / name).write_text(text)
+        os.environ[self.viewer().ROOT_ENV] = str(root)
+        self.addCleanup(os.environ.pop, self.viewer().ROOT_ENV, None)
+        return root
+
+    def test_it_shows_the_top_of_the_file_and_the_real_line_count(self) -> None:
+        vi = self.viewer()
+        body = "".join(f"line{n}: value\n" for n in range(1, 31))
+        self.root(**{"sheet.yaml": body})
+        screen = vi.screen(*vi.opened(["sheet.yaml"]))
+        self.assertEqual(len(screen), vi.ROWS + 1)
+        self.assertIn("line1", screen[0])
+        self.assertIn(f"line{vi.ROWS}", screen[vi.ROWS - 1])
+        self.assertIn(f'"sheet.yaml" 30L, {len(body)}B', screen[-1])
+
+    def test_a_short_file_is_padded_the_way_vi_pads_it(self) -> None:
+        vi = self.viewer()
+        self.root(**{"sheet.yaml": "id: x\n"})
+        screen = vi.screen(*vi.opened(["sheet.yaml"]))
+        self.assertEqual(len(screen), vi.ROWS + 1)
+        self.assertIn("~", screen[1])
+
+    def test_a_long_line_is_cut_to_a_fixed_width(self) -> None:
+        """One long line must not reflow the window; two recordings have to match."""
+        vi = self.viewer()
+        self.root(**{"sheet.yaml": "title: " + "あ" * 80 + "\n"})
+        screen = vi.screen(*vi.opened(["sheet.yaml"]))
+        self.assertLessEqual(screen[0].count("あ"), vi.COLUMNS // 2)
+
+    def test_a_file_outside_the_session_is_refused(self) -> None:
+        vi = self.viewer()
+        self.root(**{"sheet.yaml": "id: x\n"})
+        for name in ("../escape.yaml", "/etc/passwd"):
+            with (
+                self.subTest(name=name),
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
+                vi.opened([name])
+
+    def test_a_symlink_is_refused(self) -> None:
+        vi = self.viewer()
+        root = self.root()
+        (root / "sheet.yaml").symlink_to("/etc/passwd")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            vi.opened(["sheet.yaml"])
+
+    def test_no_argument_means_an_empty_buffer(self) -> None:
+        vi = self.viewer()
+        screen = vi.screen(*vi.opened([]))
+        self.assertIn('"" 0L, 0B', screen[-1])
+
+
 class WrapperTest(unittest.TestCase):
     """The terminal wrappers in ``demo/bin``, on the paths that refuse and exec nothing.
 
@@ -542,6 +631,32 @@ class WrapperTest(unittest.TestCase):
         done = self.run_wrapper(BIN / "foot-wayhint", "-e", "/tmp/vi")
         self.assertEqual(done.returncode, 1)
         self.assertIn("started from", done.stderr)
+
+    def test_the_terminal_wrapper_refuses_a_file_outside_the_session(self) -> None:
+        here = scratch(self)
+        (here / "config").mkdir()
+        env = {**os.environ, "WAYHINT_DEMO_CONFIG": str(here / "config")}
+        done = subprocess.run(
+            [str(BIN / "foot-wayhint"), "-e", "vi", "/etc/passwd"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("has to be inside", done.stderr)
+
+    def test_the_terminal_wrapper_needs_the_session_config_for_a_file(self) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "WAYHINT_DEMO_CONFIG"}
+        done = subprocess.run(
+            [str(BIN / "foot-wayhint"), "-e", "vi", "sheet.yaml"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("WAYHINT_DEMO_CONFIG", done.stderr)
 
     def test_the_terminal_wrapper_refuses_a_stub_that_is_a_symlink(self) -> None:
         """Run from a copy of the directory: the real ``demo/bin`` is left as it is."""

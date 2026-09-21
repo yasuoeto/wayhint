@@ -11,7 +11,6 @@ hints:
     key: Ctrl+B c
     category: pane
     tags: [terminal]
-    favorite: true
   - id: next-tab
     title: 次のタブへ
     key: Ctrl+B n
