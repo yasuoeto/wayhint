@@ -1072,6 +1072,15 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   は使わない——`rc.xml` を書くのは `tools/headless.py` で、demo だけの都合を持ち込みたくない。
   **共通 sheet(`wm`)には窓そのものの操作を置く**——「この overlay を出す・消す (`Super+H`)」は
   hint として成立しない。それを忘れている人はこの一覧を開けない。
+- **台本と脚本は突き合わせるが、生成はしない(2026-09-22)**: `01_*_storyboard.md` から
+  `02_*_scenario.yaml` を生成する案は採らない——台本に step id と action を書くことになり、
+  台本が YAML の別記法になって「人が訴求を考える場所」という役割が消える。代わりに `--validate`
+  が台本のうち脚本についての主張(字幕・表の秒・節見出しの範囲・合計秒)だけを検査する
+  (`tools/demo/storyboard.py`)。**手で同期していたものを機械が見る**——B-7 と B-8 では場面を
+  足し引きするたびに台本の秒を手で直していて、3 回とも直し漏れがあった(この検査を入れた直後に
+  13 件見つかった)。どの variant の節かは `<!-- variant: <name> -->` で示す。
+  `wait_for` が何も主張していない step は**警告**にとどめる——`pause:` のように画面を変えないのが
+  正しい step があり、機械には区別できない。
   wrapper の引数検査だけは shell script なので、`./scripts/check` の test が wrapper を**実際に
   subprocess として起動する**。起動しないのは **foot と Herdr** のほうで、どの case も
   `exec /usr/bin/foot` の数行手前で止まる——だから compositor も server も要らず、純粋な parse の

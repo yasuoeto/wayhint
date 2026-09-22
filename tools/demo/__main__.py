@@ -15,6 +15,7 @@ from tools.demo import actions, capture, encode, names
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
+from tools.demo import storyboard as sb
 from tools.demo.scenario import Scenario, ScenarioError, Step, Variant
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -148,6 +149,7 @@ def _print_plan(
     fps = script.output.fps
     if args.validate:
         _check_lengths(script, variants, whole=whole)
+        _check_storyboard(show, script)
         steps = len(script.steps)
         print(f"demo: {show.scenario} is valid ({steps} steps, {len(script.variants)} variants)")
         return 0
@@ -172,6 +174,25 @@ def _print_plan(
     where = show.root / shc.OUT / args.lang
     print(f"\nnothing was recorded; add --record  ->  {where}/<variant>/")
     return 1 if any(v.off_target(fps) for v in variants) and whole else 0
+
+
+def _check_storyboard(show: shc.Showcase, script: Scenario) -> None:
+    """What the storyboard says about the scenario, against the scenario itself.
+
+    The two are written by hand and drift apart at every change -- a scene gets shorter and
+    every second below it in the storyboard is wrong (B-7, B-8). The storyboard is still the
+    place the argument is decided; this only checks the parts of it that are claims.
+    """
+    if show.storyboard is None:
+        return
+    problems, warnings = sb.check(sb.read(show.storyboard), script)
+    for warning in warnings:
+        print(f"demo: warning: {warning}", file=sys.stderr)
+    if problems:
+        raise ScenarioError(
+            f"{show.storyboard.name} and {show.scenario.name} disagree:\n"
+            + "\n".join(f"  {problem}" for problem in problems)
+        )
 
 
 def _check_lengths(script: Scenario, variants: list[Variant], *, whole: bool) -> None:

@@ -28,6 +28,7 @@ from tools.demo import names as nm
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
+from tools.demo import storyboard as sb
 
 BIN = Path(__file__).resolve().parent.parent / "demo" / "bin"
 """The real ``demo/bin``. The wrappers are read and run here for their *refusals* only, which
@@ -616,6 +617,115 @@ class SheetViewerTest(unittest.TestCase):
         vi = self.viewer()
         screen = vi.screen(*vi.opened([]))
         self.assertIn('"" 0L, 0B', screen[-1])
+
+
+STORY = """\
+## 1. 短い版
+<!-- variant: short -->
+
+16:9。合計 2 秒。
+
+### §1 出す(0:00–0:02)
+
+| 秒 | 画面 | 字幕 |
+|---|---|---|
+| 0–2 | overlay が出る | 出す |
+"""
+
+
+class StoryboardTest(unittest.TestCase):
+    """The storyboard's claims about the scenario, checked against the scenario.
+
+    The two are written by hand and drifted apart on three changes in a row (B-7, B-8): a scene
+    got shorter and every second below it stayed as it was. These are the claims a machine can
+    hold on to -- the captions, the seconds in the tables, the headings and the totals.
+    """
+
+    def check(self, story: str = STORY, scenario: str = MINIMAL):
+        path = scratch(self) / "01_x_storyboard.md"
+        path.write_text(story)
+        return sb.check(sb.read(path), parse(scenario))
+
+    def test_a_storyboard_that_agrees_has_nothing_to_say(self) -> None:
+        problems, _ = self.check()
+        self.assertEqual(problems, [])
+
+    def test_it_reads_the_variant_marker_the_span_and_the_total(self) -> None:
+        path = scratch(self) / "01_x_storyboard.md"
+        path.write_text(STORY)
+        story = sb.read(path)
+        self.assertEqual(story.totals, {"short": 2.0})
+        section = story.sections[-1]
+        self.assertEqual((section.variant, section.span), ("short", (0.0, 2.0)))
+        self.assertEqual([(r.start, r.end, r.caption) for r in section.rows], [(0.0, 2.0, "出す")])
+
+    def test_a_row_with_no_caption_is_read_as_one(self) -> None:
+        path = scratch(self) / "01_x_storyboard.md"
+        path.write_text(STORY.replace("| 出す |", "| (字幕なし) |"))
+        self.assertEqual(sb.read(path).sections[-1].rows[0].caption, "")
+
+    def test_a_caption_the_scenario_does_not_have_is_a_problem(self) -> None:
+        problems, _ = self.check(story=STORY.replace("| 出す |", "| 出すぞ |"))
+        self.assertTrue(any("no step in short has this caption" in p for p in problems), problems)
+
+    def test_a_caption_the_storyboard_does_not_mention_is_a_problem(self) -> None:
+        problems, _ = self.check(scenario=MINIMAL.replace('"出す"', '"出しますね"'))
+        self.assertTrue(any("the storyboard does not mention" in p for p in problems), problems)
+
+    def test_a_row_whose_seconds_moved_is_a_problem(self) -> None:
+        problems, _ = self.check(story=STORY.replace("| 0–2 |", "| 8–10 |"))
+        self.assertTrue(any("outside the row" in p for p in problems), problems)
+
+    def test_a_row_may_cover_several_steps(self) -> None:
+        """One row often spans a group and carries the caption of one step in it."""
+        scenario = (
+            MINIMAL.replace(
+                "variants:",
+                "  - id: after\n    pause: true\n    wait_for: {overlay: visible}\n"
+                "    hold: 3\nvariants:",
+            )
+            .replace("steps: [show]", "steps: [show, after]")
+            .replace("target: 2", "target: 5")
+        )
+        problems, _ = self.check(
+            story=STORY.replace("| 0–2 |", "| 0–5 |")
+            .replace("(0:00–0:02)", "(0:00–0:05)")
+            .replace("合計 2 秒", "合計 5 秒"),
+            scenario=scenario,
+        )
+        self.assertEqual(problems, [])
+
+    def test_a_heading_left_behind_is_a_problem(self) -> None:
+        problems, _ = self.check(story=STORY.replace("(0:00–0:02)", "(0:00–0:09)"))
+        self.assertTrue(any("the heading says" in p for p in problems), problems)
+
+    def test_a_total_that_no_longer_holds_is_a_problem(self) -> None:
+        problems, _ = self.check(story=STORY.replace("合計 2 秒", "合計 9 秒"))
+        self.assertTrue(any("合計" in p for p in problems), problems)
+
+    def test_a_step_that_asserts_nothing_is_a_warning(self) -> None:
+        """B-7: three steps pressed keys that never reached the overlay and this waved them by."""
+        _, warnings = self.check(
+            scenario=MINIMAL.replace("    cli: show\n", "    key: f\n").replace(
+                "wait_for: {overlay: visible}", "wait_for: {overlay: visible}"
+            )
+        )
+        self.assertTrue(any("cannot catch this step doing nothing" in w for w in warnings))
+
+    def test_a_pause_is_not_warned_about(self) -> None:
+        """A caption-only step is *meant* to leave the screen alone."""
+        _, warnings = self.check(scenario=MINIMAL.replace("    cli: show\n", "    pause: true\n"))
+        self.assertEqual(warnings, [])
+
+    def test_the_real_showcase_agrees_with_its_storyboard(self) -> None:
+        root = Path(__file__).resolve().parent.parent / "demo" / "showcases"
+        for show in shc.discover(root):
+            with self.subTest(showcase=show.name):
+                if show.storyboard is None:
+                    continue
+                script = scn.load(show.scenario, BIN)
+                problems, _ = sb.check(sb.read(show.storyboard), script)
+                self.assertEqual(problems, [], "\n".join(problems))
 
 
 class WrapperTest(unittest.TestCase):
