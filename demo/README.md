@@ -253,11 +253,13 @@ daemon が読むのはそのコピー。**編集モードの場面と YAML error
 端末 wrapper と別枠の `GUI_STUBS` に入っている(引数は取らない)。中身は label だけ——entry も
 scrolled window もアニメーションも置かない。3 秒空けて 2 回撮って AE=0 を確認してある。
 
-`bin/` の `claude` `codex` `vi` は**本物ではない**。stdin で待つだけの python script で、
-`claude` と `codex` は起動直後の待ち受け画面を出す。`vi` は**引数の sheet を実際に開いて**
-先頭 14 行を固定幅で表示する(5 分版が `match` / `inherit` / `include` と `hints/ja/` を画面で
+`bin/` の `claude` `codex` `vi` `less` は**本物ではない**。stdin で待つだけの python script で、
+`claude` と `codex` は起動直後の待ち受け画面を出す。`vi` と `less` は**引数の sheet を実際に開いて**
+先頭 14 行を固定幅で表示する(`common` が `match` / `include` と `hints/ja/` を画面で
 指すため。固定の抜粋を出していたころは、字幕が画面に無い行を語っていた)。開けるのは session の
-fixtures のコピーの中だけで、場所は `WAYHINT_DEMO_CONFIG` で渡す。大事なのは 2 つ:
+fixtures のコピーの中だけで、場所は `WAYHINT_DEMO_CONFIG` で渡す。`less` は最終行に
+`<ファイル名> (END)` 相当を出し、`q` で終わる——**同じ端末で違うプロセスを動かす**ための 2 本目で、
+`terminal` showcase の「窓が 2 枚、中のプロセスは別」はこれが無いと作れない。大事なのは 2 つ:
 
 * **ファイル名**。wayhint は端末の foreground process を `/proc` から見つけ、`argv[0]` の basename
   (interpreter なら `argv[1]` の basename)を名前にするので、`#!/usr/bin/env python3` の script
@@ -273,8 +275,8 @@ process として答えられてしまう。
 `fixtures/foot.ini` を読む。
 
 **どちらの wrapper も引数を素通ししない。** 受け取るのは `--app-id=` と `--title=` だけで、
-`foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` のいずれかで、
-symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
+`foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` `less` の
+いずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
 shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
 `foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
 wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。

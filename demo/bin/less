@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""A stand-in for less, so the demo can show a terminal running something that is not an editor.
+
+Same shape as ``vi`` next to it, and standalone for the same reason ``claude`` and ``codex``
+are: a stub is one file a person can read, and what matters about it is its *name* -- ``/proc``
+reports ``argv[0]`` and ``prctl`` makes ``comm`` say it too, which is what picks ``less.yaml``.
+
+It exists so the terminal showcase can have two windows running two *different* programs. That
+is the claim of that showcase -- the sheet follows the focused window, and the window is found
+by the process inside it -- and one program cannot make it.
+
+Still: no clock, no animation, one screen of text and a status line. Two recordings of this
+have to come out pixel for pixel the same. The file it shows has to sit inside the session's
+own config directory (``$WAYHINT_DEMO_CONFIG``), a throwaway copy of ``demo/fixtures``: a
+scenario names the file, and a scenario is data (DECISIONS 0032).
+"""
+
+import ctypes
+import os
+import sys
+import termios
+import tty
+import unicodedata
+from pathlib import Path
+
+KEY = "\033[38;5;180m"
+TEXT = "\033[38;5;252m"
+NOTE = "\033[38;5;103m"
+STATUS = "\033[7m"
+OFF = "\033[0m"
+
+ROOT_ENV = "WAYHINT_DEMO_CONFIG"
+ROWS = 14
+"""How many lines of the file fit in the window the scenario places (560x380)."""
+COLUMNS = 56
+"""Cut at a fixed width so that one long line cannot reflow the window between runs."""
+QUIT = ("q", "Q")
+"""What ends it, the way less does. The recorder never presses one -- it closes the window --
+but a person trying the stub by hand should not have to kill the terminal."""
+
+
+def rename() -> None:
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
+    except OSError:
+        pass
+
+
+def clip(text: str, columns: int = COLUMNS) -> str:
+    out = ""
+    used = 0
+    for char in text:
+        step = 2 if unicodedata.east_asian_width(char) in "WF" else 1
+        if used + step > columns:
+            break
+        out, used = out + char, used + step
+    return out
+
+
+def paint(line: str) -> str:
+    """Enough colour to read as YAML: comments, and the key in front of a colon."""
+    if line.lstrip().startswith("#"):
+        return f"{NOTE}{line}{OFF}"
+    body = line.lstrip("- ") if line.lstrip().startswith("- ") else line
+    indent = line[: len(line) - len(body)]
+    key, sep, rest = body.partition(":")
+    if not sep or " " in key:
+        return f"{TEXT}{line}{OFF}"
+    return f"{TEXT}{indent}{OFF}{KEY}{key}{OFF}{TEXT}:{rest}{OFF}"
+
+
+def opened(argv: list[str]) -> tuple[Path | None, str]:
+    """The file to show and the name to put in the status line, or ``(None, "")``.
+
+    Named the way the person would have typed it, not the way the recorder resolved it: the
+    session's own directory is a throwaway path and would fill the status line (measured on
+    ``vi`` in B-7, where the wrapped line scrolled the first line off the top).
+    """
+    if not argv:
+        return None, ""
+    root = os.environ.get(ROOT_ENV)
+    if not root:
+        sys.stderr.write(f"less: {ROOT_ENV} is not set\n")
+        raise SystemExit(1)
+    base = Path(root).resolve()
+    path = (base / argv[0]).resolve()
+    if not path.is_relative_to(base) or not path.is_file() or path.is_symlink():
+        sys.stderr.write(f"less: {argv[0]} is not a file in {base}\n")
+        raise SystemExit(1)
+    return path, str(path.relative_to(base))
+
+
+def screen(path: Path | None, name: str) -> list[str]:
+    lines = path.read_text().splitlines() if path is not None else []
+    shown = [paint(clip(line)) for line in lines[:ROWS]]
+    shown += [""] * (ROWS - len(shown))
+    # less says (END) once the last line is on screen, and shows the name on its own while
+    # there is still more below it.
+    ending = " (END)" if len(lines) <= ROWS else ""
+    return [*shown, f"{STATUS}{clip(name + ending)}{OFF}"]
+
+
+def wait_for_quit() -> None:
+    """Read keys until ``q``. Waits for end of input where there is no terminal to read from."""
+    try:
+        attributes = termios.tcgetattr(sys.stdin.fileno())
+    except (termios.error, ValueError, OSError):
+        with open(os.devnull) if sys.stdin.closed else sys.stdin as stream:
+            stream.read()
+        return
+    try:
+        tty.setcbreak(sys.stdin.fileno())
+        while True:
+            key = sys.stdin.read(1)
+            if not key or key in QUIT:
+                return
+    except KeyboardInterrupt:
+        return
+    finally:
+        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, attributes)
+
+
+def main() -> int:
+    rename()
+    path, name = opened(sys.argv[1:])
+    sys.stdout.write("\n".join(screen(path, name)) + "\n")
+    sys.stdout.flush()
+    wait_for_quit()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

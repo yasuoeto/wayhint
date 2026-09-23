@@ -520,7 +520,7 @@ class SpawnTest(unittest.TestCase):
 
     def bin(self) -> Path:
         demo_bin = scratch(self)
-        for name in ("foot-herdr", "foot-wayhint", "vi", "claude", "idle", "notes"):
+        for name in ("foot-herdr", "foot-wayhint", "vi", "less", "claude", "idle", "notes"):
             (demo_bin / name).write_text("#!/bin/sh\n")
         return demo_bin
 
@@ -739,7 +739,7 @@ class SheetViewerTest(unittest.TestCase):
         self.assertIn('"hints/ja/claude-code.yaml" 1L, 6B', screen[-1])
         self.assertLessEqual(len(screen[-1].replace(vi.STATUS, "").replace(vi.OFF, "")), vi.COLUMNS)
 
-    def test_it_shows_the_top_of_the_file_and_the_real_line_count(self) -> None:
+    def test_it_shows_the_top_of_the_file_and_what_is_left(self) -> None:
         vi = self.viewer()
         body = "".join(f"line{n}: value\n" for n in range(1, 31))
         self.root(**{"sheet.yaml": body})
@@ -749,7 +749,7 @@ class SheetViewerTest(unittest.TestCase):
         self.assertIn(f"line{vi.ROWS}", screen[vi.ROWS - 1])
         self.assertIn(f'"sheet.yaml" 30L, {len(body)}B', screen[-1])
 
-    def test_a_short_file_is_padded_the_way_vi_pads_it(self) -> None:
+    def test_a_short_file_fills_the_screen(self) -> None:
         vi = self.viewer()
         self.root(**{"sheet.yaml": "id: x\n"})
         screen = vi.screen(*vi.opened(["sheet.yaml"]))
@@ -781,10 +781,66 @@ class SheetViewerTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             vi.opened(["sheet.yaml"])
 
-    def test_no_argument_means_an_empty_buffer(self) -> None:
+    def test_no_argument_means_an_empty_screen(self) -> None:
         vi = self.viewer()
         screen = vi.screen(*vi.opened([]))
         self.assertIn('"" 0L, 0B', screen[-1])
+
+
+class PagerTest(SheetViewerTest):
+    """``demo/bin/less``: the same reading, shown the way a pager shows it.
+
+    It inherits the cases above rather than repeating them -- the two stubs are separate files
+    on purpose (so is ``codex`` next to ``claude``), and what has to stay true of both is the
+    part that keeps a recording reproducible: one screen, a fixed width, and nothing outside
+    the session's own fixtures.
+    """
+
+    def viewer(self):
+        loader = importlib.machinery.SourceFileLoader("demo_less", str(BIN / "less"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    # The status line is a pager's, not an editor's, so the three cases about vi's own wording
+    # are re-stated here.
+    def test_the_status_line_is_named_relative_to_the_session_and_fits(self) -> None:
+        less = self.viewer()
+        root = self.root()
+        (root / "hints").mkdir()
+        (root / "hints" / "ja").mkdir()
+        (root / "hints" / "ja" / "claude-code.yaml").write_text("id: x\n")
+        screen = less.screen(*less.opened([str(root / "hints" / "ja" / "claude-code.yaml")]))
+        self.assertIn("hints/ja/claude-code.yaml (END)", screen[-1])
+        self.assertLessEqual(
+            len(screen[-1].replace(less.STATUS, "").replace(less.OFF, "")), less.COLUMNS
+        )
+
+    def test_it_shows_the_top_of_the_file_and_what_is_left(self) -> None:
+        less = self.viewer()
+        body = "".join(f"line{n}: value\n" for n in range(1, 31))
+        self.root(**{"sheet.yaml": body})
+        screen = less.screen(*less.opened(["sheet.yaml"]))
+        self.assertEqual(len(screen), less.ROWS + 1)
+        self.assertIn("line1", screen[0])
+        self.assertIn(f"line{less.ROWS}", screen[less.ROWS - 1])
+        self.assertNotIn("(END)", screen[-1], "there are 16 more lines below")
+
+    def test_a_short_file_fills_the_screen(self) -> None:
+        """A pager leaves the rest of the screen empty; only vi draws ``~``."""
+        less = self.viewer()
+        self.root(**{"sheet.yaml": "id: x\n"})
+        screen = less.screen(*less.opened(["sheet.yaml"]))
+        self.assertEqual(len(screen), less.ROWS + 1)
+        self.assertEqual(screen[1], "")
+        self.assertIn("(END)", screen[-1])
+
+    def test_no_argument_means_an_empty_screen(self) -> None:
+        less = self.viewer()
+        screen = less.screen(*less.opened([]))
+        self.assertEqual(len(screen), less.ROWS + 1)
+        self.assertIn("(END)", screen[-1])
 
 
 STORY = """\

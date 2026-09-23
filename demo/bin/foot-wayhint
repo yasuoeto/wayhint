@@ -10,7 +10,7 @@
 set -eu
 CDPATH=''
 dir=$(cd -- "$(dirname -- "$0")" && pwd)
-STUBS='claude codex vi'
+STUBS='claude codex vi less'
 
 die() {
     echo "foot-wayhint: $1" >&2

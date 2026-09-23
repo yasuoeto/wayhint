@@ -1,0 +1,26 @@
+# 端末の中を見る経路の 2 つ目のプロセス。窓が 2 枚あっても、sheet は前面にいるプロセスで
+# 決まる、を示すためだけに存在する(`vi.yaml` と対になる)。
+id: less
+title: Less
+priority: 10
+match:
+  process:
+    argv_regex: ["^less$"]
+hints:
+  - id: next-page
+    title: 次のページ
+    key: Space
+    category: 移動
+  - id: prev-page
+    title: 前のページ
+    key: b
+    category: 移動
+  - id: search
+    title: 前方を検索
+    kind: command
+    command: /語句
+    category: 検索
+  - id: quit
+    title: 終了
+    key: q
+    category: 移動
