@@ -17,7 +17,9 @@ windows:
 
 steps:
   - id: intro
-    spawn: {window: less, argv: [foot-wayhint, -e, less, "hints/{lang}/herdr.yaml"]}
+    # `wm.yaml` rather than a sheet about another program: this showcase has no Herdr in it,
+    # and the first thing on screen should not be a file about one.
+    spawn: {window: less, argv: [foot-wayhint, -e, less, "hints/{lang}/wm.yaml"]}
     wait_for:
       context: {active_sheet: less, process_name: less}
       overlay: hidden

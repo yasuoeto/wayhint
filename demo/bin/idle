@@ -17,6 +17,7 @@ next to me", which is a different question from "what may a pane start", and it 
 grow the answer every time somebody adds a file to ``demo/bin``.
 """
 
+import ctypes
 import os
 import sys
 from pathlib import Path
@@ -26,6 +27,21 @@ BANNER = "  (demo pane)"
 
 STARTABLE = ("claude", "codex", "vi")
 """The stubs a pane may be told to run. Not the ``foot-*`` wrappers: those start terminals."""
+
+
+def rename() -> None:
+    """Say ``idle`` in ``comm``, the way the other stubs say their own names.
+
+    Herdr reports the pane's process by its ``comm`` and wayhint puts that in the overlay's
+    sub-header, so without this the line reads ``foot-herdr · python3``: the demo's own
+    plumbing, on screen, in the one scene that is about a pane with nothing recognisable in it
+    (B-9). The name has no sheet either way -- which is the point of that scene -- but it
+    should be the stub's name and not the interpreter's.
+    """
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
+    except OSError:
+        pass
 
 
 def target(name: str, here: Path = HERE) -> Path | None:
@@ -46,6 +62,7 @@ def target(name: str, here: Path = HERE) -> Path | None:
 
 
 def main() -> int:
+    rename()
     sys.stdout.write(BANNER + "\n")
     sys.stdout.flush()
     for line in sys.stdin:
