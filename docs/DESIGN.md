@@ -639,6 +639,7 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る。
   もう一度 `wayhint edit-mode` を呼んでも同じく抜ける（フォームが開いていれば 1 回目はフォームを閉じるだけ）。
   作業中（非表示）から `Super+Ctrl+H` → もう一度 `Super+Ctrl+H` で overlay が消え、**元アプリにそのまま入力が通る**
+  **(2026-09-24 確認済)**
 - T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
 - T15 edit 中の hotkey → hide / show、入力が残る
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
@@ -654,6 +655,7 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T18 gvim で開いたまま GUI 保存 → gvim に W11
 - T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない。
   作業中（非表示）から `Super+Shift+H` → もう一度 `Super+Shift+H` で overlay が消え、**元アプリにそのまま入力が通る**
+  **(2026-09-24 確認済)**
 - T20 `#` 途中入力 + Tab → 補完
 - T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
 - T22 `d` `d` → 削除、`u` → 復帰
