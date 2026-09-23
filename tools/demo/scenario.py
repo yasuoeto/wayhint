@@ -293,6 +293,8 @@ HERDR_COMMANDS = {
 """Every Herdr command a scenario may run, and what each may be given (DECISIONS 0032)."""
 
 DEFAULT_TIMEOUT = 10.0
+MIN_REASON = 10
+"""How short a ``wait_for.unchecked`` reason may be. Long enough that it is a sentence."""
 OVERLAY_STATES = ("visible", "hidden")
 
 
@@ -342,8 +344,11 @@ class Condition:
     overlay: str | None = None  # "visible" | "hidden"
     label: str | None = None  # a label on the overlay containing this text
     no_label: str | None = None  # ... and one that must not be there
+    first_hint: str | None = None  # the hint row listed first contains this
+    text: str | None = None  # something typed into the overlay holds this
     button: str | None = None  # a button by logical name (BUTTONS)
     hints: int | None = None  # how many hint rows are listed
+    unchecked: str | None = None  # why nothing above can judge this step; a reason, not a flag
     timeout: float = DEFAULT_TIMEOUT
 
     def describe(self) -> str:
@@ -356,6 +361,8 @@ class Condition:
                 ("overlay", self.overlay),
                 ("label", self.label),
                 ("no_label", self.no_label),
+                ("first_hint", self.first_hint),
+                ("text", self.text),
                 ("button", self.button),
                 ("hints", self.hints),
             )
@@ -795,8 +802,11 @@ def _condition(value: object, where: str) -> Condition:
         "overlay",
         "label",
         "no_label",
+        "first_hint",
+        "text",
         "button",
         "hints",
+        "unchecked",
         "timeout",
         "context",
     }
@@ -827,9 +837,18 @@ def _condition(value: object, where: str) -> Condition:
     if not math.isfinite(timeout):
         raise ScenarioError(f"{where}.timeout: expected a finite number of seconds")
     doc["timeout"] = float(timeout)
-    for key in ("process_name", "active_sheet", "label", "no_label"):
+    for key in ("process_name", "active_sheet", "label", "no_label", "first_hint", "text"):
         if key in doc:
             doc[key] = _string(doc[key], f"{where}.{key}")
+    if "unchecked" in doc:
+        # A sentence, not a flag: the point of writing it is that the next person reads *why*
+        # this step is one nothing can be asserted about.
+        doc["unchecked"] = _string(doc["unchecked"], f"{where}.unchecked")
+        if len(doc["unchecked"].strip()) < MIN_REASON:
+            raise ScenarioError(
+                f"{where}.unchecked: expected a reason this step cannot be checked "
+                f"({MIN_REASON} characters or more), not {doc['unchecked']!r}"
+            )
     return Condition(**doc)
 
 

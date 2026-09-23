@@ -58,7 +58,9 @@ steps:
   - id: keep-typing-60
     type: "/comp"
     precondition: {overlay: visible}
-    wait_for: {overlay: visible}
+    wait_for:
+      overlay: visible
+      unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
     caption: {ja: "出したまま、そのまま作業できる"}
     hold: 8.0
 
@@ -96,7 +98,7 @@ steps:
 
   - id: type-title-60
     type: "直前の検索を繰り返す"
-    wait_for: {overlay: visible, label: "Title"}
+    wait_for: {overlay: visible, label: "Title", text: "直前の検索を繰り返す"}
     hold: 2.5
 
   - id: next-field-60
@@ -106,7 +108,7 @@ steps:
 
   - id: type-key-60
     type: "n"
-    wait_for: {overlay: visible, label: "Key"}
+    wait_for: {overlay: visible, label: "Key", text: "n"}
     hold: 2.5
 
   - id: save-hint-60
@@ -172,14 +174,20 @@ steps:
 
   - id: detail-pane
     cli: refresh
-    wait_for: {overlay: visible, label: "Claude Code"}
+    wait_for:
+      overlay: visible
+      label: "Claude Code"
+      unchecked: "画面は前の step のまま。字幕だけが進む"
     caption: {ja: "補足は下に出る。一覧には出さない"}
     hold: 4.0
 
   # --- §3 主役1: 中まで見て切り替わる -------------------------------------------------------------
   - id: whose-hints
     cli: refresh
-    wait_for: {overlay: visible, label: "Claude Code"}
+    wait_for:
+      overlay: visible
+      label: "Claude Code"
+      unchecked: "画面は前の step のまま。次の場面への言い渡しだけが進む"
     caption: {ja: "見ているのは窓ではなく、中のプロセス"}
     hold: 5.0
 
@@ -212,7 +220,9 @@ steps:
   - id: keep-typing
     type: "/dif"
     precondition: {overlay: visible}
-    wait_for: {overlay: visible}
+    wait_for:
+      overlay: visible
+      unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
     caption: {ja: "通常表示中はキーボードを受け取らない"}
     hold: 8.0
 
@@ -235,7 +245,9 @@ steps:
 
   - id: focus-back
     type: "f"
-    wait_for: {overlay: visible}
+    wait_for:
+      overlay: visible
+      unchecked: "入力が端末へ戻ったことが要点で、overlay 側には何も起きない"
     caption: {ja: "終えたら、focus は元の窓へ戻る"}
     hold: 6.0
 
@@ -263,13 +275,13 @@ steps:
     # single-key scene here is about the first row. That is why no hint in `codex.yaml` starts
     # out with a star -- `f` has to have one to add.
     type: "J"
-    wait_for: {overlay: visible}
+    wait_for: {overlay: visible, first_hint: "実行を却下する"}
     caption: {ja: "J / K で並べ替え。YAML の行がそのまま動く"}
     hold: 7.0
 
   - id: move-up
     type: "K"
-    wait_for: {overlay: visible}
+    wait_for: {overlay: visible, first_hint: "実行を承認する"}
     hold: 4.0
 
   - id: favorite-hint
@@ -286,7 +298,7 @@ steps:
 
   - id: type-title
     type: "直前の検索を繰り返す"
-    wait_for: {overlay: visible, label: "Title"}
+    wait_for: {overlay: visible, label: "Title", text: "直前の検索を繰り返す"}
     hold: 3.5
 
   - id: next-field
@@ -296,7 +308,7 @@ steps:
 
   - id: type-key
     type: "n"
-    wait_for: {overlay: visible, label: "Key"}
+    wait_for: {overlay: visible, label: "Key", text: "n"}
     hold: 3.5
 
   - id: save-hint

@@ -157,6 +157,8 @@ def satisfied(run: Run, cond: Condition) -> tuple[bool, str]:
         cond.overlay is not None
         or cond.label is not None
         or cond.no_label is not None
+        or cond.first_hint is not None
+        or cond.text is not None
         or cond.button is not None
         or cond.hints is not None
     ):
@@ -175,6 +177,19 @@ def satisfied(run: Run, cond: Condition) -> tuple[bool, str]:
             unwanted = run.tr(cond.no_label)
             if any(unwanted in name for name in names):
                 return False, f"{seen[-1]} labels={_sample(names)}"
+        if cond.first_hint is not None:
+            # The row at the top -- which is what a reordering step changes and nothing else
+            # does. ``label`` cannot see it: J and K move a row without changing the set of
+            # rows, so every label is still there afterwards.
+            wanted = run.tr(cond.first_hint)
+            top = _first_row(nodes)
+            if not any(wanted in name for name in top):
+                return False, f"{seen[-1]} first row={top}"
+        if cond.text is not None:
+            wanted = run.tr(cond.text)
+            typed = [node.text for node in nodes if node.text]
+            if not any(wanted in text for text in typed):
+                return False, f"{seen[-1]} typed={typed}"
         if cond.button is not None:
             wanted = run.button_label(cond.button)
             buttons = [node.name for node in nodes if node.role == "button"]
@@ -183,6 +198,25 @@ def satisfied(run: Run, cond: Condition) -> tuple[bool, str]:
         if cond.hints is not None and rows != cond.hints:
             return False, seen[-1]
     return True, "; ".join(seen)
+
+
+def _first_row(nodes: list) -> list[str]:
+    """What the first hint row says, in tree order.
+
+    The row itself publishes no name of its own: GTK puts the key, the title and the category
+    in labels *under* the list item. The dump is depth-first, so everything between the first
+    row and the second one belongs to the first row.
+    """
+    out: list[str] = []
+    inside = False
+    for node in nodes:
+        if node.role == "list item":
+            if inside:
+                break
+            inside = True
+        elif inside and node.name:
+            out.append(node.name)
+    return out
 
 
 def _sample(names: list[str], limit: int = 8) -> list[str]:

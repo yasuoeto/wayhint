@@ -182,8 +182,11 @@ Herdr は実物が動くので、呼べる subcommand と引数を固定して�
 | `context: {process_name: …, active_sheet: …}` | `wayhint context` が答える foreground process と sheet |
 | `overlay: visible \| hidden` | overlay が AT-SPI に出ているか |
 | `label: <text>` / `no_label: <text>` | overlay に見えている文字。**UI 文言は英語の原文で書く**(`src/wayhint/i18n.py` の key。ja では自動で訳が照合される) |
+| `first_hint: <text>` | **一覧の先頭行**にその文字があるか。`J` / `K` の並べ替えはこれでしか見えない(行の集合は変わらない) |
+| `text: <text>` | **入力欄に入っている文字**。form や検索に打った文字が overlay に届いたかを見る。label は対象外 |
 | `button: <名前>` | そのボタンが出ているか(`press` と同じ名前) |
 | `hints: <n>` | 一覧に見えている行数。**保存や絞り込みが効いたかはこれで確かめる** |
+| `unchecked: "<理由>"` | 上のどれでも判定できない step だと**書いて**宣言する。下の警告が消える。10 文字未満は exit 1 |
 | `timeout: <秒>` | 既定 10 |
 
 **`press` の直後は必ず条件で待つ。** AT-SPI の click は要求であって完了ではないので、待たずに
@@ -200,16 +203,22 @@ Herdr は実物が動くので、呼べる subcommand と引数を固定して�
 6. 再現するか確かめる。2 回撮って全 frame を比べる:
 
    ```sh
-   ./scripts/demo --showcase X --variant 60s --record --keep
-   mv demo/showcases/X/out/ja/60s demo/showcases/X/out/ja/_a
-   ./scripts/demo --showcase X --variant 60s --record --keep
+   ./scripts/demo --showcase X --variant 60s --record --keep --out-dir /tmp/take-a
+   ./scripts/demo --showcase X --variant 60s --record --keep --out-dir /tmp/take-b
    seq -f '%06g' 1 <frame 数> | xargs -P 8 -I{} compare -metric AE \
-     demo/showcases/X/out/ja/_a/frames/{}.png demo/showcases/X/out/ja/60s/frames/{}.png null:
+     /tmp/take-a/ja/60s/frames/{}.png /tmp/take-b/ja/60s/frames/{}.png null:
    ```
+
+   `--out-dir` に出すのは、**確認のための録画で採用済みの `out/` を消さない**ため(録画は出力先を
+   消してから始める)。
 
    差が出るのは、たいてい**画面の中で何かが動いている**とき。既に止めてあるのは foot の cursor
    (`fixtures/foot.ini`)、overlay の caret(最後の打鍵から約 8 秒で自然に止まるのを待っている)、
    Herdr の workspace 名と窓 title(下記)。新しく動くものを入れたら、止める方法を探す。
+
+   止まっていないものが 1 つある: **Herdr の tab 脇の状態記号**(`·` と `○`)。直近の出力からの
+   経過時間で変わるので、`wait_for` を足すなどして撮る瞬間が 1 秒ずれると、その場面だけ 15px
+   ほど差が出る(2026-09-23 実測、5 分版の `wrong-hints`)。同じ条件で 2 回撮る分には出ない。
 
 ## 台本から落とした場面
 
@@ -289,7 +298,9 @@ wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先�
 
 **警告**も出る(落ちはしない): `wait_for` が「overlay が出ている」しか見ていない step、前の step と
 同じ条件しか持たない step。B-7 で `f` / `J` / `K` が overlay に届かず端末に流れていた 3 step は、
-まさにこれを素通りして 3 本とも撮り切ってしまった。`pause:` は画面を変えないのが仕事なので対象外。
+まさにこれを素通りして 3 本とも撮り切ってしまった。`pause:` は画面を変えないのが仕事なので対象外で、
+同じ理由の step には `wait_for` に `unchecked: "<理由>"` を書く(理由を書くことが条件。端末に文字が
+出るだけの step のように、daemon に聞ける形で何も残らないものがある)。
 
 `./scripts/check` の test が実際の showcase について同じ検査を通すので、ずれたまま commit すると
 落ちる。

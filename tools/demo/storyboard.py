@@ -221,14 +221,18 @@ def _warnings(script: Scenario) -> list[str]:
     A judgement call, never a failure: a caption-only step is *meant* to leave the screen alone
     (`pause:`). But the hole this catches is real -- in B-7 three steps pressed keys that never
     reached the overlay, and ``wait_for: {overlay: visible}`` waved all three through.
+
+    ``wait_for.unchecked: "<why>"`` says a step is one of those on purpose. It is a sentence
+    rather than a flag, because what it has to survive is the next person asking why this one
+    is exempt.
     """
     out: list[str] = []
     for variant in script.variants:
         previous = None
         for step in variant.steps:
-            if step.action.kind == "pause":
+            if step.action.kind == "pause" or step.wait_for.unchecked:
                 previous = _asserts(step)
-                continue  # a pause is *meant* to leave the screen alone
+                continue  # a pause is *meant* to leave the screen alone, and so is an exempt step
             shape = _asserts(step)
             if not shape:
                 out.append(
@@ -255,6 +259,8 @@ def _asserts(step: Step) -> tuple:
             ("active_sheet", cond.active_sheet),
             ("label", cond.label),
             ("no_label", cond.no_label),
+            ("first_hint", cond.first_hint),
+            ("text", cond.text),
             ("button", cond.button),
             ("hints", cond.hints),
             ("overlay", cond.overlay if cond.overlay == "hidden" else None),

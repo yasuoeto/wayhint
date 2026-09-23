@@ -78,6 +78,13 @@ class A11yNode:
     name: str
     showing: bool
     actions: tuple[str, ...] = ()
+    text: str = ""
+    """What has been typed into this node, for the ones that can be typed into.
+
+    Empty for everything else, on purpose: a label publishes its own text through the *text*
+    interface as well, and a condition that matched those would be a second, weaker ``name``.
+    Only a node that also implements ``EditableText`` -- the search box, the form's fields --
+    answers here."""
 
 
 def compositor() -> str | None:
@@ -678,6 +685,20 @@ def actions(node):
     return out
 
 
+def typed(node):
+    # Only what can be typed into. A label answers the text interface too, and reporting that
+    # would make the field a copy of the name.
+    try:
+        if node.get_editable_text_iface() is None:
+            return ""
+        iface = node.get_text_iface()
+        if iface is None:
+            return ""
+        return Atspi.Text.get_text(iface, 0, Atspi.Text.get_character_count(iface)) or ""
+    except Exception:
+        return ""
+
+
 def describe(node):
     try:
         return {
@@ -685,6 +706,7 @@ def describe(node):
             "name": node.get_name() or "",
             "showing": node.get_state_set().contains(Atspi.StateType.SHOWING),
             "actions": actions(node),
+            "text": typed(node),
         }
     except Exception:
         return None

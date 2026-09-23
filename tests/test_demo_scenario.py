@@ -24,6 +24,7 @@ from pathlib import Path
 
 from tools import headless as headless_mod
 from tools.demo import __main__ as cli
+from tools.demo import actions as act
 from tools.demo import names as nm
 from tools.demo import scenario as scn
 from tools.demo import session as sess
@@ -112,6 +113,25 @@ class ScenarioTest(unittest.TestCase):
     def test_a_negative_hold_is_refused(self) -> None:
         with self.assertRaisesRegex(scn.ScenarioError, "not negative"):
             parse(MINIMAL.replace("hold: 2", "hold: -1"))
+
+    def test_an_unchecked_reason_that_says_nothing_is_refused(self) -> None:
+        """It is a sentence, not a flag: it has to survive the next person asking why."""
+        with self.assertRaisesRegex(scn.ScenarioError, "expected a reason"):
+            parse(
+                MINIMAL.replace(
+                    "wait_for: {overlay: visible}",
+                    'wait_for: {overlay: visible, unchecked: "-"}',
+                )
+            )
+
+    def test_the_new_conditions_are_read(self) -> None:
+        text = MINIMAL.replace(
+            "wait_for: {overlay: visible}",
+            'wait_for: {overlay: visible, first_hint: "承認", text: "n"}',
+        )
+        wait_for = parse(text).steps["show"].wait_for
+        self.assertEqual((wait_for.first_hint, wait_for.text), ("承認", "n"))
+        self.assertIn("first_hint='承認'", wait_for.describe())
 
     def test_a_write_outside_the_fixtures_is_refused(self) -> None:
         text = MINIMAL.replace(
@@ -803,6 +823,16 @@ class StoryboardTest(unittest.TestCase):
         _, warnings = self.check(scenario=MINIMAL.replace("    cli: show\n", "    pause: true\n"))
         self.assertEqual(warnings, [])
 
+    def test_a_written_reason_takes_a_step_out_of_the_warning(self) -> None:
+        """Some steps really cannot be judged -- typing into the terminal behind the overlay."""
+        _, warnings = self.check(
+            scenario=MINIMAL.replace("    cli: show\n", "    key: f\n").replace(
+                "wait_for: {overlay: visible}",
+                'wait_for: {overlay: visible, unchecked: "端末に文字が出るだけ"}',
+            )
+        )
+        self.assertEqual(warnings, [])
+
     def test_the_real_showcase_agrees_with_its_storyboard(self) -> None:
         root = Path(__file__).resolve().parent.parent / "demo" / "showcases"
         for show in shc.discover(root):
@@ -951,6 +981,62 @@ class CommandLineNameTest(unittest.TestCase):
         )
         # ... and the showcase resolver reaches the same function, rather than its own regex.
         self.assertIn(("showcase name", "herdr"), seen)
+
+
+class ConditionTest(unittest.TestCase):
+    """What ``wait_for`` can see, on a fake accessible tree -- no compositor.
+
+    The two conditions covered here are the ones that tell a step that worked from one that did
+    nothing: ``first_hint`` (J and K move a row without changing the set of rows) and ``text``
+    (what was typed landed in the form, and not in the terminal behind it). Both were added
+    because ``wait_for: {overlay: visible}`` waved three broken steps through in B-7.
+    """
+
+    def run_with(self, *nodes: headless_mod.A11yNode) -> act.Run:
+        class Session:
+            def a11y_nodes(self):
+                return list(nodes)
+
+        class Demo:
+            session = Session()
+
+        return act.Run(session=Demo(), language="ja", demo_bin=Path("/nonexistent"), windows={})
+
+    def rows(self, *names: str) -> tuple[headless_mod.A11yNode, ...]:
+        """Rows as GTK publishes them: a nameless list item with its labels underneath."""
+        out: list[headless_mod.A11yNode] = []
+        for name in names:
+            out.append(headless_mod.A11yNode("list item", "", True))
+            out += [headless_mod.A11yNode("label", part, True) for part in name.split()]
+        return tuple(out)
+
+    def field(self, name: str, text: str) -> headless_mod.A11yNode:
+        return headless_mod.A11yNode("text", name, True, text=text)
+
+    def test_first_hint_reads_the_row_at_the_top(self) -> None:
+        run = self.run_with(*self.rows("y 承認", "n 却下"))
+        self.assertTrue(act.satisfied(run, scn.Condition(first_hint="承認"))[0])
+        ok, seen = act.satisfied(run, scn.Condition(first_hint="却下"))
+        self.assertFalse(ok, "it matched a row that is not the first one")
+        self.assertIn("承認", seen)
+
+    def test_first_hint_with_no_rows_at_all(self) -> None:
+        ok, seen = act.satisfied(self.run_with(), scn.Condition(first_hint="承認"))
+        self.assertFalse(ok)
+        self.assertIn("first row=[]", seen)
+
+    def test_text_reads_what_was_typed_into_a_field(self) -> None:
+        run = self.run_with(self.field("Title", "直前の検索を繰り返す"), self.field("Key", ""))
+        self.assertTrue(act.satisfied(run, scn.Condition(text="直前の検索"))[0])
+        ok, seen = act.satisfied(run, scn.Condition(text="n"))
+        self.assertFalse(ok, "an empty field answered for one that was typed into")
+        self.assertIn("typed=", seen)
+
+    def test_text_ignores_labels(self) -> None:
+        """A label publishes its text too; matching those would make this a weaker ``label``."""
+        label = headless_mod.A11yNode("label", "Title", True)
+        ok, _ = act.satisfied(self.run_with(label), scn.Condition(text="Title"))
+        self.assertFalse(ok)
 
 
 class SessionDirectoryTest(unittest.TestCase):
