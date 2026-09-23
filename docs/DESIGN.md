@@ -685,8 +685,8 @@ daemon 化して session のプロセスグループを抜けるので、session
   **(自動テスト済: `T43EditWhileFilteredTest`、実物の HintWindow)**
 - T44 別 workspace で同じ sheet を開くと同じ絞り込み **(自動テスト済: `T44WorkspaceTest`)**
 - T45 `search` 中に `search-mode` をもう一度 → `normal` に戻り、元アプリに入力できる
-  **(自動テスト済: `tests/test_gui_headless.py` `SearchChecklistTest`、check-gui)**。実機で見るのは
-  本物の `rc.xml` の keybind(`W-S-h`)経由だけ
+  **(自動テスト済: `tests/test_gui_headless.py` `SearchChecklistTest`、check-gui)**。本物の `rc.xml` の
+  keybind(`W-S-h`)経由も、別 window で開いたままの overlay から **(2026-09-23 確認済)**
 - T46 `search` 中に別経路で sheet の内容を書き換える → 欄の文字列・カーソル・focus・絞り込みが残る
   **(自動テスト済: `T46aReloadWhileSearchingTest`)**。
   `search` 中に「エディタで編集」→ `normal` に戻り、保存のたびに絞り込まれた一覧が更新される
