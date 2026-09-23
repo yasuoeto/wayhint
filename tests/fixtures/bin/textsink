@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""A window that only takes typing, for the GUI tests: did the keyboard come back to the app?
+
+One ``Gtk.TextView`` and nothing else. Whatever is in it is written to the file named by the one
+argument, on every change, so a test reads what the person would have typed without going
+through AT-SPI (the probe there reads the overlay's frame only). Nothing typed is interpreted.
+"""
+
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gio, Gtk  # noqa: E402
+
+APP_ID = "dev.wayhint.test.TextSink"
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: textsink OUTPUT", file=sys.stderr)
+        return 2
+    out = Path(sys.argv[1])
+    out.write_text("")
+    app = Gtk.Application(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
+
+    def activate(app: Gtk.Application) -> None:
+        view = Gtk.TextView()
+        buffer = view.get_buffer()
+        buffer.connect("changed", lambda b: out.write_text(b.get_text(*b.get_bounds(), False)))
+        window = Gtk.ApplicationWindow(application=app, title="TextSink", child=view)
+        window.set_default_size(400, 300)
+        window.present()
+        view.grab_focus()
+
+    app.connect("activate", activate)
+    return app.run(None)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

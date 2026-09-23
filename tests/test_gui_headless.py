@@ -403,5 +403,126 @@ class SearchModeTest(unittest.TestCase):
         self.assertIn('demo: "quit"', written)
 
 
+FIXTURE_BIN = REPO / "tests" / "fixtures" / "bin"
+
+TEXTSINK_SHEET = """\
+id: textsink
+title: TextSink
+match:
+  wayland:
+    app_id_regex: ['^dev\\.wayhint\\.test\\.TextSink$']
+hints:
+  - {id: type, title: Type here, key: 'a-z'}
+"""
+
+
+@needs_key_injection
+class SearchChecklistTest(unittest.TestCase):
+    """T45 and T46b of the manual checklist: what only a real keyboard and editor can show.
+
+    T45 is the keyboard coming back: a second ``Super+Shift+H`` must leave search *and* let the
+    application underneath have the keys again, which only the compositor can say. T46b is the
+    editor path: after "Edit in editor" the overlay is back in normal, and every save the editor
+    makes -- in place, then by rename -- re-renders the list still narrowed by the filter.
+    What stays manual is the person's own ``rc.xml`` binding and a real gvim.
+    """
+
+    OVERLAY = "{anchor: top-right, width: 400px, margin: {top: 20, right: 20}}"
+
+    def showing(self, session: HeadlessSession) -> list[str]:
+        return [node.name for node in session.a11y_nodes() if node.showing]
+
+    def until(self, session: HeadlessSession, what: str, ready, timeout: float = 15) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if ready():
+                return
+            time.sleep(0.2)
+        self.fail(f"{what}\n{self.showing(session)}\n{session.log_tail()}")
+
+    def searching(self, session: HeadlessSession) -> bool:
+        shown = self.showing(session)
+        return "Done" in shown and "Search" not in shown
+
+    def normal(self, session: HeadlessSession) -> bool:
+        shown = self.showing(session)
+        return "Search" in shown and "Done" not in shown
+
+    def test_t45_the_hotkey_again_leaves_search_and_gives_the_keys_back(self) -> None:
+        root = config_root(self, self.OVERLAY, {"textsink": TEXTSINK_SHEET})
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        with HeadlessSession(
+            root, width=WIDTH, height=HEIGHT, keybind=("W-S-h", "search-mode")
+        ) as session:
+            session.spawn([str(FIXTURE_BIN / "textsink"), str(typed)])
+            self.until(
+                session,
+                "textsink never became the active window",
+                lambda: "dev.wayhint.test.TextSink" in session.wayhint("context"),
+                timeout=30,
+            )
+            session.press("win", "shift", "h")
+            self.until(
+                session, "the hotkey did not start a search", lambda: self.searching(session)
+            )
+            session.type_text("box")  # into the overlay, not the application
+            session.press("win", "shift", "h")
+            self.until(
+                session, "the hotkey again did not leave search", lambda: self.normal(session)
+            )
+            session.type_text("hello")
+            self.until(
+                session,
+                "the keys did not come back to the application",
+                lambda: typed.exists() and "hello" in typed.read_text(),
+            )
+            got = typed.read_text()
+        self.assertNotIn("box", got, "what was typed into the search box reached the application")
+
+    def test_t46b_every_save_from_the_editor_re_renders_the_filtered_list(self) -> None:
+        root = config_root(self, self.OVERLAY)
+        (root / "config.yaml").write_text(
+            f"overlay: {self.OVERLAY}\nappearance: {{language: en}}\n"
+            "context: {workspace: all}\n"
+            f"editor: {{command: ['{FIXTURE_BIN / 'fake-editor'}', '{{file}}']}}\n"
+        )
+        sheet = root / "hints" / "en" / "demo.yaml"
+        with HeadlessSession(root, width=WIDTH, height=HEIGHT) as session:
+            session.toplevel("wayhint-probe")
+            self.assertIn("mode=search", session.wayhint("search-mode"), session.log_tail())
+            session.press("x")  # the first key of a session can be lost; BackSpace evens it out
+            session.press("BackSpace")
+            session.type_text("quit")
+            self.until(
+                session,
+                "typing did not narrow the list",
+                lambda: "Quit" in self.showing(session) and "Paste" not in self.showing(session),
+            )
+
+            self.assertTrue(session.a11y_press("Edit in editor"), session.log_tail())
+            self.until(session, "the editor did not end the search", lambda: self.normal(session))
+            self.assertIn("filter: quit", self.showing(session))
+
+            # First save, in place: the new hint matches and shows, the rest stay filtered out.
+            self.until(
+                session,
+                "the in-place save never reached the list",
+                lambda: "Quit again" in self.showing(session),
+            )
+            self.assertNotIn("Paste", self.showing(session))
+
+            # Second save, by rename: one new hint matches, the other does not.
+            (sheet.parent / (sheet.name + ".next")).touch()
+            self.until(
+                session,
+                "the save by rename never reached the list",
+                lambda: "Quit three" in self.showing(session),
+            )
+            shown = self.showing(session)
+        self.assertNotIn("Zoom in", shown, "a hint the filter does not match was shown")
+        self.assertNotIn("Paste", shown)
+        self.assertIn("filter: quit", shown)
+
+
 if __name__ == "__main__":
     unittest.main()

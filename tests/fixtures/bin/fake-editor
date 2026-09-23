@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""An editor that saves a sheet twice, the two ways real editors do, for the GUI tests.
+
+Started by wayhintd as ``editor.command`` with the sheet's path. The first save rewrites the file
+in place (same inode); the second writes a temporary file beside it and renames it over the
+sheet, like vim with ``backupcopy=no``. Each save appends hints, so a test can see every save
+land. Between the two it waits for ``<sheet>.next`` to appear, which the test creates once it
+has checked the first -- no timing is guessed. The sheet is only ever appended to; nothing in it
+is read as a command.
+"""
+
+import os
+import sys
+import time
+from pathlib import Path
+
+FIRST = "  - {id: quit-again, title: Quit again, key: 'Ctrl+W'}\n"
+SECOND = (
+    "  - {id: quit-three, title: Quit three, key: 'Ctrl+Shift+Q'}\n"
+    "  - {id: zoom, title: Zoom in, key: 'Ctrl+plus'}\n"
+)
+WAIT = 60.0
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: fake-editor FILE", file=sys.stderr)
+        return 2
+    sheet = Path(sys.argv[1])
+    with sheet.open("r+", encoding="utf-8") as f:  # in place
+        text = f.read()
+        f.seek(0)
+        f.write(text + FIRST)
+        f.truncate()
+
+    signal = sheet.with_name(sheet.name + ".next")
+    deadline = time.monotonic() + WAIT
+    while not signal.exists():
+        if time.monotonic() > deadline:
+            return 1
+        time.sleep(0.1)
+
+    tmp = sheet.with_name(f".{sheet.name}.fake-editor")
+    tmp.write_text(sheet.read_text(encoding="utf-8") + SECOND, encoding="utf-8")
+    os.replace(tmp, sheet)  # rename over the sheet
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
