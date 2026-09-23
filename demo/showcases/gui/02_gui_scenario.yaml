@@ -1,0 +1,66 @@
+# The gui showcase, as a script: the route with nothing to look into. A GTK application has no
+# foreground process to read out of a terminal, so the window's app_id is the whole answer
+# (DECISIONS 0024). 01_gui_storyboard.md says what it argues.
+#
+# The window is the demo's own GTK4 stub. No real application is started: what it draws has to
+# be the same in every recording, and its name and logo are not ours to use.
+
+output: {width: 1280, height: 720, fps: 30}
+fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
+session: {herdr: false}
+
+windows:
+  - {title: Notes, app_id: "dev.wayhint.demo.Notes", x: 28, y: 40, width: 630, height: 562}
+
+steps:
+  - id: open-notes
+    spawn: {window: Notes, argv: [notes]}
+    wait_for:
+      toplevel: "^dev\\.wayhint\\.demo\\.Notes$"
+      context: {active_sheet: notes}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "GUI アプリでも同じ"}
+    hold: 5.0
+
+  - id: notes-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Notes", hints: 9}
+    caption: {ja: "窓の app_id だけで選ぶ。プロセスは探さない"}
+    hold: 8.0
+
+  - id: sub-header
+    pause: true
+    wait_for: {overlay: visible, label: "Notes", no_label: "python3"}
+    caption: {ja: "覗き込むプロセスが無いので、sub-header は app_id"}
+    hold: 8.0
+
+  - id: yaml-wayland
+    pause: true
+    wait_for: {overlay: visible, label: "Notes"}
+    caption: {ja: "match.wayland に app_id を書くだけ"}
+    hold: 7.0
+
+  - id: context-cli
+    pause: true
+    wait_for: {overlay: visible, label: "Notes"}
+    caption: {ja: "wayhint context の desktop_app と突き合わせる"}
+    hold: 7.0
+
+  - id: outro
+    key: super+h
+    wait_for: {overlay: hidden}
+    caption: {ja: "見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ"}
+    hold: 7.0
+
+variants:
+  main:
+    target: 42
+    tolerance: 5
+    steps:
+      - open-notes
+      - notes-hints
+      - sub-header
+      - yaml-wayland
+      - context-cli
+      - outro

@@ -1,0 +1,147 @@
+# The herdr showcase, as a script: one of the three routes wayhint has to a context, and the
+# only one that asks another program. 01_herdr_storyboard.md says what it argues; this file
+# says what the recorder does (DECISIONS 0032).
+#
+# What the product *does* with the hints it found is not argued here -- that is `common`. This
+# one stays on one question: which sheet, and how was it chosen.
+
+output: {width: 1280, height: 720, fps: 30}
+fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
+session: {herdr: true}
+
+# Every window ends above the caption band (`tools/demo/encode.py`, demo/README「字幕帯」):
+# at 720p the band starts at y=638, so nothing the compositor draws may reach past y=634.
+windows:
+  - {title: Herdr, x: 32, y: 48, width: 620, height: 566}
+  - {title: vi, x: 104, y: 214, width: 560, height: 380}
+
+steps:
+  - id: intro
+    spawn: {window: Herdr, argv: [foot-herdr]}
+    wait_for:
+      toplevel: "^foot-herdr$"
+      context: {active_sheet: herdr}
+      overlay: hidden
+      timeout: 40
+    caption: {ja: "Herdr の中を見る"}
+    hold: 4.0
+
+  - id: start-claude
+    herdr: [pane, run, "w1:p1", claude]
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: hidden
+      timeout: 30
+    hold: 3.0
+
+  - id: claude-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 10}
+    caption: {ja: "Herdr に focused pane を聞き、前面プロセスを取る"}
+    hold: 8.0
+
+  - id: precondition
+    pause: true
+    wait_for: {overlay: visible, label: "Claude Code"}
+    caption: {ja: "前提: 窓の app_id に herdr を含める"}
+    hold: 7.0
+
+  - id: parent-follows
+    pause: true
+    wait_for: {overlay: visible, label: "新しいタブ"}
+    caption: {ja: "後ろに続くのは親 sheet、Herdr の hint"}
+    hold: 7.0
+
+  - id: parent-tags
+    pause: true
+    wait_for: {overlay: visible, label: "新しいタブ", no_label: "pane を拡大"}
+    caption: {ja: "子の inherit.parent_tags で親の hint を絞る"}
+    hold: 8.0
+
+  - id: new-tab-codex
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 2.0
+
+  - id: start-codex
+    herdr: [pane, run, "w1:p2", codex]
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      timeout: 30
+    hold: 3.0
+
+  - id: codex-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex", hints: 8}
+    caption: {ja: "pane を移って押し直せば、その pane の sheet"}
+    hold: 8.0
+
+  - id: new-tab-idle
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 2.0
+
+  - id: idle-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Herdr", hints: 6}
+    caption: {ja: "当たる sheet が無ければ、Herdr の hint が全部出る"}
+    hold: 8.0
+
+  - id: close-hints
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 2.0
+
+  - id: open-yaml
+    # A window of its own rather than a pane: a file argument cannot go through
+    # `herdr pane run` (the allow list takes a pane id and a command, and nothing else).
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: hidden, timeout: 30}
+    hold: 3.0
+
+  - id: yaml-inherit
+    pause: true
+    wait_for: {context: {active_sheet: vi}}
+    caption: {ja: "inherit.parent_tags — 親から混ぜるタグ"}
+    hold: 8.0
+
+  - id: close-yaml
+    close: {window: vi}
+    wait_for: {context: {active_sheet: herdr}, overlay: hidden, timeout: 20}
+    hold: 2.0
+
+  - id: context-cli
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "wayhint context の chain と process で切り分ける"}
+    hold: 8.0
+
+  - id: outro
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ"}
+    hold: 7.0
+
+variants:
+  main:
+    target: 90
+    tolerance: 9
+    steps:
+      - intro
+      - start-claude
+      - claude-hints
+      - precondition
+      - parent-follows
+      - parent-tags
+      - new-tab-codex
+      - start-codex
+      - codex-hints
+      - new-tab-idle
+      - idle-hints
+      - close-hints
+      - open-yaml
+      - yaml-inherit
+      - close-yaml
+      - context-cli
+      - outro

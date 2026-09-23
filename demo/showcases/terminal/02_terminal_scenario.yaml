@@ -1,0 +1,115 @@
+# The terminal showcase, as a script: the route that does not ask anybody -- wayhint reads the
+# window's own app_id for the pid and then /proc for what that pid is running.
+# 01_terminal_storyboard.md says what it argues; this file says what the recorder does.
+#
+# No Herdr in this session (`session.herdr: false`). That is the point of the showcase: a plain
+# terminal, no multiplexer, and the sheet still follows what is running inside the window.
+
+output: {width: 1280, height: 720, fps: 30}
+fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
+session: {herdr: false}
+
+# Two windows, both clear of the overlay (x < 690) and of the caption band (y < 634), and
+# offset so that both are on screen at once -- "two windows, two processes" is the claim.
+windows:
+  - {title: less, x: 36, y: 56, width: 560, height: 380}
+  - {title: vi, x: 112, y: 240, width: 560, height: 380}
+
+steps:
+  - id: intro
+    spawn: {window: less, argv: [foot-wayhint, -e, less, "hints/{lang}/herdr.yaml"]}
+    wait_for:
+      context: {active_sheet: less, process_name: less}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "multiplexer を使っていない端末でも"}
+    hold: 5.0
+
+  - id: supported
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "foot / kitty / Ghostty に対応"}
+    hold: 6.0
+
+  - id: less-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Less", hints: 6}
+    caption: {ja: "/proc を辿り、tty の前面にいるプロセスを取る"}
+    hold: 8.0
+
+  - id: how-pid
+    pause: true
+    wait_for: {overlay: visible, label: "Less"}
+    caption: {ja: "端末は foot.p<pid> の app_id で起動している"}
+    hold: 7.0
+
+  - id: how-setup
+    pause: true
+    wait_for: {overlay: visible, label: "Less"}
+    caption: {ja: "配線は scripts/setup-terminals。既定は dry run"}
+    hold: 7.0
+
+  - id: open-vi
+    # The new window takes the focus, which is what the next two steps are about. Nothing
+    # switches windows with a key here: the compositor's own bindings are not part of the
+    # product, and a recording must not depend on which ones a labwc version ships.
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/less.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      timeout: 30
+    hold: 3.0
+
+  - id: how-two-windows
+    pause: true
+    wait_for: {overlay: visible, label: "Less"}
+    caption: {ja: "窓が 2 枚でも、pid で取り違えない"}
+    hold: 7.0
+
+  - id: vi-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Vi", hints: 5}
+    caption: {ja: "別の窓で押し直せば、その窓のプロセス"}
+    hold: 8.0
+
+  - id: no-terminal-sheet
+    pause: true
+    wait_for: {overlay: visible, label: "Vi"}
+    caption: {ja: "端末そのものの sheet は要らない"}
+    hold: 7.0
+
+  - id: foot-regex
+    pause: true
+    wait_for: {overlay: visible, label: "Vi"}
+    caption: {ja: "端末の sheet を書くなら ^foot$ のまま"}
+    hold: 8.0
+
+  - id: context-cli
+    pause: true
+    wait_for: {overlay: visible, label: "Vi"}
+    caption: {ja: "wayhint context の chain が空なら端末と見ていない"}
+    hold: 8.0
+
+  - id: outro
+    key: super+h
+    wait_for: {overlay: hidden}
+    caption: {ja: "見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ"}
+    hold: 7.0
+
+variants:
+  main:
+    target: 81
+    tolerance: 9
+    steps:
+      - intro
+      - supported
+      - less-hints
+      - how-pid
+      - how-setup
+      - open-vi
+      - how-two-windows
+      - vi-hints
+      - no-terminal-sheet
+      - foot-regex
+      - context-cli
+      - outro
