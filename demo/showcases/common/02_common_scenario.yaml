@@ -60,13 +60,13 @@ steps:
   - id: show-hints
     key: super+h
     wait_for: {overlay: visible, label: "Claude Code", hints: 10}
-    caption: {ja: "hotkey 一発。いつも右上。"}
+    caption: {ja: "hotkey 一発で、focus 中のウィンドウの hint。位置は設定可能"}
     hold: 6.0
 
   - id: list-layout
     cli: refresh
     wait_for: {overlay: visible, label: "Claude Code"}
-    caption: {ja: "★ はよく使うもの。左にキー、右に分類"}
+    caption: {ja: "★ はよく使うもの。左にキー、中央に説明（あればコマンド）、右に分類"}
     hold: 4.0
 
   - id: detail-pane
@@ -75,7 +75,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       unchecked: "画面は前の step のまま。字幕だけが進む"
-    caption: {ja: "補足は下に出る。一覧には出さない"}
+    caption: {ja: "補足情報は下に出る"}
     hold: 4.0
 
   # --- §3 主役1: 中まで見て切り替わる -------------------------------------------------------------
@@ -85,7 +85,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       unchecked: "画面は前の step のまま。次の場面への言い渡しだけが進む"
-    caption: {ja: "見ているのは窓ではなく、中のプロセス"}
+    caption: {ja: "見ているのはウィンドウではなく、中のプロセス"}
     hold: 5.0
 
   - id: new-tab
@@ -110,7 +110,7 @@ steps:
   - id: parent-hints
     cli: refresh
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "後ろに続くのは、窓そのもの(Herdr)の hint"}
+    caption: {ja: "親子関係のプロセスは自動で hint を混ぜる、後半は Herdr の操作"}
     hold: 8.0
 
   # --- §4 主役2: 奪わない ------------------------------------------------------------------------
@@ -120,7 +120,7 @@ steps:
     wait_for:
       overlay: visible
       unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
-    caption: {ja: "通常表示中はキーボードを受け取らない"}
+    caption: {ja: "通常表示中はキーボードを奪わない"}
     hold: 8.0
 
   - id: open-search
@@ -132,7 +132,7 @@ steps:
   - id: type-search
     type: "確認"
     wait_for: {overlay: visible, hints: 3}
-    caption: {ja: "キーボードが来るのは、検索を始めたときだけ"}
+    caption: {ja: "キーボードの入力先を切り替えるのは、検索を始めたときだけ"}
     hold: 7.0
 
   - id: close-search
@@ -145,7 +145,7 @@ steps:
     wait_for:
       overlay: visible
       unchecked: "入力が端末へ戻ったことが要点で、overlay 側には何も起きない"
-    caption: {ja: "終えたら、focus は元の窓へ戻る"}
+    caption: {ja: "終えたら、キーボードの入力先は元のウィンドウへ戻る"}
     hold: 6.0
 
   # --- §5 主役3: その場で育てる -------------------------------------------------------------------
@@ -182,7 +182,7 @@ steps:
   - id: save-hint
     key: enter
     wait_for: {overlay: visible, no_label: "Title", hints: 9}
-    caption: {ja: "保存すると編集モードは終わる"}
+    caption: {ja: "Enter で保存すると編集モードは終わる"}
     hold: 7.0
 
   - id: break-yaml
@@ -249,7 +249,7 @@ steps:
   - id: yaml-match
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "match でどの窓・どのプロセスに出すかが決まる"}
+    caption: {ja: "match でどのウィンドウ・どのプロセスに出すかが決まる"}
     hold: 8.0
 
   - id: yaml-include

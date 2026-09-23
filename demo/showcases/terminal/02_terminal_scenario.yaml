@@ -69,7 +69,7 @@ steps:
   - id: how-two-windows
     pause: true
     wait_for: {overlay: visible, label: "Less"}
-    caption: {ja: "窓が 2 枚でも、pid で取り違えない"}
+    caption: {ja: "ウィンドウが 2 枚でも、pid で取り違えない"}
     hold: 7.0
 
   - id: vi-hints
@@ -79,7 +79,7 @@ steps:
       overlay: visible
       label: "Vi"
       hints: 5
-    caption: {ja: "別の窓で押し直せば、その窓のプロセス"}
+    caption: {ja: "別のウィンドウで押し直せば、その中のプロセス"}
     hold: 8.0
 
   - id: no-terminal-sheet

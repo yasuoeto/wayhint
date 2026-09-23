@@ -1,7 +1,7 @@
 # herdr — Herdr の中を見る
 
-- **主語**: Herdr の窓と、その中の pane で動いているコマンド
-- **判定経路**: 窓の app_id に `herdr` → Herdr に focused pane を聞く → その pane の前面プロセス
+- **主語**: Herdr のウィンドウと、その中の pane で動いているコマンド
+- **判定経路**: ウィンドウの app_id に `herdr` → Herdr に focused pane を聞く → その pane の前面プロセス
 
 見つけ方 3 本の 1 本目。何ができるか（一覧の形、奪わないこと、追記）は `common` が扱うので、
 ここでは**どのプロセスの hint が出ているのか**だけを追う。締めの 1 枚は 3 本で同じ文言。
@@ -14,8 +14,9 @@
 > (`session: {herdr: true}`)。下の表の秒と字幕は生成物と同期してある(`--validate` が見る)。
 
 - 映すアプリ: Herdr + Claude Code / Codex の stub、`idle` の pane、vi の stub
-- 親子 sheet は `herdr.yaml`(親、4 件のうち 3 件に `tags: [terminal]`)と
-  `claude-code.yaml` / `codex.yaml`(子、`inherit.parent_tags: [terminal]`)
+- 混ざる sheet は 2 段: Herdr のウィンドウが `herdr.yaml`(4 件のうち 3 件に
+  `tags: [terminal]`)、その pane のコマンドが `claude-code.yaml` / `codex.yaml`
+  (`inherit.parent_tags: [terminal]`)
 - **映さない**: 実コード、会話内容、ホームパスに含まれるユーザー名
 
 ## 1. 本編
@@ -30,9 +31,9 @@
 | 0–4 | Herdr の窓。pane は idle | Herdr の中を見る |
 | 4–7 | pane で Claude Code が立ち上がる | (字幕なし) |
 | 7–15 | `Super+H`。ヘッダーは `Herdr › Claude Code` | Herdr に focused pane を聞き、前面プロセスを取る |
-| 15–22 | 同じ画面 | 前提: 窓の app_id に herdr を含める |
-| 22–29 | 一覧の後ろに Herdr の pane 操作が続いている | 後ろに続くのは親 sheet、Herdr の hint |
-| 29–37 | 続いているのは `tags: [terminal]` の 3 件だけ | 子の inherit.parent_tags で親の hint を絞る |
+| 15–22 | 同じ画面 | 前提: ウィンドウの app_id に herdr を含める |
+| 22–29 | 一覧の後ろに Herdr の pane 操作が続いている | 親子関係のプロセスは自動で hint を混ぜる、後半は Herdr の操作 |
+| 29–37 | 続いているのは `tags: [terminal]` の 3 件だけ | inherit.parent_tags で混ぜる hint を絞る |
 
 ### §2 pane を移る(0:37–1:00)
 
@@ -53,9 +54,15 @@
 | 75–83 | Herdr の窓だけ | wayhint context の chain と process で切り分ける |
 | 83–90 | 同じ画面 | 見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ |
 
-## 2. 撮影後のチェック
+## 2. 字幕の書き方メモ
+
+規約は `demo/README.md`「字幕の書き方」が正。この showcase が守るのはその 8 番——締めの 1 枚は
+見つけ方 3 本で同じ文言:「見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ」。
+主役 3 場面の見出し字幕（7 番）に触れるときも、`common` と同じ文言を使う。
+
+## 3. 撮影後のチェック
 
 - [ ] `Herdr › Claude Code` → `Herdr › Codex` → Herdr のみ、の 3 状態が出ている
-- [ ] 親 sheet の hint が一覧の**後ろ**に続いている(先頭に来ていない)
+- [ ] Herdr 側の hint が一覧の**後半**に続いている(先頭に来ていない)
 - [ ] 画面にユーザー名・実コード・会話内容が映っていない
-- [ ] 字幕帯(y=638 から下)に窓と overlay がかかっていない
+- [ ] 字幕帯(`demo/README.md`「字幕帯」の表の値)にウィンドウと overlay がかかっていない

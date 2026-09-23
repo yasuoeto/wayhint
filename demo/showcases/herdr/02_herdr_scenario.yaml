@@ -47,19 +47,19 @@ steps:
   - id: precondition
     pause: true
     wait_for: {overlay: visible, label: "Claude Code"}
-    caption: {ja: "前提: 窓の app_id に herdr を含める"}
+    caption: {ja: "前提: ウィンドウの app_id に herdr を含める"}
     hold: 7.0
 
   - id: parent-follows
     pause: true
     wait_for: {overlay: visible, label: "新しいタブ"}
-    caption: {ja: "後ろに続くのは親 sheet、Herdr の hint"}
+    caption: {ja: "親子関係のプロセスは自動で hint を混ぜる、後半は Herdr の操作"}
     hold: 7.0
 
   - id: parent-tags
     pause: true
     wait_for: {overlay: visible, label: "新しいタブ", no_label: "pane を拡大"}
-    caption: {ja: "子の inherit.parent_tags で親の hint を絞る"}
+    caption: {ja: "inherit.parent_tags で混ぜる hint を絞る"}
     hold: 8.0
 
   - id: new-tab-codex

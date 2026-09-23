@@ -30,7 +30,7 @@ steps:
       overlay: visible
       label: "Notes"
       hints: 9
-    caption: {ja: "窓の app_id だけで選ぶ。プロセスは探さない"}
+    caption: {ja: "ウィンドウの app_id だけで選ぶ。プロセスは探さない"}
     hold: 8.0
 
   - id: sub-header
