@@ -144,7 +144,7 @@ variants:
 | `close` | `{window: <名前>}` | その窓を閉じる。focus が下の窓へ戻るので、別のアプリを見せて帰ってこられる |
 | `key` | `super+ctrl+h` | wtype で 1 打鍵を送る。修飾は `super` `ctrl` `shift` `alt`。**用途は修飾キー付きの操作(`super+h` など)と単独の特殊キー(`enter` `tab` `esc` `down`)**。`wtype -k` は shift レベルが乗らないので、大文字や shift の要る記号はここでは送れない(`key: J` も `key: shift+j` も窓には `j` が届く。labwc 0.20.2 / wtype 0.4 で実測) |
 | `type` | `"文字列"` または `{ja: …, en: …}` | wtype の text mode で文字を打つ。**大文字・記号はこちら**——`type: "J"` なら `J` が届く。編集モードの `J` / `K` もこれで送っている |
-| `press` | `{button: search}` | overlay のボタンを AT-SPI で押す。`search` `done` `copy` `editor` `edit` `close` |
+| `press` | `{button: search}` | overlay のボタンを AT-SPI で押す。`search` `done` `copy` `editor` `edit` `close` `clear-filter`(絞り込み chip の `×`) |
 | `cli` | `refresh` | `wayhint <cmd>` を直接呼ぶ(hotkey の無いもの用) |
 | `herdr` | `[tab, focus, "w1:t2"]` | Herdr の CLI。下記の許可 list に限る |
 | `write` | `{file: "hints/{lang}/herdr.yaml", text: …}` または `{…, source: "fixtures/…"}` | fixtures の作業コピーを書き換える(自動 reload を見せる用) |

@@ -47,6 +47,7 @@ BUTTONS = {
     "editor": "Edit in editor",
     "edit": "Edit",
     "close": "Close",
+    "clear-filter": "×",  # the filter chip's button (DECISIONS 0033); the same in every language
 }
 
 # Modifiers wtype understands, and the ones a scenario is allowed to name.

@@ -31,7 +31,7 @@ from tools.headless import HeadlessSession, WindowRule, compositor
 """Placement rules come from the scenario: each ``windows`` entry carries its own ``app_id``
 (default ``foot*``, wide enough for every terminal the demo starts) and its title, which is
 what tells two terminals apart. A window of its own, like the GUI stub, names its own."""
-KEYBINDS = (("W-h", "toggle"), ("W-C-h", "edit-mode"))
+KEYBINDS = (("W-h", "toggle"), ("W-C-h", "edit-mode"), ("W-S-h", "search-mode"))
 """What the person's own compositor config does (README, compositor の設定)."""
 
 HERDR = "herdr"

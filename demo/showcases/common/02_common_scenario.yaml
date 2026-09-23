@@ -124,29 +124,36 @@ steps:
     hold: 8.0
 
   - id: open-search
-    press: {button: search}
+    key: super+shift+h
     precondition: {overlay: visible}
     wait_for: {button: done}
+    caption: {ja: "検索は Super+Shift+H"}
     hold: 2.5
 
   - id: type-search
     type: "確認"
-    wait_for: {overlay: visible, hints: 3}
+    wait_for: {overlay: visible, hints: 3, text: "確認"}
     caption: {ja: "キーボードの入力先を切り替えるのは、検索を始めたときだけ"}
     hold: 7.0
 
-  - id: close-search
-    key: escape
-    wait_for: {button: search}
-    hold: 3.0
+  - id: copy-and-leave
+    key: enter
+    wait_for: {button: search, hints: 3}
+    caption: {ja: "Enter で先頭の hint をコピーして戻る"}
+    hold: 6.0
 
   - id: focus-back
     type: "f"
-    wait_for:
-      overlay: visible
-      unchecked: "入力が端末へ戻ったことが要点で、overlay 側には何も起きない"
-    caption: {ja: "終えたら、キーボードの入力先は元のウィンドウへ戻る"}
-    hold: 6.0
+    wait_for: {overlay: visible, hints: 3}
+    caption: {ja: "絞り込みは残り、入力は元のウィンドウへ"}
+    hold: 5.5
+
+  - id: clear-filter
+    press: {button: clear-filter}
+    precondition: {overlay: visible, hints: 3}
+    wait_for: {overlay: visible, hints: 8}
+    caption: {ja: "絞り込みは sheet ごとに残る。解除は ×"}
+    hold: 5.5
 
   # --- §5 主役3: その場で育てる -------------------------------------------------------------------
   - id: edit-mode
@@ -231,13 +238,6 @@ steps:
   # =============================================================================================
 
   # --- §4 追加: コピー ---------------------------------------------------------------------------
-  - id: copy-hint
-    press: {button: copy}
-    precondition: {overlay: visible}
-    wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "コピーボタンで、選んだ hint をクリップボードへ"}
-    hold: 8.0
-
   # --- §5 追加: favorite と並べ替え ---------------------------------------------------------------
   # --- §6 追加: 仕組みと設定 -----------------------------------------------------------------------
   - id: open-yaml
@@ -299,9 +299,9 @@ variants:
       - keep-typing
       - open-search
       - type-search
-      - close-search
+      - copy-and-leave
       - focus-back
-      - copy-hint
+      - clear-filter
       - edit-mode
       - open-form
       - type-title
