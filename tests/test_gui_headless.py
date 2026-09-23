@@ -339,5 +339,69 @@ class EditModeKeyboardTest(unittest.TestCase):
         self.assertEqual(found, ["paste"], "the key acted on the first row, not the chosen one")
 
 
+@needs_key_injection
+class SearchModeTest(unittest.TestCase):
+    """``wayhint search-mode`` in and out, and the filter that outlives the search (0033).
+
+    The hotkey path to the socket is ``CallerTest``'s; this is what the request does once it is
+    there. In: the box takes what is typed. Out, by the same request: the keyboard is let go of
+    but the list stays narrowed, a chip says so, and state.yaml has it for the next time. The
+    clipboard half (Enter copies) is left to the unit tests: reading a Wayland selection back
+    needs a client holding keyboard focus, which is the thing this test gives away.
+    """
+
+    OVERLAY = "{anchor: top-right, width: 400px, margin: {top: 20, right: 20}}"
+
+    def showing(self, session: HeadlessSession) -> list[str]:
+        return [node.name for node in session.a11y_nodes() if node.showing]
+
+    def until(self, session: HeadlessSession, what: str, ready) -> None:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if ready():
+                return
+            time.sleep(0.2)
+        self.fail(f"{what}\n{self.showing(session)}\n{session.log_tail()}")
+
+    def test_search_mode_in_and_out_keeps_the_filter(self) -> None:
+        root = config_root(self, self.OVERLAY)
+        with HeadlessSession(root, width=WIDTH, height=HEIGHT) as session:
+            session.toplevel("wayhint-probe")
+            self.assertIn("mode=search", session.wayhint("search-mode"), session.log_tail())
+            # The first key of a session can be lost while the compositor hands the keyboard
+            # over (see EditModeKeyboardTest); whichever way it went, BackSpace leaves it empty.
+            session.press("x")
+            session.press("BackSpace")
+            session.type_text("quit")
+            self.until(
+                session,
+                "typing did not narrow the list",
+                lambda: "Quit" in self.showing(session) and "Paste" not in self.showing(session),
+            )
+
+            self.assertIn("mode=normal", session.wayhint("search-mode"), session.log_tail())
+            self.until(
+                session,
+                "the filter chip never appeared",
+                lambda: "filter: quit" in self.showing(session),
+            )
+            shown = self.showing(session)
+            state = session.home / ".local" / "state" / "wayhint" / "state.yaml"
+            written = state.read_text() if state.exists() else ""
+
+            # Back in, the filter is in the box; Enter there copies the one result and leaves.
+            self.assertIn("mode=search", session.wayhint("search-mode"), session.log_tail())
+            self.until(session, "search did not start", lambda: "Done" in self.showing(session))
+            session.press("Return")
+            self.until(
+                session,
+                "Enter in the search box did not leave search",
+                lambda: "Search" in self.showing(session) and "Done" not in self.showing(session),
+            )
+            self.assertIn("filter: quit", self.showing(session))
+        self.assertNotIn("Paste", shown, "leaving search dropped the filter")
+        self.assertIn('demo: "quit"', written)
+
+
 if __name__ == "__main__":
     unittest.main()
