@@ -1,4 +1,4 @@
-"""The manual checklist T41–T46a (DESIGN 実機チェックリスト, DECISIONS 0033), automated.
+"""The manual checklist T41–T44 and T46a (DESIGN 実機チェックリスト, DECISIONS 0033), automated.
 
 Two layers, as everywhere else (DECISIONS 0030). T41, T42 and T44 are about where the filter is
 kept, which the daemon decides: they use the window fake of ``test_daemon_edit`` with real files.
@@ -278,6 +278,47 @@ class T43EditWhileFilteredTest(RealWindowCase):
         self.assertEqual(self.sheet_ids()[0], ["split", "close", "detach"])  # one d asks
         self.key("d")
         self.assertEqual(self.sheet_ids()[0], ["split", "detach"])
+
+
+class T46aReloadWhileSearchingTest(RealWindowCase):
+    """T46a: a sheet rewritten from outside during a search leaves the search box alone.
+
+    The file is changed and then handed to the entry the file monitor calls after its debounce
+    (``_debounced_reload``), so no main loop has to be run and waited on.
+    """
+
+    NEW_SHEET = (
+        "id: b\ntitle: B\nhints:\n"
+        "  - {id: split, title: split pane, key: 'C-b %'}\n"
+        "  - {id: detach, title: detach, key: 'C-b d'}\n"
+        "  - {id: zoom, title: zoom pane, key: 'C-b z'}\n"
+    )
+
+    def focus_in_box(self):
+        focus = self.window.get_focus()
+        box = self.window._search
+        return focus is not None and (focus is box or focus.is_ancestor(box))
+
+    def test_the_box_keeps_text_caret_and_focus_and_the_filter_applies_to_the_new_file(self):
+        self.send("show")
+        self.assertEqual(self.send("search-mode")["mode"], "search")
+        box = self.window._search
+        box.set_text("pane")
+        box.set_position(2)
+        self.assertTrue(self.focus_in_box())
+        self.window._render_from_top()  # what the box's delayed search-changed does
+        self.assertEqual(self.rows(), ["split", "close"])
+
+        path = self.root / "hints" / "b.yaml"
+        path.write_text(self.NEW_SHEET)  # close is gone, zoom is new
+        self.daemon._debounced_reload(path)
+
+        self.assertEqual(self.window.mode, "search")
+        self.assertEqual(box.get_text(), "pane")
+        self.assertEqual(box.get_position(), 2)
+        self.assertTrue(self.focus_in_box())
+        self.assertEqual(self.rows(), ["split", "zoom"])  # the box's filter, on the new file
+        self.assertEqual(self.selected(), "split")
 
 
 if __name__ == "__main__":
