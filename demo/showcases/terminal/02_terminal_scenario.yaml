@@ -33,7 +33,11 @@ steps:
 
   - id: less-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Less", hints: 6}
+    wait_for:
+      context: {active_sheet: less, process_name: less}
+      overlay: visible
+      label: "Less"
+      hints: 6
     caption: {ja: "/proc を辿り、tty の前面にいるプロセスを取る"}
     hold: 8.0
 
@@ -68,7 +72,11 @@ steps:
 
   - id: vi-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Vi", hints: 5}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "Vi"
+      hints: 5
     caption: {ja: "別の窓で押し直せば、その窓のプロセス"}
     hold: 8.0
 

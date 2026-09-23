@@ -25,7 +25,11 @@ steps:
 
   - id: notes-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Notes", hints: 9}
+    wait_for:
+      context: {active_sheet: notes}
+      overlay: visible
+      label: "Notes"
+      hints: 9
     caption: {ja: "窓の app_id だけで選ぶ。プロセスは探さない"}
     hold: 8.0
 

@@ -36,7 +36,11 @@ steps:
 
   - id: claude-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 10}
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: visible
+      label: "Claude Code"
+      hints: 10
     caption: {ja: "Herdr に focused pane を聞き、前面プロセスを取る"}
     hold: 8.0
 
@@ -73,7 +77,11 @@ steps:
 
   - id: codex-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Codex", hints: 8}
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      label: "Codex"
+      hints: 8
     caption: {ja: "pane を移って押し直せば、その pane の sheet"}
     hold: 8.0
 
@@ -84,7 +92,11 @@ steps:
 
   - id: idle-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Herdr", hints: 6}
+    wait_for:
+      context: {active_sheet: herdr}
+      overlay: visible
+      label: "Herdr"
+      hints: 6
     caption: {ja: "当たる sheet が無ければ、Herdr の hint が全部出る"}
     hold: 8.0
 
