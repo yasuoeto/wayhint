@@ -10,6 +10,7 @@
 ./scripts/demo --showcase herdr --validate        # 脚本の検証だけ。壊れていれば exit 1
 ./scripts/demo --showcase herdr --record          # 全 variant を録る → out/ja/<variant>/
 ./scripts/demo --showcase herdr --variant 60s --record
+./scripts/demo --showcase herdr --record --out-dir ~/videos/wayhint   # 別の場所へ出す
 ```
 
 依存(録画のときだけ): `ffmpeg` `grim` `imagemagick` `foot` `labwc` `wtype`、`fonts-noto-cjk`
@@ -67,6 +68,10 @@ demo/
 ## 出力
 
 `out/<lang>/<variant>/` に次が出る。`<stem>` は `wayhint-<showcase>-<variant>.<lang>`。
+`--out-dir <path>` を付けると `<path>/<lang>/<variant>/` に出る(`out/` を symlink にするのは
+**不可**——録画は `<lang>/<variant>` を消してから始めるので、link をたどった先を消すことになる)。
+`--out-dir` が取るのは**空のディレクトリか、前にここが書いたディレクトリ**だけで、目印の
+`.wayhint-demo-out` が無い中身入りのディレクトリは消さずに断る。
 
 | ファイル | 中身 |
 |---|---|

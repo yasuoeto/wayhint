@@ -22,6 +22,12 @@ REPO = Path(__file__).resolve().parent.parent.parent
 DEMO = REPO / "demo"
 SHOWCASES = DEMO / "showcases"
 RECORD_TOOLS = ("grim", "magick", "montage", "foot", "ffmpeg")
+OUT_MARKER = ".wayhint-demo-out"
+"""What marks a directory outside the repository as this tool's to empty.
+
+Only ``--out-dir`` needs it. A showcase's own ``out/`` is named by the repository and holds
+nothing else; a path off the command line is somebody's directory, and a recording *deletes*
+``<root>/<language>/<variant>`` before it starts."""
 INJECT_ACTIONS = ("key", "type")
 """Actions that go in through the virtual keyboard, and so need ``wtype``."""
 
@@ -74,6 +80,13 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--only", help="record these steps only, comma separated")
     p.add_argument("--from", help="start at this step")
     p.add_argument("--keep", action="store_true", help="keep the captured frames")
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="write the results here instead of <showcase>/out/ (an empty directory, or one "
+        "this wrote before)",
+    )
     p.add_argument("--showcases", type=Path, default=SHOWCASES)
     p.add_argument("--fixtures", type=Path, default=DEMO / "fixtures")
     p.add_argument("--bin", type=Path, default=DEMO / "bin", dest="bin_dir")
@@ -171,7 +184,7 @@ def _print_plan(
                 f"    {number:02d} {step.id:<16} {step.action.kind:<6} "
                 f"{step.hold:>5.1f}s {step.frames(fps):>5}f  {caption[:44]}"
             )
-    where = show.root / shc.OUT / args.lang
+    where = (args.out_dir.expanduser() if args.out_dir else show.root / shc.OUT) / args.lang
     print(f"\nnothing was recorded; add --record  ->  {where}/<variant>/")
     return 1 if any(v.off_target(fps) for v in variants) and whole else 0
 
@@ -207,7 +220,40 @@ def _check_lengths(script: Scenario, variants: list[Variant], *, whole: bool) ->
         raise ScenarioError("a variant is not the length the storyboard asked for:\n" + lines)
 
 
-def _output_dir(show: shc.Showcase, language: str, variant: str) -> Path:
+def _out_root(show: shc.Showcase, out_dir: Path | None) -> Path:
+    """The directory the results go under: the showcase's own ``out/``, or the one asked for.
+
+    ``--out-dir`` exists because ``out/`` cannot be a symlink (a recording deletes below it,
+    and following the link would move the delete to wherever it lands). The directory it names
+    is *somebody's*, not the repository's, so this takes only a directory of its own: an empty
+    one, or one it wrote before -- which is what the marker says. Anything else is refused
+    rather than emptied, because ``--out-dir ~/Videos`` is a plausible typo and
+    ``~/Videos/ja/3min`` a plausible directory to lose.
+    """
+    if out_dir is None:
+        return show.root / shc.OUT
+    root = out_dir.expanduser()
+    if root.is_symlink():
+        raise sess.DemoError(
+            f"--out-dir {root} is a symlink to {root.readlink()}; name the directory itself.\n"
+            "  A recording deletes <out-dir>/<language>/<variant> before it starts, and "
+            "following a link would move that delete somewhere this cannot check."
+        )
+    if root.exists() and not root.is_dir():
+        raise sess.DemoError(f"--out-dir {root} is not a directory")
+    if root.is_dir() and any(root.iterdir()) and not (root / OUT_MARKER).is_file():
+        raise sess.DemoError(
+            f"--out-dir {root} is not empty and has no {OUT_MARKER} in it.\n"
+            "  A recording empties <out-dir>/<language>/<variant> first, so it takes only a "
+            "directory of its own: an empty one, or one it has written before.\n"
+            f"  Name a new directory, or put {OUT_MARKER} in that one if it really is for this."
+        )
+    root.mkdir(parents=True, exist_ok=True)
+    (root / OUT_MARKER).touch()
+    return root
+
+
+def _output_dir(root: Path, language: str, variant: str) -> Path:
     """Where this recording goes, emptied first -- after checking that it is where it claims.
 
     Everything that makes up the path is already restricted to ``[a-z0-9-]`` by the parsers,
@@ -219,16 +265,15 @@ def _output_dir(show: shc.Showcase, language: str, variant: str) -> Path:
     delete to wherever it lands -- so a symlink anywhere on the way down is refused instead
     (DECISIONS 0032's threat model: ``out/`` is state this has to survive, not trust).
     """
-    root = show.root / shc.OUT
-    out = show.out(language, variant)
+    out = root / language / variant
     for path in (root, root / language, out):
         if path.is_symlink():
             raise sess.DemoError(
                 f"{path} is a symlink to {path.readlink()}; refusing to empty it.\n"
                 "  A recording deletes its output directory first, so every step of "
-                f"{shc.OUT}/<language>/<variant> has to be a real directory in the showcase.\n"
-                "  (Putting the results elsewhere would need an --out-dir option; there is "
-                "none yet -- see STATUS.md, Remaining work.)"
+                "<language>/<variant> under it has to be a real directory.\n"
+                "  To write somewhere else, name that directory with --out-dir instead of "
+                "pointing at it with a link."
             )
     root, out = root.resolve(), out.resolve()
     if not out.is_relative_to(root) or out == root:
@@ -268,7 +313,7 @@ def _record(
         if typed is not None and "wtype" in str(e):
             raise sess.DemoError(f"{e}\n  step {typed!r} sends a key, which needs wtype") from e
         raise
-    out = _output_dir(show, language, variant.name)
+    out = _output_dir(_out_root(show, args.out_dir), language, variant.name)
     out.mkdir(parents=True)
     print(f"demo: recording {show.name} {variant.name} in {language} -> {out}")
     work = sess.workspace(show.name, language)

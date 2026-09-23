@@ -317,19 +317,23 @@ class OutputDirTest(unittest.TestCase):
         scenario.write_text(MINIMAL)
         return shc.load(root, "herdr")
 
+    def out(self, show: shc.Showcase, language: str, variant: str) -> Path:
+        """What ``_record`` does: the default root, then the directory under it."""
+        return cli._output_dir(cli._out_root(show, None), language, variant)
+
     def test_it_prepares_a_directory_under_out(self) -> None:
         show = self.showcase()
-        out = cli._output_dir(show, "ja", "short")
+        out = self.out(show, "ja", "short")
         self.assertTrue(out.is_relative_to((show.root / "out").resolve()))
         self.assertFalse(out.exists())  # cleared, not created; the caller makes it
 
     def test_it_refuses_a_variant_name_that_climbs_out(self) -> None:
         with self.assertRaisesRegex(sess.DemoError, "refusing to write outside"):
-            cli._output_dir(self.showcase(), "ja", "../../elsewhere")
+            self.out(self.showcase(), "ja", "../../elsewhere")
 
     def test_it_refuses_to_delete_the_out_directory_itself(self) -> None:
         with self.assertRaisesRegex(sess.DemoError, "refusing to write outside"):
-            cli._output_dir(self.showcase(), ".", ".")
+            self.out(self.showcase(), ".", ".")
 
     def test_it_refuses_an_out_that_is_a_symlink(self) -> None:
         """Somebody's ``out/`` may well point at another disk; the delete must not follow it."""
@@ -338,7 +342,7 @@ class OutputDirTest(unittest.TestCase):
         (elsewhere / "ja" / "short").mkdir(parents=True)
         (show.root / "out").symlink_to(elsewhere)
         with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
-            cli._output_dir(show, "ja", "short")
+            self.out(show, "ja", "short")
         self.assertTrue((elsewhere / "ja" / "short").is_dir(), "it deleted through the symlink")
 
     def test_it_refuses_an_intermediate_directory_that_is_a_symlink(self) -> None:
@@ -348,7 +352,7 @@ class OutputDirTest(unittest.TestCase):
         (show.root / "out").mkdir()
         (show.root / "out" / "ja").symlink_to(elsewhere)
         with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
-            cli._output_dir(show, "ja", "short")
+            self.out(show, "ja", "short")
         self.assertTrue((elsewhere / "short").is_dir(), "it deleted through the symlink")
 
     def test_it_refuses_the_variant_directory_itself_being_a_symlink(self) -> None:
@@ -358,8 +362,75 @@ class OutputDirTest(unittest.TestCase):
         (show.root / "out" / "ja").mkdir(parents=True)
         (show.root / "out" / "ja" / "short").symlink_to(elsewhere)
         with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
-            cli._output_dir(show, "ja", "short")
+            self.out(show, "ja", "short")
         self.assertTrue((elsewhere / "kept").is_dir(), "it deleted through the symlink")
+
+
+class OutDirTest(unittest.TestCase):
+    """``--out-dir`` writes outside the repository, so it takes only a directory of its own."""
+
+    def showcase(self) -> shc.Showcase:
+        root = scratch(self)
+        (root / "herdr").mkdir()
+        (root / "herdr" / "02_herdr_scenario.yaml").write_text(MINIMAL)
+        return shc.load(root, "herdr")
+
+    def test_no_out_dir_is_the_showcase_s_own(self) -> None:
+        show = self.showcase()
+        self.assertEqual(cli._out_root(show, None), show.root / "out")
+
+    def test_an_empty_directory_is_taken_and_marked(self) -> None:
+        wanted = scratch(self) / "videos"
+        wanted.mkdir()
+        self.assertEqual(cli._out_root(self.showcase(), wanted), wanted)
+        self.assertTrue((wanted / cli.OUT_MARKER).is_file(), "it left no mark of its own")
+
+    def test_a_directory_that_is_not_there_yet_is_made(self) -> None:
+        wanted = scratch(self) / "a" / "b"
+        self.assertEqual(cli._out_root(self.showcase(), wanted), wanted)
+        self.assertTrue((wanted / cli.OUT_MARKER).is_file())
+
+    def test_it_takes_back_a_directory_it_wrote_before(self) -> None:
+        wanted = scratch(self)
+        (wanted / cli.OUT_MARKER).touch()
+        (wanted / "ja").mkdir()
+        self.assertEqual(cli._out_root(self.showcase(), wanted), wanted)
+
+    def test_it_refuses_somebody_else_s_directory(self) -> None:
+        """``--out-dir ~/Videos`` is a plausible typo, and ~/Videos/ja/3min a real directory."""
+        wanted = scratch(self)
+        (wanted / "holiday.mp4").write_text("not ours")
+        with self.assertRaisesRegex(sess.DemoError, "is not empty"):
+            cli._out_root(self.showcase(), wanted)
+        self.assertTrue((wanted / "holiday.mp4").is_file())
+
+    def test_it_refuses_a_file(self) -> None:
+        wanted = scratch(self) / "file"
+        wanted.write_text("")
+        with self.assertRaisesRegex(sess.DemoError, "not a directory"):
+            cli._out_root(self.showcase(), wanted)
+
+    def test_it_refuses_a_symlink(self) -> None:
+        elsewhere = scratch(self)
+        (elsewhere / "ja").mkdir()
+        link = scratch(self) / "link"
+        link.symlink_to(elsewhere)
+        with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
+            cli._out_root(self.showcase(), link)
+        self.assertTrue((elsewhere / "ja").is_dir())
+
+    def test_the_variant_directory_under_it_is_emptied(self) -> None:
+        root = cli._out_root(self.showcase(), scratch(self) / "videos")
+        (root / "ja" / "short").mkdir(parents=True)
+        (root / "ja" / "short" / "old.mp4").write_text("an earlier take")
+        (root / "ja" / "other").mkdir()
+        out = cli._output_dir(root, "ja", "short")
+        self.assertFalse(out.exists())
+        self.assertTrue((root / "ja" / "other").is_dir(), "it emptied more than the variant")
+
+    def test_the_command_line_accepts_it(self) -> None:
+        args = cli._parser().parse_args(["--showcase", "herdr", "--out-dir", "/tmp/somewhere"])
+        self.assertEqual(args.out_dir, Path("/tmp/somewhere"))
 
 
 class SpawnTest(unittest.TestCase):

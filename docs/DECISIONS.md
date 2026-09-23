@@ -1027,8 +1027,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **再レビューを受けた修正(2026-09-21、2 回目)**: 上の脅威モデルに照らして 6 件塞いだ。
   **`out/` の symlink を追わない**——削除の直前に `out/` / `out/<lang>/` / `out/<lang>/<variant>/`
   を *resolve する前に* 見て、どれかが symlink なら録らずに止める。`out/` を別ディスクへ向けるのは
-  普通にやることで、追うと消す先がそちらに移る。別の場所に置く `--out-dir` は未実装(STATUS の
-  残件)。**端末 wrapper の引数を許可 list にする**——`spawn` の argv は wrapper 名(`foot-wayhint`
+  普通にやることで、追うと消す先がそちらに移る。別の場所に置きたいときは `--out-dir`(下)。**端末 wrapper の引数を許可 list にする**——`spawn` の argv は wrapper 名(`foot-wayhint`
   か `foot-herdr`。prefix 一致をやめて 1 つずつ列挙)、`--app-id=foot-<名前>`、そして
   `foot-wayhint` の場合だけ `-e <stub>` の形に限る。command を書かない foot は login shell を
   開くので、これが「session に shell を置かない」の最後の穴だった。wrapper 側も `"$@"` を foot に
@@ -1081,6 +1080,13 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   13 件見つかった)。どの variant の節かは `<!-- variant: <name> -->` で示す。
   `wait_for` が何も主張していない step は**警告**にとどめる——`pause:` のように画面を変えないのが
   正しい step があり、機械には区別できない。
+- **`--out-dir` は「自分のディレクトリ」しか受け取らない(2026-09-23)**: `out/` を symlink に
+  するのは禁止のままで、別の場所へ出したい人には `--out-dir <path>` を用意した。録画は
+  `<path>/<lang>/<variant>` を**消してから**始めるので、受け取るのは**空のディレクトリか、前に
+  ここが書いたディレクトリ**だけにする(目印は `.wayhint-demo-out`)。中身のある他人の
+  ディレクトリは消さずに断る——`--out-dir ~/Videos` は十分あり得る打ち間違いで、
+  `~/Videos/ja/3min` は十分あり得る実在のディレクトリ。repo 内の `out/` に目印は要らない
+  (repo が名前を決めていて、他のものが入らない)。
   wrapper の引数検査だけは shell script なので、`./scripts/check` の test が wrapper を**実際に
   subprocess として起動する**。起動しないのは **foot と Herdr** のほうで、どの case も
   `exec /usr/bin/foot` の数行手前で止まる——だから compositor も server も要らず、純粋な parse の
