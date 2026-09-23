@@ -1,5 +1,3 @@
-# Herdr (terminal multiplexer) — the parent sheet for nested contexts.
-# Hints tagged with one of nested.parent_tags (config.yaml) are also shown inside Claude/Codex.
 id: herdr
 title: Herdr
 match:
