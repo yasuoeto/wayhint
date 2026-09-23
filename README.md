@@ -68,6 +68,12 @@ sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mo
 | `style.css` | 任意。GTK CSS で見た目を上書き(class 名は `src/wayhint/ui/style.py`)。雛形 `examples/style.css` は labwc のテーマ(Syscrash)に合わせた配色 |
 | `hints/<言語>/*.yaml` | sheet 1 ファイル 1 枚。ファイル名順に読む。**`id` はファイル名（拡張子を除く部分）と同じにする**。違うものは読み込まず ⚠ に理由が出る(バックアップの `claude-backup.yaml` が `claude` を名乗っても二重に効かない)。言語ディレクトリについては下の「言語ごとの hint」 |
 
+絞り込み(下の「overlay の使い方」)は設定ではなく状態なので、別の場所
+`$XDG_STATE_HOME/wayhint/state.yaml`(既定 `~/.local/state/wayhint/state.yaml`)に daemon が書く。
+手で書くものではない。壊れていても daemon は絞り込み無しで起動し、次に検索を抜けたときに書き直す。
+ファイルは 3 種類: 内容は `hints/`(人が書く)、設定は `config.yaml`(人が書き、リサイズだけ daemon
+が書き戻す)、状態は `state.yaml`(daemon だけが書く)。
+
 雛形は `examples/`。`cp -r examples/. ~/.config/wayhint/` で始められる
 (`style.css` も入る。アプリ既定の配色で使うなら消す)。schema は
 `docs/DESIGN.md` の Data model。書いたら `wayhint validate` で確認する(問題があれば exit 1)。
@@ -90,6 +96,9 @@ daemon はセッションに 1 つ起動し、hotkey は compositor の keybindi
   </keybind>
   <keybind key="W-C-h">
     <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode"/>
+  </keybind>
+  <keybind key="W-S-h">
+    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint search-mode"/>
   </keybind>
 </keyboard>
 ```
@@ -116,6 +125,8 @@ binding_wayhint = <super> KEY_H
 command_wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhint toggle
 binding_wayhint_edit = <super> <ctrl> KEY_H
 command_wayhint_edit = /home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode
+binding_wayhint_search = <super> <shift> KEY_H
+command_wayhint_search = /home/USER/work/tools/wayhint/.venv/bin/wayhint search-mode
 
 [autostart]
 wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
@@ -174,7 +185,7 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 
 | ボタン | 動作 |
 |---|---|
-| 検索 | 検索欄を開く。もう一度押すか `Esc` で終了。編集中は無効なので、編集を終了してから検索する |
+| 検索 | 検索欄を開く。もう一度押すか `Esc` で終了。編集中は無効なので、編集を終了してから検索する。`wayhint search-mode` でも入れる |
 | コピー | 選択中の hint を clipboard へ。`copy` → `command` → `key` の順に、最初にある値 |
 | エディタで編集 | 選択中の hint が属する sheet を editor で開き、その hint の行へ jump する(無選択なら表示中の sheet を先頭から)。sheet 全体を見直すとき用。overlay は出たままなので、editor で保存するたびに一覧が更新される(検索中・編集モード中に押すとそれらは終了する。keyboard を editor に渡すため。下書きは残り、次に編集モードへ入ると戻る) |
 | 編集 | 編集モードに入る。hint の追加・修正・削除・並べ替えを overlay の中で行う(キー割当は `docs/DESIGN.md` の「編集モード」。`wayhint edit-mode` でも入れる)。**フォームを保存すると編集モードは終わり**、keyboard が元のアプリに戻る(favorite・並べ替え・削除・取消は編集モードのまま続けられる) |
@@ -182,7 +193,17 @@ hotkey は「いま見ているものの hint」を意味する。押すと表�
 
 検索は空白区切りの語をすべて含む hint に絞る。大文字小文字は区別しない。対象は title、`key`、
 `command`、`category`、タグ、`remark`。件数の上限は `search.max_results`(既定 50)。
-検索を終えると keyboard focus は元の window に戻る。
+先頭の `#名前` は category での絞り込みで、`Tab` / `Shift+Tab` で category を順に切り替える
+(`#-` は category の無い hint)。
+
+検索欄で `Enter` を押すと、選択中の hint(打つたびに先頭行が選ばれる)をコピーして検索を終える。
+一覧に focus があるときは `c` か `Enter`。検索を終えると keyboard focus は元の window に戻る。
+
+**検索を終えても絞り込みは残る**。検索は「keyboard を借りて絞り込みを打つ」時間で、絞り込みそのものは
+一覧の状態として sheet ごとに保存され、閉じても daemon を再起動しても同じ sheet を開けば戻る
+(DECISIONS 0033)。絞り込み中は一覧の上に chip が出る。解除は chip の `×`、キーボードなら
+`search-mode` → 欄を空にする → `Esc`。次に検索に入ると前の絞り込みが全選択で欄に入っているので、
+打てば置き換え、`End` で追記になる。
 
 表示される context は **開いた瞬間に固定** される。別のアプリに移っても自動では追従しない。
 切り替えたいときは移った先の window で **hotkey をもう一度押す**(閉じずに中身が差し替わる)。
@@ -217,6 +238,7 @@ hotkey に割り当てるのは `toggle`。
 | `validate` | YAML を検証する。daemon を必要としない唯一の command。問題があれば exit 1 |
 | `context` | daemon が今どう context を解決するかを表示する(下の例) |
 | `edit-mode` | 編集モードに入る(表示中でなければ表示してから)。編集モード中に呼ぶと抜ける |
+| `search-mode` | 検索モードに入る(表示中でなければ表示してから)。検索中に呼ぶと抜ける(絞り込みは残る)。編集モード中は断る |
 | `add TITLE` | hint の追加 |
 | `edit ID` | hint の編集 |
 | `remove ID` | hint の削除 |
@@ -437,6 +459,7 @@ editor:
 | Herdr の中で親 sheet しか出ない | `herdr pane process-info --pane <focus 中の pane id>` の `foreground_processes` と `argv_regex` を照合 |
 | Herdr でタブを切り替えてもヒントが変わらない | adapter は継承した `HERDR_*` に影響されず focus 中の pane を解決する(DECISIONS 0028)。それでも変わらないなら `herdr pane current` の `focused` と `pane_id` を確認する。常駐 daemon の起動元としては Herdr の pane 内のほか、compositor の autostart や `systemd --user` も使える |
 | 検索欄や編集フォームで日本語(IME)が入らない | GTK が Wayland ネイティブの text-input-v3 を選べていない。`gsettings get org.gnome.desktop.interface gtk-im-module` が空でなければ GTK はその値を優先するので `gsettings reset org.gnome.desktop.interface gtk-im-module`。`GTK_IM_MODULE` も未設定にする(空なら GTK は `zwp_text_input_manager_v3` を広告する compositor で `wayland` context を自動で選ぶ)。確認は `GTK_IM_MODULE= WAYLAND_DEBUG=1 wayhintd` の出力に `zwp_text_input_v3.enter` と `enable` が出るか。layer-shell surface でも届く(labwc 0.20.2 + GTK 4.22 で確認) |
+| hint が足りない / 消えた | 絞り込みが残っていないか、一覧の上の chip を見る。解除は chip の `×` か、`search-mode` → 欄を空にする → `Esc` |
 | 検索後にキー入力が元アプリに戻らない | 検索を終える(完了 / Esc)と keyboard_mode は必ず none に戻る。focus 復帰は foreign-toplevel `activate`(wayfire backend では IPC `set_focus`)。同じ app_id の window が複数あり title が変わっていると復帰先を決められない。`wayhintd -v` に `could not return focus` が出るか |
 
 ## ファイル構成

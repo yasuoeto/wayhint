@@ -100,6 +100,31 @@ src/wayhint/
 - `ProcessInfo`: `pid`, `name`, `argv`, `cmdline`, `cwd`。
 - 設定ファイル: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/<lang>/*.yaml`(`.yml` も可、
   ファイル名順に読む)。schema は設計書 §21, §43 を元に Phase 1 で確定(DECISIONS 0006)。
+- **ファイルの 3 区分**(DECISIONS 0033): 内容は `hints/`(人が書く)、設定は `config.yaml`(人が書き、
+  リサイズだけ daemon が書き戻す)、状態は `$XDG_STATE_HOME/wayhint/state.yaml`(daemon だけが書く)。
+
+### state.yaml(実装: `state.py`、DECISIONS 0033)
+
+既定 `~/.local/state/wayhint/state.yaml`。sheet ごとの絞り込み(検索欄の文字列)を持つ。
+
+```yaml
+version: 1
+filters:
+  claude-code: "pane"
+  herdr: "#session"
+```
+
+- キーは active(子)sheet の id。値は親 / include 込みの一覧全体に掛かる絞り込み。
+- 書くのは daemon だけで、`search` を抜けた時点で前回書いた内容と違えば一時ファイル + rename で書く。
+  空の絞り込みはキーを消す。監視しない。active sheet が無い context の絞り込みはメモリだけ。
+- **壊れていても止めない**: 無い / 読めない / YAML 不正 / 先頭が mapping でない / `version` ≠ 1 /
+  64 KiB 超 → 絞り込み無しで起動し WARN を 1 行。UI に `⚠` は出さず、`.bak` も作らない(次の書き込みで
+  上書きされる)。値が文字列でない、sheet id が `^[A-Za-z0-9][A-Za-z0-9._-]*$` に合わない、値が 200 文字超、
+  の項目はその項目だけ捨てる。257 項目目以降は捨てる。知らない sheet id は残し、知らないキーは書き戻しで
+  消える。重複した sheet id は後勝ち。書き込み失敗は WARN にしてメモリ上の値を使い続ける。
+  `wayhint validate` は見ない。
+- 絞り込み文字列は既存の substring + token AND にだけ使い、regex・パス・shell・markup として扱わない。
+  Unicode `Cc` は入力時と読み込み時に落とす。WARN に絞り込みの内容は書かない。
 
 ### config.yaml(実装: `config.py`)
 
@@ -229,13 +254,19 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 | 状態 | keyboard_mode | 入口 | 出口 |
 |---|---|---|---|
 | `normal` | NONE | show / toggle | hide、workspace 離脱 |
-| `search` | EXCLUSIVE | 検索ボタン、既存の begin_search | Esc、hide、workspace 離脱 |
+| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`・`c`(コピー)、もう一度 `search-mode`、hide、workspace 離脱 |
 | `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`、hide、workspace 離脱 |
 
 - `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
   hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
 - EXCLUSIVE を使う理由: `ON_DEMAND` では compositor が surface への再クリックまで keyboard focus を
   渡さず、検索ボタンを押しただけでは入力が下のアプリへ行ってしまう（labwc 0.20.2 で確認）。
+- **絞り込みは一覧の状態、`search` はその上に入力欄と grab が乗るだけ**(DECISIONS 0033)。一覧の
+  描画は 1 本で、絞り込みは `normal` の表示(favorite 区画込み)にも掛かる。`search` を抜けるどの経路も
+  grab を外すだけで絞り込みは残し、`normal` では chip(`×` で解除)で絞り込み中を示す。再入時は保存済みの
+  絞り込みを欄に入れて全選択する。検索欄の `Enter`(一覧に focus があれば `c` / `Enter`)は選択中の
+  hint をコピーして `normal` に戻る。0 件やコピー対象の無い hint では理由を出して留まる。`edit` 中の
+  `search-mode` は拒否して理由を表示する。
 - `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
 - `edit` 中の hotkey は hide / show（0013 の例外）。
 - エディタ起動（「エディタで編集」）では overlay を隠さない（DECISIONS 0023）。editor でキュレーション
@@ -270,7 +301,7 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 | `d` `d` | 選択 hint を削除（1 回目で確認表示、2 回目で確定。他の key で取り消し） |
 | `u` | 直前に削除した 1 件を元の sheet 末尾に戻す（メモリ保持は 1 件、セッション限り） |
 | `f` | favorite toggle |
-| `J` / `K` | 画面上の下 / 上の hint と swap（§5 の制約） |
+| `J` / `K` | 画面上の下 / 上の hint と swap（§5 の制約）。絞り込み中は無効（0033） |
 | `↑` `↓` | 選択移動（`KP_Up` / `KP_Down` も同じ。単打キーと同様 CAPTURE で受ける） |
 | `Esc` | フォームが開いていればフォームを閉じる（入力破棄）、開いていなければ `edit` を抜ける |
 
@@ -349,7 +380,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 - 隣が同グループ（favorite 区画内、または非 favorite 区画で同 category）かつ同 sheet のときだけ swap。
   所属 sheet の同一性は `hint.location.file` で判定する。
 - それ以外は何もしない（音や表示は出さない）。
-- フィルタ中も可。
+- 絞り込み中は何もしない(画面上の隣と YAML 上の隣がずれるため。DECISIONS 0033)。
 - CLI の `move` はグループ跨ぎ・sheet 跨ぎをエラー終了、GUI は無反応（メッセージのみ）。
 
 ### 6. 削除と undo
@@ -393,8 +424,10 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 ### 9. category フィルタ（search 状態）
 
 - 検索文字列の先頭トークンが `#` 始まりなら category フィルタ。残りはテキスト検索。両者は AND。
+  `#-` は category 無しの擬似 category（言語に依存しない綴り。DECISIONS 0033）。
 - `Tab` / `Shift+Tab` で巡回: 全表示 → category 初出順（擬似 category を含む）→ 全表示。`#` 入力途中なら補完。
-- フィルタ状態は入力欄横に chip 表示。表示セッション限り。
+  巡回は欄の先頭トークン `#<category> ` を書き換える（欄の文字列が絞り込みそのもの）。
+- フィルタ状態は chip に出す。欄の文字列ごと sheet 単位で state.yaml に残る（0033、旧「表示セッション限り」）。
 - 実装: window の CAPTURE フェーズ controller で search 中の `Tab` / `Shift+Tab` を処理する（key 経路を 1 箇所に集約するため）。
 
 ### 10. IPC / CLI
@@ -405,6 +438,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 |---|---|
 | `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
+| `search-mode` | 検索モードに入る（表示中でなければ show してから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
 引数一覧は README「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、
@@ -637,6 +671,17 @@ daemon 化して session のプロセスグループを抜けるので、session
   **(2026-09-19 確認済)**
 - T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
   (回転できるモニタが要るため未実施)
+- T38 keybinding → `wayhint search-mode` で overlay が出て検索欄に focus が入り、日本語 IME で入力できる
+- T39 語を打って `Enter` → clipboard に入り、元アプリに focus が戻る。overlay は絞り込まれたまま `normal`
+- T40 `Esc` で抜けても絞り込みが残り、chip が出る。chip の `×` で全件に戻る
+- T41 daemon を再起動しても、同じ sheet を開けば同じ絞り込み
+- T42 state.yaml を壊す(`foo: [`)→ daemon は起動し WARN が 1 行、絞り込み無し。次に検索を抜けたとき
+  正常な内容で書き戻る
+- T43 絞り込み中に `edit-mode` → `J` / `K` は無反応、`a` / `Enter` / `d` `d` / `f` は動く
+- T44 別 workspace で同じ sheet を開くと同じ絞り込み
+- T45 `search` 中に `search-mode` をもう一度 → `normal` に戻り、元アプリに入力できる
+- T46 `search` 中に別経路で sheet の内容を書き換える → 欄の文字列・カーソル・focus・絞り込みが残る。
+  `search` 中に「エディタで編集」→ `normal` に戻り、gvim で保存するたびに絞り込まれた一覧が更新される
 - T36 `foot.p$$` で起動した foot 上で `vi` 実行中に hotkey → vi 用 sheet が選ばれ、
   `wayhint context` の `chain` に `ProcAdapter`、process name に `vi` が出る。foot 窓を 2 枚開いても
   フォーカス中の窓の process が取れる。`desktop_app` は `foot.p<pid>`、overlay の context ラベルは

@@ -1114,6 +1114,124 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   test と同じ場所に置ける。**正規表現は `fullmatch` で照合する**——`$` は末尾の改行の手前にも
   合うので、`re.match` だと `--app-id=foot\n` や `w1:p1\n` が通る(Codex 3 回目の指摘)。
 
+## 0033 — 検索は「入力」と「絞り込み」に分け、絞り込みは sheet ごとに state.yaml へ永続化する
+
+- **Date**: 2026-09-23
+- **Status**: accepted
+- **Amends**: 0014（D3 の状態遷移表: `search` の入口・出口。D10 の「フィルタ状態は表示セッション限り」）。
+  設計書 §4 / §30 / §47 / §48、DESIGN「状態と keyboard_mode」の `search` 行と §9 category フィルタ。
+- **Context**: 検索に入るのも、コピーするのも、検索を終えるのもマウスが要る。検索欄にフォーカスを
+  移す手段が「検索ボタン」しか無く、通常表示は NONE なので overlay 上のキーでは入れない（`edit-mode`
+  と同じ事情、0014 D3）。加えて、検索を終えると絞り込みが消えて全件表示に戻る。実際の使い方では
+  「この作業の間は pane 系の hint だけ見ていたい」のように、絞った状態で長く眺めたいことがあり、
+  今の設計は**キーを奪う時間**（短くあるべき）と**絞り込みの寿命**（作業の間ずっと）を同じにして
+  しまっている。
+
+- **Decision**:
+
+  **A. 検索モードの入口を IPC にする。** `wayhint search-mode` を新設し、compositor keybinding から
+  呼ぶ（README の例は `W-S-h`）。非表示なら show と context 解決を行ってから `search` へ、表示中なら
+  そのまま `search` へ。`search` 中にもう一度 `search-mode` が来たら Esc と同じ経路で `normal` に戻す
+  （keyboard_mode NONE → 前の view へ focus 復帰）。出口を増やさない。`edit` 中の `search-mode` は
+  「編集中は検索しない」（0014）に合わせて拒否し、理由を表示する。検索ボタンは残す。
+
+  **B. 検索欄の `Enter` で「コピーして戻る」。** 選択中の hint（結果の先頭行を自動選択する）に対して
+  既存の「コピー」ボタンと同じ処理（`copy → command → key` の解決 → GDK clipboard）を行い、続けて
+  Esc と同じ経路で `normal` に戻す。一覧にフォーカスがあるときは `c` と `Enter` が同じ動作。結果が
+  0 件、またはコピーできる項目が無い hint（`note` 等）のときは何もせず理由を表示して `search` に
+  留まる。元アプリへの貼り付け（キー注入）は行わない。
+
+  **C. 「検索モード」と「絞り込み」を分ける。** `search` を抜けるすべての経路（Esc / `Enter`・`c` /
+  `search-mode` 再押下 / hide）は **grab を外すだけで、絞り込みは残す**。`normal` は絞り込まれた
+  一覧をそのまま表示する。一覧の描画は 1 本にし、絞り込みは通常表示（favorite 区画・category
+  見出し込み）に適用する。「検索結果は title/key/command のみ」（設計書 §30）の別描画は廃止。
+  `normal` では絞り込み中であることを chip で示し、chip の `×` で解除できる（マウス用）。
+  キーボードでの解除は「`search-mode` → 欄を空にする → 出る」。つまり**出たときの欄の内容が
+  絞り込み**で、解除専用のキーは作らない。`#category` と Tab 巡回は欄の文字列を変える操作なので
+  絞り込みの一部（Tab は欄の先頭トークン `#<category> ` を書き換える）。category 無しの擬似
+  category は欄では **`#-`** と書く（言語に依存しないので、`appearance.language` を切り替えても
+  保存済みの絞り込みの意味が変わらない。chip には訳語 `inbox` / `未定義` を出す）。再入時は保存済みの絞り込みを欄に入れて全選択にする（打てば置き換え、`End` で追記、
+  そのまま Esc なら不変）。
+
+  **D. 絞り込みは sheet id をキーに永続化する。** 置き場所は `$XDG_STATE_HOME/wayhint/state.yaml`
+  （既定 `~/.local/state/wayhint/state.yaml`）。形式は
+
+  ```yaml
+  version: 1
+  filters:
+    claude-code: "pane"
+    herdr: "#session"
+  ```
+
+  キーは active（子）sheet の id。nested / include で混ざった親 hint 込みの一覧全体に適用する。
+  `search` を抜けた時点で前回と違えば一時ファイル + rename で書き、空なら該当キーを削除する。
+  このファイルは監視しない（書くのは daemon だけ）。hide/show・workspace 切り替え・daemon 再起動を
+  またいで残り、同じ sheet ならどの workspace でも同じ絞り込みになる。active sheet が無い context
+  では `search` に入れるが絞り込みは保存しない（メモリのみ、context が替われば消える）。
+  `wayhint refresh` と reload は再解決した sheet のキーで読み直して再適用する。`search` 中に reload が
+  来たとき（`git checkout` や同期ツールなど、人の手を介さない更新）は、一覧だけを再描画して検索欄には
+  触らず（文字列・カーソル・IME の preedit・focus をそのまま）、絞り込みは state.yaml ではなく**欄の
+  文字列から再適用**し、選択行は id で復元する（消えていれば先頭行）。「エディタで編集」は 0023 の
+  とおり `normal` に戻すだけで、絞り込みは残るので、gvim で保存するたびに絞り込まれたままの一覧が
+  更新される。
+
+  ここで**ファイルの 3 区分を明文化する**: 内容は `hints/`（人が書く）、設定は `config.yaml`（人が
+  書き、リサイズだけ daemon が書き戻す）、状態は `state.yaml`（daemon だけが書く）。
+
+  **E. 壊れていても止めない。** state.yaml が無い / 読めない / YAML として壊れている / 先頭が
+  mapping でない / `version` が 1 以外 / 64 KiB 超のときは**絞り込み無しとして起動**し、WARN を
+  1 行出す。UI に `⚠` は出さない（hints の壊れと区別がつかなくなる）。last-known-good も `.bak` も
+  持たず、次の書き込みで正常な内容に上書きされる。部分的におかしい項目（値が文字列でない、
+  sheet id が `^[A-Za-z0-9][A-Za-z0-9._-]*$` に合わない、値が 200 文字超）はその項目だけ捨てる。
+  項目数は 256 を超えた分を捨てる。知らない sheet id は残す（消すのは明示的な解除だけ）。知らない
+  キーは無視し、書き戻しで消える。重複した sheet id は**後勝ち**（ruamel の safe loader は既定で
+  重複キーをエラーにするので `allow_duplicate_keys = True` を明示する）。書き込み失敗はメモリ上の
+  絞り込みを使い続けて WARN、次の変更で再試行（config の保存と同じ）。`wayhint validate` は
+  state.yaml を見ない。
+
+  **F. 絞り込み文字列は解釈しない。** regex・パス・shell・Pango markup のどれとしても扱わず、
+  既存の case-insensitive substring + token AND でのみ使う（将来 RapidFuzz 等に替えても同じ）。
+  文字種は制限しない（日本語で remark を探すのが主用途）。上限は入力欄 `max_length` 200、
+  読み込み時も同じ 200（超えたら切り詰めず捨てる）。Unicode カテゴリ `Cc` は入力時と読み込み時に
+  落とす。chip は `set_text` で出す。WARN に絞り込みの内容は書かない。state.yaml は
+  **hints と同じ「人が触りうるディレクトリの中身」として untrusted 寄りに読む**
+  （書くのは自分、読むときは疑う）。0032 の脅威モデルは demo 生成システムの範囲なので、そこには
+  足さない。
+
+  **G. 編集モードとの関係。** 絞り込み中に `edit` に入れる。`J` / `K` は画面上の隣と YAML 上の隣が
+  ずれるので**絞り込み中は無効**（別グループの hint と同じく何も起きない）。`a` / `Enter` / `dd` /
+  `u` / `f` は影響を受けない。
+
+- **Alternatives**:
+  絞り込みを sheet ファイルに書く（絞り込みは view の状態で内容ではない。`format` / schema /
+  validate / examples に漏れる。hints/ の file monitor が自分の書き込みを拾うので「自分の書き込みは
+  無視する」例外が監視側に要る。gvim で sheet を開いていると W11 が出る。dotfiles 管理で diff が
+  出る）; workspace ごとのメモリ保持のみ（0012/0014 D4 と同じ粒度。再起動で消え、同じ sheet を別
+  workspace で見ると別の絞り込みになる）; context が替わったら捨てる（sheet をキーにすれば別の
+  キーを見るだけで、捨てる必要が無い）; `search` 中の hotkey を edit と同じ hide/show 保持にする
+  （絞り込みは別に永続化されるので、`search` を抜けて失うものが無い）; コピー対象を「`command` の
+  ある hint」に限定する（`copy → command → key` の既存規則と二重になる）; 解除専用キー / CLI
+  `clear-filter`（欄を空にして出れば足りる）; 絞り込み中は `edit` に入れない（絞った状態で目視
+  しながら編集したい場面があり、困るのは `J`/`K` だけ）; 文字種制限（日本語検索を壊す）;
+  state.yaml のパスを config で変える、複数 daemon、他プロセスからの書き込み（今の使い方に無い。
+  **defer**）。
+
+- **Consequences**:
+  `normal` で一覧が短く見えることがあるが、chip を見れば分かる（README troubleshooting に追記）。
+  検索モードに入ると前回の絞り込みが欄に入っているので、別の語で探すときは打ち直し（全選択済み）。
+  focus 復帰の既知の制約（同 app_id 複数 + title 変化で復帰先が決まらない、README）はキー操作の
+  流れでも同じで、そこで止まったらクリックが要る。`search` の状態遷移表は「出口: Esc、Enter・c、
+  `search-mode`、hide、workspace 離脱」「入口: 検索ボタン、`search-mode`」になる。DESIGN §30 の
+  「結果一覧は title/key/command のみ」を削除。i18n（en/ja）に chip のラベルと「コピーできる項目が
+  ありません」を追加。手動検証は DESIGN の実機チェックリストに T38–T46 として追加: keybinding → `search-mode` →
+  `Enter` でコピーして focus が戻る / Esc 後も絞り込みが残る / daemon 再起動後も残る /
+  state.yaml を壊しても起動して WARN が 1 行 / 絞り込み中の `edit` で `J`/`K` が無反応 /
+  別 workspace の同 sheet で同じ絞り込み / `search-mode` 再押下で `normal` に戻る /
+  `search` 中に別経路で sheet を書き換えても欄の文字列・focus・絞り込みが残る / `search` 中の
+  「エディタで編集」で `normal` に戻り、gvim 保存後も絞り込まれた一覧が更新される。
+  README に `rc.xml` の例（`W-S-h` → `wayhint search-mode`）、ファイル構成表に state.yaml、
+  ファイルの 3 区分（内容 / 設定 / 状態）を追記。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):
