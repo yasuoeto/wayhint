@@ -280,6 +280,31 @@ class T43EditWhileFilteredTest(RealWindowCase):
         self.assertEqual(self.sheet_ids()[0], ["split", "detach"])
 
 
+class RefusalMessageTest(RealWindowCase):
+    """A refusal answers one press: it goes when its mode ends, a YAML error stays."""
+
+    def setUp(self):
+        super().setUp()
+        self.send("show")
+        self.assertEqual(self.send("edit-mode")["mode"], "edit")
+
+    def test_leaving_edit_clears_the_refusal_to_search(self):
+        self.assertFalse(self.send("search-mode")["ok"])
+        self.assertTrue(self.window._error.get_visible())
+        self.assertIn("finish editing", self.window._error.get_label())
+        self.assertEqual(self.send("edit-mode")["mode"], "normal")
+        self.assertFalse(self.window._error.get_visible())
+
+    def test_leaving_edit_puts_a_yaml_error_back(self):
+        (self.root / "hints" / "broken.yaml").write_text("id: [\n")
+        self.daemon.reload_all()
+        self.window.show_issues(self.daemon.issues)
+        self.assertFalse(self.send("search-mode")["ok"])
+        self.assertEqual(self.send("edit-mode")["mode"], "normal")
+        self.assertTrue(self.window._error.get_visible())
+        self.assertIn("YAML error", self.window._error.get_label())
+
+
 class T46aReloadWhileSearchingTest(RealWindowCase):
     """T46a: a sheet rewritten from outside during a search leaves the search box alone.
 

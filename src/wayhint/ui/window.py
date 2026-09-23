@@ -170,6 +170,7 @@ class HintWindow(Gtk.Window):
         self._config = GlobalConfig()
         self._hints: list[Hint] = []
         self._mode = "normal"
+        self._issues: list[Issue] = []  # what the error line falls back to (see _show_standing)
         self._form: FormDraft | None = None
         self._included: list[HintSheet] = []
         self._preedit = False  # an input method conversion is open in one of the fields
@@ -440,16 +441,31 @@ class HintWindow(Gtk.Window):
 
     def show_issues(self, issues: Sequence[Issue]) -> None:
         """YAML errors from the store; shown above the list, hints stay (last-known-good)."""
-        if issues:
-            lines = [f"⚠ {self._tr('YAML error')}: {i}" for i in issues[:3]]
-            if len(issues) > 3:
-                lines.append(self._tr("… and {n} more").format(n=len(issues) - 3))
+        self._issues = list(issues)
+        self._show_standing()
+
+    def _show_standing(self) -> None:
+        """Put back what the error line says while nothing is being answered.
+
+        The line is shared: YAML errors and a failed context stay for as long as they are true,
+        while :meth:`show_message` answers one action. A mode change ends what that answer was
+        about ("finish editing before searching" is wrong once editing is over), so it comes
+        back here.
+        """
+        if self._issues:
+            lines = [f"⚠ {self._tr('YAML error')}: {i}" for i in self._issues[:3]]
+            if len(self._issues) > 3:
+                lines.append(self._tr("… and {n} more").format(n=len(self._issues) - 3))
             self._error.set_label("\n".join(lines))
             self._error.set_visible(True)
-        elif not (self._ctx and self._ctx.error):
+        elif self._ctx and self._ctx.error:
+            self._error.set_label(f"⚠ {self._ctx.error}")
+            self._error.set_visible(True)
+        else:
             self._error.set_visible(False)
 
     def show_message(self, text: str) -> None:
+        """A one-off answer to an action. It lasts until the next mode change."""
         self._error.set_label(text)
         self._error.set_visible(True)
 
@@ -526,6 +542,8 @@ class HintWindow(Gtk.Window):
         leaving = self._mode
         self._mode = mode
         self._delete_pending = None
+        if mode != leaving:
+            self._show_standing()
         self._search_btn.set_sensitive(mode != "edit")
         if mode != "search":
             # The box is hidden but the filter stays: leaving search only lets go of the keyboard
@@ -677,7 +695,7 @@ class HintWindow(Gtk.Window):
             return False  # let the input method have it; :meth:`_on_key_late` picks up the rest
         if editmode.cancels_delete(action) and self._delete_pending is not None:
             self._delete_pending = None
-            self._error.set_visible(False)
+            self._show_standing()  # the "press d again" prompt, not a YAML error under it
         if action is None:
             return False
         if action == editmode.FORM_NEXT or action == editmode.FORM_PREVIOUS:
@@ -829,10 +847,7 @@ class HintWindow(Gtk.Window):
         if ctx and active is None and not ctx.error:
             parts.append(self._tr("no matching sheet"))
         self._context_label.set_label("  ·  ".join(parts))
-        if ctx and ctx.error:
-            self.show_message(f"⚠ {ctx.error}")
-        else:
-            self._error.set_visible(False)
+        self._show_standing()
 
     def _current_query(self) -> str:
         """The filter in force: the box while searching, the kept filter otherwise (0033 C)."""

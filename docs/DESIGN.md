@@ -275,6 +275,9 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
   hint をコピーして `normal` に戻る。0 件やコピー対象の無い hint では理由を出して留まる。`edit` 中の
   `search-mode` は拒否して理由を表示する。
 - `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
+- エラー行は共用。YAML error と context 取得の失敗は成り立つ間ずっと出し、操作への一回限りの答え
+  (拒否の理由など)は **次のモード変更で消えて**前者に戻る(例: 編集中の `search-mode` の拒否は、編集を
+  抜けると消える)。
 - `edit` 中の hotkey は hide / show（0013 の例外）。
 - エディタ起動（「エディタで編集」）では overlay を隠さない（DECISIONS 0023）。editor でキュレーション
   した結果を、保存のたびに reload で見たいため。`edit` / `search` のときは Escape と同じ経路で `normal`
