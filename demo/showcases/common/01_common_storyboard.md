@@ -39,13 +39,14 @@
 
 ### hint sheet（`demo/fixtures/hints/ja/`）
 
-- `herdr.yaml` — pane 操作 4 件。うち 3 件に `tags: [terminal]`。`favorite` は無し（★ が付くと
-  Herdr の hint が先頭へ出てしまい、「後半は Herdr」が成立しない）
-- `claude-code.yaml` — 5 件。`inherit: {parent_tags: [terminal]}`。1 件に `remark`、1 件 `favorite`
-- `codex.yaml` — 3 件（切替が「Claude Code 専用」でないと示す用）
+- `herdr.yaml` / `claude-code.yaml` / `codex.yaml` — 実機の `~/.config/wayhint/hints/ja/` の写し
+  (2026-09-24、文言も手を加えていない)。Herdr 6 件、Claude Code 7 件、Codex 1 件。tag の絞りは
+  どこにも書いていないので、子の一覧には Herdr の hint が全部混ざる(DECISIONS 0034)。`favorite` は
+  無いので ★ は出ない
 - `wm.yaml` — `match` 無し、2 件。`config.yaml` に `include: [wm]`
 - `vi.yaml` — §6 で YAML を開く場面のもの。`notes.yaml` / `less.yaml` は他の showcase が使う
-- 撮影中に追記する hint は「直前の検索を繰り返す / `n`」。Codex の sheet に入る
+- 撮影中に追記する hint は「直前の検索を繰り返す / `n`」。検索で選ばれた Herdr の hint の隣、
+  つまり Herdr の sheet に入る
 
 ## 1. 本編
 <!-- variant: main -->
@@ -68,7 +69,7 @@
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 18–24 | `Super+H`。右上に overlay | hotkey 一発で、focus 中のウィンドウの hint。位置は設定可能 |
-| 24–28 | 一覧(左 key / 中央 title と command / 右 category、★ が先頭) | ★ はよく使うもの。左にキー、中央に説明（あればコマンド）、右に分類 |
+| 24–28 | 一覧(左 key / 中央 title と command / 右 category) | 左にキー、中央に説明（あればコマンド）、右に分類 |
 | 28–32 | 選択中の行の詳細が下に出ている | 補足情報は下に出る |
 
 ### §3 主役1: 中まで見て切り替わる(0:32–0:58)
@@ -78,7 +79,7 @@
 | 32–37 | ヘッダー `Herdr › Claude Code` | 見ているのはウィンドウではなく、中のプロセス |
 | 37–42 | 新しいタブ → Codex | (字幕なし) |
 | 42–50 | `Super+H` → `Herdr › Codex` に差し替わる | 別の pane で押し直せば、閉じずに差し替わる |
-| 50–58 | 一覧の後ろに Herdr の pane 操作が続いている | 親子関係のプロセスは自動で hint を混ぜる、後半は Herdr の操作 |
+| 50–58 | 一覧に Herdr の hint(スクロール、tab、ペースト)が混ざっている | 親子関係のプロセスは自動で hint を混ぜる、Herdr の操作も並ぶ |
 
 ### §4 主役2: 奪わない(0:58–1:32)
 
@@ -86,8 +87,8 @@
 |---|---|---|
 | 58–66 | overlay を出したまま端末に打つ | 通常表示中はキーボードを奪わない |
 | 66–68.5 | `Super+Shift+H` → 検索欄が開く | 検索は Super+Shift+H |
-| 68.5–75.5 | 検索欄に打つ → 一覧が 3 件に絞られる | キーボードの入力先を切り替えるのは、検索を始めたときだけ |
-| 75.5–81.5 | `Enter` → 先頭の hint をコピーして検索を抜ける。一覧は 3 件のまま、chip が出る | Enter で先頭の hint をコピーして戻る |
+| 68.5–75.5 | 検索欄に「ペースト」→ 一覧が 2 件に絞られる | キーボードの入力先を切り替えるのは、検索を始めたときだけ |
+| 75.5–81.5 | `Enter` → 先頭の hint をコピーして検索を抜ける。一覧は 2 件のまま、chip が出る | Enter で先頭の hint をコピーして戻る |
 | 81.5–87 | 端末に 1 文字入る。一覧は絞られたまま | 絞り込みは残り、入力は元のウィンドウへ |
 | 87–92.5 | chip の `×` → 一覧が全件に戻る | 絞り込みは sheet ごとに残る。解除は × |
 
@@ -96,7 +97,7 @@
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 92.5–97.5 | `Super+Ctrl+H`。下部に編集モードの操作一覧 | 忘れていた操作を見つけたら、その場で書く |
-| 97.5–101.5 | `a` → フォーム。見出しに追加先の sheet | 追加先は、いま選んでいる hint と同じ sheet |
+| 97.5–101.5 | `a` → フォーム。見出しは「新しいヒント → Herdr」 | 追加先は、いま選んでいる hint と同じ sheet |
 | 101.5–109.1 | タイトル → Tab → キー | (字幕なし) |
 | 109.1–116.1 | Enter。一覧に新しい行が増える | Enter で保存すると編集モードは終わる |
 | 116.1–123.1 | sheet の YAML を壊す → `⚠ YAML エラー`、一覧は残る | 手で編集して壊しても、最後に読めた内容が残る |
@@ -104,16 +105,17 @@
 
 ### §6 まとめと仕組み(2:10–2:50)
 
-vi の stub は引数の sheet を実際に開く。字幕が指す `match` / `include` は画面のその行にあり、
-言語は status 行の `"hints/ja/claude-code.yaml"` に出る。`inherit` は親子関係のプロセスの話なので
-`herdr` showcase が扱う。
+vi の stub は引数の sheet を実際に開く。字幕が指す `match` は画面のその行にあり、言語は status 行の
+`"hints/ja/claude-code.yaml"` に出る。`include` はこの sheet には書いておらず(実機の写しのため)、
+`config.yaml` の `include: [wm]` で全 sheet に混ざっている——字幕はその書き方を言う。親子関係の
+プロセスの絞り(`nested.export_tags`)は `herdr` showcase が扱う。
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 130.1–136.1 | `Super+H` で閉じる | 忘れた瞬間、いつも同じ場所に、必要な情報がある |
 | 136.1–143.1 | vi で `hints/ja/claude-code.yaml` を開く | sheet は 1 アプリ 1 YAML |
 | 143.1–151.1 | 同じ画面(5–7 行目の `match:`) | match でどのウィンドウ・どのプロセスに出すかが決まる |
-| 151.1–159.1 | 同じ画面(10 行目の `include:`) | include — 共通の hint を混ぜる |
+| 151.1–159.1 | 同じ画面(この sheet に `include:` は無い。wm は config.yaml の `include` で混ざる) | 共通の hint は config.yaml の include で全 sheet に混ぜる |
 | 159.1–167.1 | 同じ画面(status 行の `hints/ja/`) | hint は言語ごと。UI と同じ言語が出る |
 | 167.1–170.1 | vi の窓を閉じる | (字幕なし) |
 

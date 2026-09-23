@@ -1,24 +1,15 @@
-# 切り替えが Claude Code 専用でないことを示すための 2 つ目のコマンド。
+# Codex CLI — often started as ``node /path/to/codex``; argv basenames are matched, so
+# "^codex$" catches both the wrapper and the direct binary.
 id: codex
 title: Codex
 priority: 10
 match:
   process:
     argv_regex: ["^codex$"]
+    cmdline_regex: ["node .*/codex"]
 inherit:
-  parent_tags: [terminal]
-include: [wm]
 hints:
   - id: approve
-    title: 実行を承認する
+    title: Approve the pending action
     key: y
-    category: 確認
-  - id: reject
-    title: 実行を却下する
-    key: n
-    category: 確認
-  - id: diff
-    title: 変更点を見る
-    kind: command
-    command: /diff
-    category: 確認
+    category: review

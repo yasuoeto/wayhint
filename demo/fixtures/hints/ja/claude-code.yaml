@@ -1,36 +1,86 @@
-# 窓ではなく、端末の中で動いている *プロセス* で選ばれる(match.process)。
+# Claude Code running inside Herdr. Matched on the foreground process, not on the window.
 id: claude-code
 title: Claude Code
 priority: 10
 match:
   process:
     argv_regex: ["^claude$"]
-inherit:
-  parent_tags: [terminal]
-include: [wm]
 hints:
-  - id: compact
-    title: 会話を要約して畳む
-    kind: command
-    command: /compact
-    category: セッション
-    favorite: true
-    remark: 要約は残し、ツールの生出力を捨てる。長い会話で効く。
+  - id: line-scroll
+    title: 1行単位でのスクロール
+    kind: shortcut
+    key: Alt+↑/Alt+↓
+    command:
+    category: scroll
+    tags:
+    favorite: false
+    copy:
+    remark: 一行ずつスクロールする
+    source:
+    learned: '2026-09-18'
+  - id: wheel-scroll
+    title: ホイールマウス挙動でのスクロール
+    kind: shortcut
+    key: 中クリック+TrackPoint↑↓
+    command:
+    category: scroll
+    tags:
+    favorite: false
+    copy:
+    remark: 1行単位設定
+    source:
+    learned: '2026-09-18'
   - id: model
-    title: モデルを切り替える
+    title: モデル切り替え
     kind: command
+    key:
     command: /model
-    category: セッション
-  - id: resume
-    title: 前の会話を再開する
+    category: session
+    tags:
+    favorite: false
+    copy:
+    remark: モデル切り替え画面に遷移する
+    source:
+    learned:
+  - id: compact
+    title: ctwを圧縮する
     kind: command
-    command: /resume
-    category: セッション
-  - id: plan-mode
-    title: 編集の前に計画する
-    key: Shift+Tab
-    category: 編集
-  - id: interrupt
-    title: 実行中の応答を止める
-    key: Esc
-    category: 編集
+    key:
+    command: /compact
+    category: session
+    tags:
+    favorite: false
+    copy:
+    remark: Keeps the summary, drops raw tool output.
+    source:
+    learned:
+  - id: clear
+    title: セッションのクリア
+    kind: command
+    key:
+    command: /clear
+    category: session
+    tags:
+    favorite: false
+    copy:
+    remark: セッションをクリアしctwを開放する
+    source:
+    learned: '2026-09-18'
+  - id: prompt-editer
+    title: プロンプトを入力に外部エディタを開く
+    kind: shortcut
+    key: Ctrl+G
+    command:
+    category: input
+    tags:
+    favorite: false
+    copy:
+    remark: '[pasted]なものも編集可能'
+    source:
+    learned: '2026-09-19'
+  - id: shell-escape
+    title: 実シェルでコマンドを実行する
+    kind: tip
+    key: "! <command>"
+    category: input
+    copy: "! "

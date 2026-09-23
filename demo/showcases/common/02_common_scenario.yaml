@@ -59,14 +59,14 @@ steps:
   # --- §2 いつも同じ場所 -------------------------------------------------------------------------
   - id: show-hints
     key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 10}
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
     caption: {ja: "hotkey 一発で、focus 中のウィンドウの hint。位置は設定可能"}
     hold: 6.0
 
   - id: list-layout
     cli: refresh
     wait_for: {overlay: visible, label: "Claude Code"}
-    caption: {ja: "★ はよく使うもの。左にキー、中央に説明（あればコマンド）、右に分類"}
+    caption: {ja: "左にキー、中央に説明（あればコマンド）、右に分類"}
     hold: 4.0
 
   - id: detail-pane
@@ -103,14 +103,14 @@ steps:
 
   - id: switch-pane
     key: super+h
-    wait_for: {overlay: visible, label: "Codex", hints: 8}
+    wait_for: {overlay: visible, label: "Codex", hints: 9}
     caption: {ja: "別の pane で押し直せば、閉じずに差し替わる"}
     hold: 8.0
 
   - id: parent-hints
     cli: refresh
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "親子関係のプロセスは自動で hint を混ぜる、後半は Herdr の操作"}
+    caption: {ja: "親子関係のプロセスは自動で hint を混ぜる、Herdr の操作も並ぶ"}
     hold: 8.0
 
   # --- §4 主役2: 奪わない ------------------------------------------------------------------------
@@ -131,27 +131,27 @@ steps:
     hold: 2.5
 
   - id: type-search
-    type: "確認"
-    wait_for: {overlay: visible, hints: 3, text: "確認"}
+    type: "ペースト"
+    wait_for: {overlay: visible, hints: 2, text: "ペースト"}
     caption: {ja: "キーボードの入力先を切り替えるのは、検索を始めたときだけ"}
     hold: 7.0
 
   - id: copy-and-leave
     key: enter
-    wait_for: {button: search, hints: 3}
+    wait_for: {button: search, hints: 2}
     caption: {ja: "Enter で先頭の hint をコピーして戻る"}
     hold: 6.0
 
   - id: focus-back
     type: "f"
-    wait_for: {overlay: visible, hints: 3}
+    wait_for: {overlay: visible, hints: 2}
     caption: {ja: "絞り込みは残り、入力は元のウィンドウへ"}
     hold: 5.5
 
   - id: clear-filter
     press: {button: clear-filter}
-    precondition: {overlay: visible, hints: 3}
-    wait_for: {overlay: visible, hints: 8}
+    precondition: {overlay: visible, hints: 2}
+    wait_for: {overlay: visible, hints: 9}
     caption: {ja: "絞り込みは sheet ごとに残る。解除は ×"}
     hold: 5.5
 
@@ -188,7 +188,7 @@ steps:
 
   - id: save-hint
     key: enter
-    wait_for: {overlay: visible, no_label: "Title", hints: 9}
+    wait_for: {overlay: visible, no_label: "Title", hints: 10}
     caption: {ja: "Enter で保存すると編集モードは終わる"}
     hold: 7.0
 
@@ -255,7 +255,7 @@ steps:
   - id: yaml-include
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "include — 共通の hint を混ぜる"}
+    caption: {ja: "共通の hint は config.yaml の include で全 sheet に混ぜる"}
     hold: 8.0
 
   - id: yaml-lang

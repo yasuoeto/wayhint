@@ -13,8 +13,6 @@ appearance:
   language: ja
 editor:
   command: [gvim, --remote-silent, "+{line}", "{file}"]
-nested:
-  parent_tags: [terminal]
 include: [wm]
 search:
   max_results: 30
