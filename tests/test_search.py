@@ -489,13 +489,14 @@ class BackToHowItWasTest(DaemonCase):
         self.assertEqual((self.current().mode, self.window.visible), ("edit", True))
         self.assertTrue(self.current().mode_entered_hidden)
 
-    def test_edit_mode_during_search_still_goes_straight_to_edit(self):
-        """Pinned as it is, gap included: the box's text is not kept as the filter (0033 C says it
-        should be; left for a separate change, STATUS)."""
+    def test_edit_mode_during_search_goes_to_edit_and_keeps_the_filter(self):
+        """Still straight to edit, but through the one way out of search (0033 C): the box's
+        text becomes the filter and is written for the sheet. It used to be dropped."""
         self.daemon.show()
         self.daemon.dispatch("search-mode")
         self.window.text = "pane"
         self.assertEqual(self.daemon.dispatch("edit-mode")["mode"], "edit")
         self.assertEqual((self.current().mode, self.window.mode), ("edit", "edit"))
-        self.assertEqual((self.current().filter_query, self.daemon.filters), ("", {}))
+        self.assertEqual((self.current().filter_query, self.window.filter), ("pane", "pane"))
+        self.assertEqual(self.daemon.filters, {"b": "pane"})
         self.assertFalse(self.current().mode_entered_hidden)

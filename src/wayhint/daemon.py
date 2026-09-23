@@ -442,6 +442,10 @@ class Daemon:
                 self.hide()
                 return {"visible": False, "mode": "normal", "sheet": view.context.active_sheet}
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
+        if view is not None and view.mode == "search" and self.window.is_shown():
+            # Leaving search for edit is leaving search: what the box holds is kept as the filter
+            # (0033 C). The keyboard stays with the overlay, so no focus is handed back.
+            self._leave_search(view, refocus=False)
         hidden = view is None or not self.window.is_shown()
         if hidden:
             self.show()

@@ -367,5 +367,19 @@ class ModeHotkeyTwiceTest(RealWindowCase):
                 self.assertEqual(self.gui.LayerShell.get_keyboard_mode(self.window), none)
 
 
+class EditFromSearchTest(RealWindowCase):
+    """``edit-mode`` pressed while searching keeps what the box held as the filter (0033 C)."""
+
+    def test_the_box_becomes_the_filter_of_the_edit_list(self):
+        self.send("show")
+        self.send("search-mode")
+        self.window._search.set_text("pane")
+        self.assertEqual(self.send("edit-mode")["mode"], "edit")
+        self.assertEqual(self.window.mode, "edit")
+        self.assertEqual(self.window._query, "pane")
+        self.assertEqual(self.rows(), ["split", "close"])
+        self.assertIn('b: "pane"', self.state.read_text())
+
+
 if __name__ == "__main__":
     unittest.main()
