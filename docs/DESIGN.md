@@ -672,24 +672,26 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
   (回転できるモニタが要るため未実施)
 - T38 keybinding → `wayhint search-mode` で overlay が出て検索欄に focus が入り、日本語 IME で入力できる
+  **(2026-09-23 確認済)**
 - T39 語を打って `Enter` → clipboard に入り、元アプリに focus が戻る。overlay は絞り込まれたまま `normal`
+  **(2026-09-23 確認済)**
 - T40 `Esc` で抜けても絞り込みが残り、chip が出る。chip の `×` で全件に戻る
-- T41 daemon を再起動しても、同じ sheet を開けば同じ絞り込み
+  **(2026-09-23 確認済)**
+- T41 daemon を再起動しても、同じ sheet を開けば同じ絞り込み **(自動テスト済:
+  `tests/test_search_checklist.py` `T41RestartTest`)**
 - T42 state.yaml を壊す(`foo: [`)→ daemon は起動し WARN が 1 行、絞り込み無し。次に検索を抜けたとき
-  正常な内容で書き戻る
+  正常な内容で書き戻る **(自動テスト済: `T42BrokenStateTest`)**
 - T43 絞り込み中に `edit-mode` → `J` / `K` は無反応、`a` / `Enter` / `d` `d` / `f` は動く
-- T44 別 workspace で同じ sheet を開くと同じ絞り込み
+  **(自動テスト済: `T43EditWhileFilteredTest`、実物の HintWindow)**
+- T44 別 workspace で同じ sheet を開くと同じ絞り込み **(自動テスト済: `T44WorkspaceTest`)**
 - T45 `search` 中に `search-mode` をもう一度 → `normal` に戻り、元アプリに入力できる
-- T46 `search` 中に別経路で sheet の内容を書き換える → 欄の文字列・カーソル・focus・絞り込みが残る。
-  `search` 中に「エディタで編集」→ `normal` に戻り、gvim で保存するたびに絞り込まれた一覧が更新される
-- T36 `foot.p$$` で起動した foot 上で `vi` 実行中に hotkey → vi 用 sheet が選ばれ、
-  `wayhint context` の `chain` に `ProcAdapter`、process name に `vi` が出る。foot 窓を 2 枚開いても
-  フォーカス中の窓の process が取れる。`desktop_app` は `foot.p<pid>`、overlay の context ラベルは
-  接尾辞の無い `foot`。foot 用 sheet は書かなくてよい(`parent_context` は `null`)
-- T37 wrapper を通さず起動した端末の窓が 2 枚以上あるとき → `chain` に `ProcAdapter` は入るが
-  process は `null`（無判定）。1 枚だけのときは解決する。
-  **foot では確認できない**: Herdr の窓を `foot --app-id=foot-herdr` で動かしている限り foot の
-  プロセスは常に 2 つ以上あり、「1 枚だけ」の状態を作れない。別の端末（ghostty 等）で確認する
+  **(自動テスト済: `tests/test_gui_headless.py` `SearchChecklistTest`、check-gui)**。実機で見るのは
+  本物の `rc.xml` の keybind(`W-S-h`)経由だけ
+- T46 `search` 中に別経路で sheet の内容を書き換える → 欄の文字列・カーソル・focus・絞り込みが残る
+  **(自動テスト済: `T46aReloadWhileSearchingTest`)**。
+  `search` 中に「エディタで編集」→ `normal` に戻り、保存のたびに絞り込まれた一覧が更新される
+  **(自動テスト済: `SearchChecklistTest`、in-place 保存と rename 保存の両方)**。実機で見るのは
+  本物の gvim で 1 回だけ
 
 ## Known limits and future work
 
