@@ -16,6 +16,7 @@ from wayhint.context.resolver import ContextResolver
 from wayhint.context.wayfire import WayfireContextProvider
 from wayhint.daemon import _nested_providers
 from wayhint.models import DisplayConfig, Hint, HintSheet, MatchRule, OutputInfo, SourceLocation
+from wayhint.selection import sort_hints, visible_hints
 
 LOC = SourceLocation(Path("x.yaml"), 1)
 
@@ -230,6 +231,67 @@ def info(procs, leader=None):
             }
         }
     }
+
+
+class NestedParentHintsTest(unittest.TestCase):
+    """Resolver and selection together: which parent hints a nested context shows (0034).
+
+    No ``nested.parent_tags`` in the config, as a fresh install has it: what the overlay mixes
+    in is decided by the parent sheet alone.
+    """
+
+    cfg = GlobalConfig()
+
+    @staticmethod
+    def make(id_, hints, app=(), argv=(), export=None):
+        path = Path(f"{id_}.yaml")
+        return HintSheet(
+            id=id_,
+            title=id_,
+            path=path,
+            match=MatchRule(app_id_regex=tuple(app), argv_regex=tuple(argv)),
+            export_tags=export,
+            hints=tuple(
+                Hint(id=h, title=h, location=SourceLocation(path, i + 1), tags=tuple(tags))
+                for i, (h, tags) in enumerate(hints)
+            ),
+        )
+
+    def setUp(self) -> None:
+        self.herdr = self.make(
+            "herdr", [("split", ["pane"]), ("close", [])], app=["^herdr$"], export=("pane",)
+        )
+        self.foot = self.make("foot", [("scroll", []), ("theme", [])], app=["^foot$"])
+        self.vi = self.make("vi", [("quit", [])], argv=["^vi$"])
+        self.claude = self.make("claude", [("plan", [])], argv=["claude"])
+
+    def shown(self, sheets, app_id, provider):
+        ctx = ContextResolver(FakeDesktop(snap(app_id)), [provider]).resolve(sheets, self.cfg)
+        by_id = {s.id: s for s in sheets}
+        active = by_id.get(ctx.active_sheet)
+        parent = by_id.get(ctx.parent_context) if ctx.parent_context else None
+        ids = [h.id for h in sort_hints(visible_hints(active, parent, self.cfg.parent_tags))]
+        return ctx, ids
+
+    def test_a_herdr_exports_only_tagged_hints_to_claude(self) -> None:
+        sheets = [self.herdr, self.foot, self.vi, self.claude]
+        ctx, ids = self.shown(sheets, "herdr", FakeHerdr(proc(["claude"])))
+        self.assertEqual((ctx.active_sheet, ctx.parent_context), ("claude", "herdr"))
+        self.assertEqual(ids, ["plan", "split"])
+
+    def test_b_foot_without_export_mixes_all_foot_hints(self) -> None:
+        sheets = [self.herdr, self.foot, self.vi, self.claude]
+        ctx, ids = self.shown(sheets, "foot.p123", FakeProc(proc(["vi"]), applies="foot.p123"))
+        self.assertEqual((ctx.active_sheet, ctx.parent_context), ("vi", "foot"))
+        self.assertEqual(ids, ["quit", "scroll", "theme"])
+        self.assertFalse({"split", "close"} & set(ids))  # nothing of herdr's
+
+    def test_c_foot_without_sheet_shows_only_the_child(self) -> None:
+        sheets = [self.herdr, self.vi, self.claude]
+        ctx, ids = self.shown(sheets, "foot.p123", FakeProc(proc(["vi"]), applies="foot.p123"))
+        self.assertEqual(ctx.active_sheet, "vi")
+        self.assertIsNone(ctx.parent_context)
+        self.assertEqual(ids, ["quit"])
 
 
 class HerdrAdapterTest(unittest.TestCase):

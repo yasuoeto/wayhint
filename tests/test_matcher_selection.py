@@ -121,6 +121,51 @@ class VisibleHintsTest(unittest.TestCase):
         self.assertEqual(visible_hints(None, None, ["terminal"]), [])
 
 
+class ParentFilterOrderTest(unittest.TestCase):
+    """DECISIONS 0034 D1: the first tag list written down decides, and nothing written is all.
+
+    Columns: the child's ``inherit.parent_tags``, the global ``nested.parent_tags``, the
+    parent's ``nested.export_tags``. ``None`` is "not written", ``[]`` is "written, empty".
+    """
+
+    TABLE = (
+        (None, None, None, ["c", "split", "close", "theme"]),
+        (None, None, ["pane"], ["c", "split", "close"]),
+        (None, None, [], ["c"]),
+        (None, ["pane"], ["other"], ["c", "split", "close"]),  # the parent's list is not read
+        (None, [], ["pane"], ["c"]),
+        (["pane"], [], [], ["c", "split", "close"]),
+        ([], None, None, ["c"]),
+    )
+
+    def test_the_table(self) -> None:
+        parent_hints = [
+            hint("split", tags=["pane"]),
+            hint("close", tags=["pane", "other"]),
+            hint("theme", tags=["ui"]),
+        ]
+        for row, (child_tags, global_tags, export, expected) in enumerate(self.TABLE, start=1):
+            with self.subTest(row=row, child=child_tags, glob=global_tags, export=export):
+                parent = replace(
+                    sheet("herdr", hints=parent_hints),
+                    export_tags=None if export is None else tuple(export),
+                )
+                child = sheet("claude", hints=[hint("c")], parent_tags=child_tags)
+                ids = [h.id for h in visible_hints(child, parent, global_tags)]
+                self.assertEqual(ids, expected)
+
+    def test_export_tags_are_not_read_for_an_include(self) -> None:
+        """``export_tags`` is the nested path only; an include still brings the whole sheet."""
+        herdr = replace(
+            sheet("herdr", hints=[hint("split", tags=["pane"]), hint("theme")]),
+            export_tags=("pane",),
+        )
+        child = sheet("claude", hints=[hint("c")])
+        self.assertEqual(
+            [h.id for h in visible_hints(child, None, None, [herdr])], ["c", "split", "theme"]
+        )
+
+
 class SheetWithoutMatchTest(unittest.TestCase):
     """A sheet with no ``match`` exists to be included, never to be picked (0026)."""
 

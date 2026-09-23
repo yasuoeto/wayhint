@@ -1,10 +1,13 @@
 # Herdr（ターミナルマルチプレクサ）— 入れ子 context の親 sheet。
-# nested.parent_tags（config.yaml）のタグが付いた hint は Claude / Codex の中でも表示される。
+# 何も書かなければ全 hint が Claude / Codex の中でも表示される。nested.export_tags で
+# 渡すものを絞れる（ここでは terminal タグの付いたものだけ）。
 id: herdr
 title: Herdr
 match:
   wayland:
     app_id_regex: ["herdr"]
+nested:
+  export_tags: [terminal]
 hints:
   - id: new-pane
     title: ペインを追加

@@ -36,8 +36,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
   は任意の fallback。
 - context判定の階層: compositor の active toplevel → application → (Herdrなら) focused pane →
   foreground process。V1はforeground processまで。
-- 入れ子表示: 子sheet(例 Claude Code)のhint + 親sheet(Herdr)のうち指定tag(既定
-  `nested-common`)を持つhintのみ。
+- 入れ子表示: 子sheet(例 Claude Code)のhint + 親sheet(Herdr)のhint。既定は全部。親側
+  (`nested.export_tags`)または子側・config(`parent_tags`)で tag を書いたときだけ絞る(DECISIONS 0034)。
 - 1 application/context につき1 YAMLファイル(`~/.config/wayhint/hints/*.yaml`)。
 - 検索(通常表示ではkeyboardを取らず、Search開始時のみinteractive)。
 - 詳細表示(remark / source / learned / tags は詳細のみ。id / kind は表示しない)。clipboard copy。

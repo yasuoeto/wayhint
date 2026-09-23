@@ -1,8 +1,9 @@
 """Which hints to show, in what order, and search over them. Pure functions, no I/O.
 
-- :func:`visible_hints`: active sheet's hints plus the parent sheet's hints whose tags intersect
-  the effective ``parent_tags`` (child ``inherit.parent_tags`` overrides global
-  ``nested.parent_tags``). ``favorite`` never affects visibility (PRODUCT requirement 9).
+- :func:`visible_hints`: active sheet's hints plus the parent sheet's hints, narrowed by the
+  first tag list that was written down: child ``inherit.parent_tags``, then global
+  ``nested.parent_tags``, then the parent's own ``nested.export_tags``; none of them written means
+  every parent hint (DECISIONS 0034). ``favorite`` never affects visibility (requirement 9).
 - :func:`sort_hints`: favorites first in YAML order, then the rest by category in order of first
   appearance, then YAML order (requirement 11 as amended by DECISIONS 0014 D7).
 - :func:`search_hints`: case-insensitive substring, whitespace-separated tokens ANDed, over
@@ -18,26 +19,39 @@ from wayhint.models import Hint, HintSheet
 
 
 def effective_parent_tags(
-    child: HintSheet | None, global_parent_tags: Sequence[str]
-) -> tuple[str, ...]:
+    child: HintSheet | None,
+    global_parent_tags: Sequence[str] | None,
+    parent: HintSheet | None = None,
+) -> tuple[str, ...] | None:
+    """The tag filter on the parent's hints, or ``None`` for all of them (DECISIONS 0034).
+
+    One replacement rule, never an intersection: the first of these that was written down wins
+    and the ones below it are not looked at -- the child's ``inherit.parent_tags``, the global
+    ``nested.parent_tags``, the parent's ``nested.export_tags``. ``[]`` written anywhere is a
+    filter that lets nothing through; nothing written anywhere is ``None``.
+    """
     if child is not None and child.parent_tags is not None:
         return tuple(child.parent_tags)
-    return tuple(global_parent_tags)
+    if global_parent_tags is not None:
+        return tuple(global_parent_tags)
+    if parent is not None and parent.export_tags is not None:
+        return tuple(parent.export_tags)
+    return None
 
 
-def parent_hints_for(parent: HintSheet | None, parent_tags: Iterable[str]) -> list[Hint]:
+def parent_hints_for(parent: HintSheet | None, parent_tags: Iterable[str] | None) -> list[Hint]:
     if parent is None:
         return []
+    if parent_tags is None:
+        return list(parent.hints)
     wanted = set(parent_tags)
-    if not wanted:
-        return []
     return [h for h in parent.hints if wanted.intersection(h.tags)]
 
 
 def visible_hints(
     active: HintSheet | None,
     parent: HintSheet | None,
-    global_parent_tags: Sequence[str],
+    global_parent_tags: Sequence[str] | None,
     includes: Sequence[HintSheet] = (),
 ) -> list[Hint]:
     """Hints for the overlay before sorting.
@@ -56,7 +70,7 @@ def visible_hints(
     elif parent is None or parent is active:
         out = list(active.hints)
     else:
-        tags = effective_parent_tags(active, global_parent_tags)
+        tags = effective_parent_tags(active, global_parent_tags, parent)
         out = list(active.hints) + parent_hints_for(parent, tags)
     for sheet in includes:
         out.extend(sheet.hints)

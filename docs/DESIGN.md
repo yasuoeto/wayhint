@@ -64,7 +64,7 @@ src/wayhint/
                                   ResolvedContext, ProcessInfo, OutputInfo, SourceLocation
   yaml_store.py                   ruamel.yaml load、行番号、validation(Issue)、SheetStore(last-known-good)
   matcher.py                      app_id / argv / cmdline regex matching、priority → specificity → file order
-  selection.py                    parent tag filter、favorite/category sort、search
+  selection.py                    親 hint の 4 段の置き換え(0034)、favorite/category sort、search
   context/base.py                 DesktopContextProvider / NestedContextProvider(Protocol)
   context/resolver.py             ContextResolver(§56 の流れ、output 優先順位)
   context/wayland.py              pywayland 隔離: wlr-foreign-toplevel で active toplevel/output、activate
@@ -92,7 +92,8 @@ src/wayhint/
 - `Hint`: `id`, `title`(必須); `kind`, `key`, `command`, `category`, `tags`, `favorite`,
   `copy`, `remark`, `source`, `learned`; `location: SourceLocation(file, line)`。
 - `HintSheet`: `version`, `id`, `title`, `priority`, `match: MatchRule`, `display: DisplayConfig`
-  (部分指定、global から継承), `inherit.parent_tags`, `hints: list[Hint]`, `path`。
+  (部分指定、global から継承), `inherit.parent_tags`, `nested.export_tags`(`export_tags`、親として渡す
+  hint の tag。未指定は `None` = 全部), `hints: list[Hint]`, `path`。
 - `MatchRule`: `wayland.app_id_regex[]`(旧綴り `wayfire` も読む), `process.argv_regex[]`, `process.cmdline_regex[]`。
 - `ResolvedContext`: `desktop_app`, `desktop_title`, `output: OutputInfo(name, width, height)`,
   `view_ref`(検索後の focus 復帰先。backend 固有の不透明文字列), `parent_context`(親sheet id),
@@ -133,7 +134,7 @@ overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, rig
 appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
 editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"], schema_modeline: false,
              schema_path: ~/.config/wayhint/schema.json}
-nested:     {parent_tags: []}
+nested:     {parent_tags: null}   # null = 書いていない。親 sheet の export_tags か、全部
 context:    {live_update: false, backend: auto, workspace: current}  # backend: auto|wayland|wayfire
                                                                      # workspace: current|all
 search:     {max_results: 50}
@@ -168,7 +169,8 @@ match:                                                 # 省略可。無い shee
   process: {argv_regex: [...], cmdline_regex: [...]}   # Python re でコンパイルできること
 include: [wm, ime]                                     # 混ぜる sheet id。省略時は global include
 display: {anchor, width, height, margin, output}       # 部分指定、global overlay から継承
-inherit: {parent_tags: [terminal, ai]}                 # 省略時は global nested.parent_tags
+inherit: {parent_tags: [terminal, ai]}                 # 親 hint の絞り。省略時は下の順で決まる
+nested: {export_tags: [pane]}                          # 親として子に渡す hint の tag。省略時は全部
 hints:
   - {id, title,            # 必須。id は sheet 内で一意
      kind: shortcut|command|tip|note, key, command, category, tags: [], favorite: false,
@@ -180,6 +182,11 @@ hints:
   (`inherit.parent_tags` と `nested.parent_tags` の関係と同じ)。include 先の include は辿らない。
   解決できない id と自分自身の id は warning で、その id だけ無視する(sheet は表示される。
   ただし config 既定由来の自己参照は黙って外す)。
+- **親 hint の絞り**(DECISIONS 0034): 子 sheet が選ばれたとき、親 sheet(ウィンドウの app_id で
+  決まる)の hint を後ろに並べる。絞りは 4 段の置き換えで、最初に書いてあった段だけを使う——
+  子の `inherit.parent_tags` → config の `nested.parent_tags` → 親の `nested.export_tags` →
+  どれも無ければ全部。`[]` はどの段でも 0 件。`export_tags` は nested の親経路にだけ効き、
+  `include` で混ざるときは見ない。foreground が無 sheet のときは従来どおり親の hint を全部出す。
 - **`match` は省略可**。`match` の無い sheet はどの context でも active にならず、`include` からだけ
   一覧に出る(共通 hint 用)。`match` があっても include 対象にはできる。
 - 一覧の連結順は active → 親 sheet(tag 一致分) → include(記述順)で、その後 D7 のソートを掛ける。
@@ -336,7 +343,7 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
 | remark | – | |
 
 - 編集フォームは既存値を prefill。`id` は表示のみ。
-- 保存時の自動設定（quick add のみ）: `id`（title の slug、衝突 `-2`…、空なら `q-YYYYMMDD-HHMMSS`）、`learned`（当日）、`favorite: false`、他は null。親 sheet 指定時は `effective_parent_tags` を `tags` に付与。
+- 保存時の自動設定（quick add のみ）: `id`（title の slug、衝突 `-2`…、空なら `q-YYYYMMDD-HHMMSS`）、`learned`（当日）、`favorite: false`、他は null。親 sheet 指定時は `effective_parent_tags` の tag を付与(0034 の段 1〜3 で絞りが決まっているときだけ。全部渡すときは付けない)。
 - 保存前に validation。失敗時はフォーム内にエラーを出し書かない（`edit` のまま、フォームも開いたまま）。
 - 保存に成功したらフォームを閉じ、`edit` を抜けて `normal` に戻る（§1 の表）。続けて追加するときは
   もう一度 `wayhint edit-mode` → `a`。

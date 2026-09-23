@@ -53,7 +53,7 @@ class GlobalConfig:
     language: str = "auto"  # auto (locale) | en | ja
     show_category: bool = True
     editor: EditorConfig = field(default_factory=EditorConfig)
-    parent_tags: tuple[str, ...] = ()
+    parent_tags: tuple[str, ...] | None = None  # None: not written; the parent sheet decides
     live_update: bool = False
     context_backend: str = "auto"  # auto | wayland | wayfire
     workspace_scope: str = "current"  # current = 呼び出した workspace だけ | all
@@ -275,7 +275,11 @@ def parse_global_config(data: object) -> GlobalConfig:
         language=language,
         show_category=_bool(appearance.get("show_category"), "appearance.show_category", True),
         editor=editor,
-        parent_tags=_str_list(nested.get("parent_tags"), "nested.parent_tags"),
+        parent_tags=(
+            None
+            if nested.get("parent_tags") is None
+            else _str_list(nested["parent_tags"], "nested.parent_tags")
+        ),
         live_update=_bool(context.get("live_update"), "context.live_update", False),
         context_backend=backend,
         workspace_scope=scope,

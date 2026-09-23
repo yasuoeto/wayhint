@@ -202,7 +202,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         sheet = _sheet_by_id(result, wanted)
     if sheet is not None and args.parent:
         child = _sheet_by_id(result, (context.active_sheet if context else None))
-        tags = effective_parent_tags(child, config.parent_tags)
+        tags = effective_parent_tags(child, config.parent_tags, sheet)
         if tags:
             fields["tags"] = list(tags)
 

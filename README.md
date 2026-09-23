@@ -389,13 +389,31 @@ sheet が親、process の sheet が子になる。terminal 用の sheet を書�
 
 ### 親 sheet の hint を混ぜる
 
-子 sheet が選ばれたとき、親 sheet の hint はタグで絞って後ろに並ぶ。対象のタグは子の
-`inherit.parent_tags`、無ければ `config.yaml` の `nested.parent_tags`。どちらも空なら親の hint は
-出ない。foreground process が どの sheet にも当たらなかったときは、親 sheet の hint が全部出る。
+Herdr の中の Claude Code、foot の中の vi のように子 sheet が選ばれたとき、親 sheet の hint が
+後ろに並ぶ。親はウィンドウの app_id で決まる(Herdr のウィンドウなら `herdr` の sheet)。タグは親を
+選ぶものではなく、親の hint のうちどれを並べるかの絞りにだけ使う。
 
-例えば Herdr の sheet に `tags: [terminal]` を付けた「新しい pane」を置き、Claude Code の sheet に
-`inherit: {parent_tags: [terminal]}` を書くと、Claude Code 使用中は Claude の hint に続けて
-pane 操作だけが並ぶ。
+**何も書かなければ親の hint は全部出る。** 絞りたいときは親 sheet に `nested.export_tags` を書く。
+
+```yaml
+# hints/ja/herdr.yaml — terminal タグの付いた hint だけを子の一覧に渡す
+id: herdr
+title: Herdr
+match: {wayland: {app_id_regex: [herdr]}}
+nested: {export_tags: [terminal]}
+hints:
+  - {id: new-pane, title: 新しい pane, key: Ctrl+Shift+N, tags: [terminal]}
+  - {id: theme, title: テーマを切り替える, key: Ctrl+Shift+T}   # 子の一覧には出ない
+```
+
+子 sheet の `inherit.parent_tags` と `config.yaml` の `nested.parent_tags` は、親の
+`export_tags` を**置き換える**(足し算ではない)。見る順は子の `inherit.parent_tags` →
+`config.yaml` の `nested.parent_tags` → 親の `nested.export_tags` で、最初に書いてあったものだけが
+使われる。どこかに `[]` と書けば親の hint は出ない。foreground process がどの sheet にも
+当たらなかったときは、書き方に関わらず親 sheet の hint が全部出る(DECISIONS 0034)。
+
+他の sheet の hint を混ぜたいときは `include` を使う。`inherit` と `nested` は親 hint の絞りだけで、
+`include` で混ざる sheet には効かない。
 
 ### hint のフィールド
 
@@ -408,7 +426,7 @@ pane 操作だけが並ぶ。
 | `key` | 一覧の左端に出るキー操作。例 `Ctrl-o`。長いものは 12 文字前後で折り返す(YAML に書いた改行もそのまま出る) |
 | `command` | 一覧の title の下に出るコマンド文字列。**実行はしない**。表示とコピーのみ |
 | `category` | 一覧の右端に出る見出し。同じ category の hint は隣り合って並ぶ |
-| `tags` | 親 sheet として取り込まれるときの絞り込みに使う。検索の対象にもなる |
+| `tags` | 親 sheet として取り込まれるときの絞り込みに使う(sheet の `nested.export_tags`、上の「親 sheet の hint を混ぜる」)。検索の対象にもなる |
 | `favorite` | `true` で `★` 付き、並び順の先頭へ |
 | `copy` | コピーしたい文字列が表示と違うときだけ書く。省略時は `command`、次に `key` |
 | `remark` | 選択したときだけ出る補足。一覧には出ない |

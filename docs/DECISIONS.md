@@ -1237,6 +1237,55 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   README に `rc.xml` の例（`W-S-h` → `wayhint search-mode`）、ファイル構成表に state.yaml、
   ファイルの 3 区分（内容 / 設定 / 状態）を追記。
 
+## 0034 — 親 hint の既定は「未指定 = 全部」、絞りは親 sheet 側の `nested.export_tags` を基本にする
+
+- **Date**: 2026-09-23
+- **Status**: accepted
+- **Supersedes**: 設計書 §18 の既定 `nested-common`。0025 Context の「`nested.parent_tags` があると」
+  という前提(親 hint が混ざるには何か書く必要がある、という読み)。
+- **Context**: 子 sheet が選ばれたとき(Herdr の中の Claude Code、foot の中の vi)、config.yaml にも
+  sheet にも何も書かなければ親 sheet の hint が混ざる、と期待されていた。実装は global
+  `nested.parent_tags` の既定が `()` で、子も global も書かなければ親 hint は **0 件**だった。これは
+  foreground がどの sheet にも当たらないとき(親 hint を全部出す)とも、`include`(tag で絞らず全部、
+  0026)とも既定が逆。加えて、何を渡すかの語彙を親ではなく子と global が持っており、Herdr の hint を
+  どれだけ子に見せるかを Herdr の sheet 自身が決められないという責務のねじれがあった。
+  `docs/PRODUCT.md` の「既定 `nested-common`」も実装(`()`)と食い違っていた。
+- **Decision**:
+  **D1. 解決順は 1 本の置き換え規則(intersection はしない)。**
+  1. 子 sheet の `inherit.parent_tags`(明示)
+  2. config.yaml の `nested.parent_tags`(明示)
+  3. 親 sheet の `nested.export_tags`(明示)
+  4. どれも未指定 → 親 sheet の hint を全部
+
+  上から見て**最初に明示されていた段だけ**を使い、下の段は見ない。どの段でも `[]` の明示は
+  **0 件**(opt-out)。「未指定」はキーが無いこと(`null` も未指定)で `None` で表し、`[]` と区別
+  する。段 1〜3 に非空 list があれば従来どおり `wanted ∩ hint.tags` で絞る。
+  **D2. 触らないもの。** foreground が無 sheet のときに親 hint を全部出す挙動。`include`(tag で
+  絞らない、置き換え、多段なし)。`export_tags` は nested の親経路にだけ効き、`include` で取り込まれる
+  ときは見ない。親の決まり方(resolver)。global `nested.parent_tags` のキー自体は残し、既定値だけ
+  `()` → `None` にする(キーを消すと未知キー error で既存 config.yaml が壊れる)。
+  quick add / `wayhint add --parent` が親 sheet に書く hint へ付ける tag も同じ規則で決め、全部渡す
+  (`None`)ときは付けない。
+- **Alternatives**:
+  **子側で親ごとに絞りを変える `inherit.parents`**(defer)。下書き:
+
+  ```yaml
+  inherit:
+    parents: {herdr: [pane], foot: []}   # 親 sheet id → その親から受け取る tag
+  ```
+
+  親はウィンドウごとに 1 つに決まるので、同じ子が親ごとに違う絞りを要求する具体例が出るまで
+  入れない。「sheet 名のみで tag は問わない」を表す値(`all` / `null`)の記法も決まらない。
+  **`include` の tag 絞り**(`include: [{sheet: x, tags: [...]}]`)と**横断 `always_tags`**: 0026 で
+  却下済みで、再開しない。**global `nested.parent_tags` の削除**: 互換のため見送り(上の D2)。
+  **`TERMINAL_APP_IDS` の設定化**: 0027 を維持。今回の動機は既定の読み違えで、新しい端末の要求では
+  なかった。
+- **Consequences**: 親 sheet が大きいと子の一覧が長くなる。絞るなら親に `export_tags` を書く。
+  親 hint の前に区切り見出しを入れるかは、実機で長さを見てから決める(0026 の「無印」は据え置き)。
+  `examples/` は `config.yaml` の `nested.parent_tags` をやめ、`herdr.yaml` の
+  `nested: {export_tags: [terminal]}` に移した。demo の fixtures は config で明示しているので動画は
+  変わらない。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

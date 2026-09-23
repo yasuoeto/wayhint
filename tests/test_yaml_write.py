@@ -538,6 +538,14 @@ class SchemaTest(unittest.TestCase):
                 self.assertEqual(issues, [], "fixture must be valid for this test to mean anything")
                 validator.validate(self.plain(data))
 
+    def test_nested_export_tags_in_the_schema(self) -> None:
+        validator = self.validator()
+        doc = {"id": "s", "title": "S", "nested": {"export_tags": ["pane"]}}
+        self.assertEqual(parse_sheet(doc, Path("s.yaml"))[1], [])
+        validator.validate(doc)
+        with self.assertRaises(jsonschema.ValidationError):
+            validator.validate({"id": "s", "title": "S", "nested": {"foo": 1}})
+
     def test_numbers_that_validation_accepts_pass_the_schema(self) -> None:
         # ``key: 5`` is a hint for the digit 5, not a typo: yaml_store._opt_str keeps it as
         # "5", so the schema has to accept it as well, or an editor flags a valid sheet.

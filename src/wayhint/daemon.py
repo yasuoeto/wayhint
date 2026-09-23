@@ -728,7 +728,7 @@ class Daemon:
         if sheet is not None:
             if draft.to_parent:
                 child = self._sheet_by_id(view.context.active_sheet)
-                tags = effective_parent_tags(child, self.config.parent_tags)
+                tags = effective_parent_tags(child, self.config.parent_tags, sheet)
                 if tags:
                     fields["tags"] = list(tags)
             fields["id"] = slug(str(fields["title"]), [h.id for h in sheet.hints])

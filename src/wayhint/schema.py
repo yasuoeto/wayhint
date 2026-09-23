@@ -108,6 +108,11 @@ def json_schema() -> dict[str, Any]:
             "additionalProperties": False,
             "properties": {"parent_tags": {"type": ["array", "null"], "items": {"type": "string"}}},
         },
+        "nested": {
+            "type": ["object", "null"],
+            "additionalProperties": False,
+            "properties": {"export_tags": {"type": ["array", "null"], "items": {"type": "string"}}},
+        },
         "hints": {
             "type": ["array", "null"],
             "items": {

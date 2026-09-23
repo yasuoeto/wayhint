@@ -201,12 +201,38 @@ class SheetValidationTest(unittest.TestCase):
             "unknown key(s): colour",
         )
 
+    def test_nested_export_tags(self) -> None:
+        """DECISIONS 0034: a parent sheet names what it hands down; unwritten is ``None``."""
+        base = "id: x\ntitle: X\n"
+        self.assertEqual(_parse(base + "nested: {export_tags: [pane]}\n")[0].export_tags, ("pane",))
+        self.assertEqual(_parse(base + "nested: {export_tags: []}\n")[0].export_tags, ())
+        self.assertIsNone(_parse(base)[0].export_tags)
+        self.assertIsNone(_parse(base + "nested: {}\n")[0].export_tags)
+        self.assert_issue(base + "nested: {foo: 1}\n", "nested: unknown key(s): foo")
+        self.assert_issue(base + "nested: [pane]\n", "nested must be a mapping")
+        self.assert_issue(base + "nested: {export_tags: pane}\n", "must be a list of strings")
+
     def test_syntax_error_has_line(self) -> None:
         data, issues = read_document_from_text("id: x\ntitle: [unclosed\n", "s.yaml")
         self.assertIsNone(data)
         self.assertEqual(len(issues), 1)
         self.assertIn("YAML syntax error", issues[0].message)
         self.assertIsNotNone(issues[0].line)
+
+
+class ConfigParentTagsTest(unittest.TestCase):
+    """``nested.parent_tags``: unwritten is ``None`` (the parent decides), ``[]`` is empty."""
+
+    def test_unwritten_empty_and_null(self) -> None:
+        from wayhint.config import parse_global_config
+
+        self.assertIsNone(parse_global_config({}).parent_tags)
+        self.assertIsNone(parse_global_config({"nested": {}}).parent_tags)
+        self.assertIsNone(parse_global_config({"nested": {"parent_tags": None}}).parent_tags)
+        self.assertEqual(parse_global_config({"nested": {"parent_tags": []}}).parent_tags, ())
+        self.assertEqual(
+            parse_global_config({"nested": {"parent_tags": ["pane"]}}).parent_tags, ("pane",)
+        )
 
 
 class ConfigValidationTest(unittest.TestCase):

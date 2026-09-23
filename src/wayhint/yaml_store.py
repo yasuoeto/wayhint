@@ -55,6 +55,7 @@ _SHEET_KEYS = {
     "include",
     "display",
     "inherit",
+    "nested",
     "hints",
 }
 _HINT_KEYS = {
@@ -415,6 +416,16 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
             if unknown:
                 ctx.error(f"inherit: unknown key(s): {', '.join(sorted(unknown))}", data, "inherit")
             parent_tags = _tags(ctx, inherit, "parent_tags", "inherit")
+    export_tags = None
+    nested = data.get("nested")
+    if nested is not None:
+        if not isinstance(nested, Mapping):
+            ctx.error("nested must be a mapping", data, "nested")
+        else:
+            unknown = set(map(str, nested)) - {"export_tags"}
+            if unknown:
+                ctx.error(f"nested: unknown key(s): {', '.join(sorted(unknown))}", data, "nested")
+            export_tags = _tags(ctx, nested, "export_tags", "nested")
 
     hints: list[Hint] = []
     hints_node = data.get("hints", [])
@@ -451,6 +462,7 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
             match=match,
             display=display,
             parent_tags=parent_tags,
+            export_tags=export_tags,
             include=include,
             hints=tuple(hints),
         ),

@@ -8,8 +8,8 @@ appearance:
   language: auto        # auto = マシンの locale(LC_ALL → LC_MESSAGES → LANG)。en | ja で固定可
 editor:
   command: [gvim, --remote-silent, "+{line}", "{file}"]
-nested:
-  parent_tags: [terminal]
+# 親 sheet の hint の絞りは親 sheet 側の nested.export_tags で書く(examples/hints/*/herdr.yaml)。
+# ここに nested: {parent_tags: [...]} を書くと全 sheet でそちらが優先される。
 # include を書かない sheet すべてに混ぜる sheet。sheet 側に include: があればそちらが優先
 # (足し算ではなく置き換え)。ここを [] にすれば「既定では何も混ぜない」。
 include: [wm]

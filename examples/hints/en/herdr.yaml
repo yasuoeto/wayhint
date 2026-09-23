@@ -1,10 +1,13 @@
 # Herdr (terminal multiplexer) — the parent sheet for nested contexts.
-# Hints tagged with one of nested.parent_tags (config.yaml) are also shown inside Claude/Codex.
+# With nothing written, every hint is also shown inside Claude/Codex. nested.export_tags narrows
+# what is handed down (here: only the hints tagged terminal).
 id: herdr
 title: Herdr
 match:
   wayland:
     app_id_regex: ["herdr"]
+nested:
+  export_tags: [terminal]
 hints:
   - id: new-pane
     title: New pane
