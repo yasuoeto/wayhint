@@ -220,6 +220,34 @@ class DaemonEditTest(unittest.TestCase):
         self.assertEqual(self.window.context.active_sheet, "b")
         self.assertEqual(self.window.form.value("title"), "unsaved")
 
+    def test_edit_mode_from_another_window_replaces_what_is_shown_then_edits(self):
+        class OtherContext:
+            def resolve(self, sheets, config):
+                return ResolvedContext(active_sheet="a")
+
+        self.view.mode = self.window.mode = "normal"  # shown, not editing yet
+        self.daemon.resolver = OtherContext()  # another Herdr tab, say
+        reply = self.daemon.enter_edit_mode()
+        self.assertEqual((reply["mode"], reply["sheet"]), ("edit", "a"))
+        view = self.daemon._current_view()
+        self.assertIsNot(view, self.view)
+        self.assertEqual((view.mode, self.window.mode), ("edit", "edit"))
+        self.assertEqual(self.window.context.active_sheet, "a")
+
+    def test_edit_mode_keeps_a_view_holding_a_draft_from_an_editor_start(self):
+        class OtherContext:
+            def resolve(self, sheets, config):
+                return ResolvedContext(active_sheet="a")
+
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.daemon._release_for_editor()  # back to normal, the draft kept in the view (0023)
+        self.daemon.resolver = OtherContext()
+        self.daemon.enter_edit_mode()
+        self.assertIs(self.daemon._current_view(), self.view)
+        self.assertEqual(self.view.mode, "edit")
+        self.assertEqual(self.window.form.value("title"), "unsaved")
+
     def lose_the_watch(self):
         """The compositor connection dies while the overlay is open on workspace A."""
         watcher = Workspace(alive=False)

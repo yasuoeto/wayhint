@@ -284,7 +284,8 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 - 編集状態（モード、開いているフォーム、フォームの入力値、対象 hint id、追加先 sheet）は workspace ごとの context dict と同じ粒度で保持する。メモリのみ。
 - モード変更とフォームのキャンセルは daemon を経由し、UI はその状態を描画する。復帰先にフォームが
   無い場合も明示的に閉じ、他 workspace のフォームを残さない。編集中は検索ボタンを無効にし、
-  編集を終了してから検索する。非表示の編集画面への `edit-mode` は保持した下書きを再表示する。
+  編集を終了してから検索する。非表示の編集画面への `edit-mode` は保持した下書きを再表示する。`normal` からの `edit-mode` は
+  `search-mode` と同じく context を取り直す(0035)。
 - **保存後の状態は操作で分ける**(DECISIONS 0021)。
 
   | 操作 | 完了後 |
@@ -444,7 +445,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 | cmd | 応答 |
 |---|---|
 | `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
-| `edit-mode` | 編集モードに入る（表示中でなければ show してから）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
+| `edit-mode` | 編集モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら差し替えてから。ただしエディタ起動で保持した下書きがあれば差し替えない。0035）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
 | `search-mode` | 検索モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら `toggle` と同じく差し替えてから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の

@@ -1138,7 +1138,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   overlay を閉じずに中身を差し替えてから `search` へ入る。同じ window ならそのまま。実機の T45 で、
   Herdr の window で開いたままの overlay に対し、vi を動かす別の foot から押すと Herdr の hint を検索し、
   抜けると Herdr に focus が戻った。hotkey は「いま見ているものの hint」（README）なので、表示中の
-  context をそのまま使う当初の文言が誤り。`edit-mode` は表示中のものを編集する意味なので取り直さない。
+  context をそのまま使う当初の文言が誤り。`edit-mode` は表示中のものを編集する意味なので取り直さない(**0035 で撤回**)。
 
   **B. 検索欄の `Enter` で「コピーして戻る」。** 選択中の hint（結果の先頭行を自動選択する）に対して
   既存の「コピー」ボタンと同じ処理（`copy → command → key` の解決 → GDK clipboard）を行い、続けて
@@ -1285,6 +1285,24 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   `examples/` は `config.yaml` の `nested.parent_tags` をやめ、`herdr.yaml` の
   `nested: {export_tags: [terminal]}` に移した。demo の fixtures は config で明示しているので動画は
   変わらない。
+
+## 0035 — `edit-mode` も表示中に context を取り直し、別 window なら差し替えてから編集に入る
+
+- **Date**: 2026-09-23
+- **Status**: accepted
+- **Amends**: 0033 A 追記の最後の一文(「`edit-mode` は取り直さない」)。
+- **Context**: Herdr の codex タブで overlay を出し、claude タブへ移って `edit-mode`(`W-C-h`)を押すと、
+  codex の sheet のまま編集モードに入った(ユーザー報告、daemon ログで `edit-mode` が届いていたことを
+  確認)。タブを移っても overlay は残るので、「表示中のものを編集する」は利用者には「いま見ているものの
+  hint」と区別がつかない。0033 A が `search-mode` で直したのと同じ食い違い。
+- **Decision**: 表示中で `normal` の view に `edit-mode` が来たら、`search-mode` と同じく context を取り
+  直し、`target_key` が違えば `toggle` と同じく差し替えてから `edit` に入る。取り直さないのは 2 つ:
+  既に `edit` 中(0014 D4、再押下は抜ける / 非表示なら下書きの再表示)と、エディタ起動で `normal` に
+  戻ったが下書きを保持している view(0023。下書きは画面の sheet のもので、差し替えると失われる)。
+- **Alternatives**: 取り直さず、画面の sheet 名を目立たせる — 押した直後に別の sheet を編集している
+  ことに気づけても、もう一度 hotkey を押し直す手間は残るので採らない。
+- **Consequences**: 表示中の `edit-mode` のたびに context 解決が 1 回増える(`toggle` / `search-mode` と
+  同じ量)。下書きを持つ view では従来どおり別 window から押しても差し替わらない。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot

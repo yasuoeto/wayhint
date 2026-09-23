@@ -411,6 +411,12 @@ class Daemon:
         The hotkey is symmetric: pressing it again in edit mode leaves edit mode, the same way
         Escape does, so the key that enters is also the key that gets out.
 
+        Like ``search-mode``, a hotkey means "the hints for what I am looking at": an overlay
+        already on screen is resolved again, and one from another window (another Herdr tab, say)
+        is replaced before editing starts. Two things are kept as they are instead: an edit
+        already under way (0014 D4), and a view holding a draft kept across an editor start
+        (0023) -- that draft belongs to the sheet on screen, and replacing it would drop it.
+
         Refused when *the sheet being shown* is only there as last-known-good: that document
         cannot be round-tripped, so writing it would throw the broken file away. Another sheet
         being broken does not stop this one from being edited. No grab is taken when refused.
@@ -431,7 +437,9 @@ class Daemon:
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
         if view is None or not self.window.is_shown():
             self.show()
-            view = self._current_view()
+        elif view.form is None:
+            self._follow_focus(view, "edit-mode")
+        view = self._current_view()
         if view is None:
             return {"ok": False, "error": "nothing to edit"}
         stale = self._stale_sheet(view.context.active_sheet)
@@ -456,7 +464,6 @@ class Daemon:
         not taken as it is: the context is resolved again, and one from another window replaces
         what is shown before the search starts -- the way ``toggle`` replaces it. Searching the
         previous window's hints would also hand the focus back to that window on the way out.
-        ``edit-mode`` does not do this: it edits what is on screen.
         """
         assert self.window is not None
         tr = translator(self.config.language)
@@ -472,20 +479,25 @@ class Daemon:
         if view is None or not self.window.is_shown():
             self.show()
         else:
-            ctx = self.resolver.resolve(self.store.sheets, self.config)
-            if ctx.target_key() != view.target_key():
-                log.info(
-                    "search-mode from another window: replacing %s with %s",
-                    view.context.active_sheet,
-                    ctx.active_sheet,
-                )
-                self._open_here(ctx)
+            self._follow_focus(view, "search-mode")
         view = self._current_view()
         if view is None:
             return {"ok": False, "error": "nothing to search"}
         view.mode = "search"
         self.window.set_mode("search")
         return {"visible": True, "mode": "search", "sheet": view.context.active_sheet}
+
+    def _follow_focus(self, view: WorkspaceView, cmd: str) -> None:
+        """Resolve again and replace ``view`` when the focus is now on another window (0033 A)."""
+        ctx = self.resolver.resolve(self.store.sheets, self.config)
+        if ctx.target_key() != view.target_key():
+            log.info(
+                "%s from another window: replacing %s with %s",
+                cmd,
+                view.context.active_sheet,
+                ctx.active_sheet,
+            )
+            self._open_here(ctx)
 
     def _leave_search(self, view: WorkspaceView, refocus: bool = True) -> None:
         """The one way out of search: Escape, Enter / ``c``, ``search-mode``, hide, leaving.
@@ -869,6 +881,8 @@ class Daemon:
         return {"visible": False}
 
     def dispatch(self, cmd: str) -> dict:
+        if cmd in ("toggle", "edit-mode", "search-mode"):
+            log.info("request: %s", cmd)  # the hotkeys: whether one reached the daemon at all
         if cmd == "ping":
             return {
                 "pid": os.getpid(),
@@ -1072,6 +1086,9 @@ class Daemon:
         if not done:
             return True
         reply = ipc.handle_request(bytes(buf), self.dispatch)
+        if not reply.get("ok"):
+            # A hotkey's CLI prints this to a stderr nobody sees, so say it here as well.
+            log.warning("request refused: %s", reply.get("error"))
         try:
             conn.sendall(ipc.encode(reply))
         except OSError:

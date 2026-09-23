@@ -13,10 +13,13 @@ daemon because it needs the GLib main loop.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger("wayhint.ipc")
 
 COMMANDS = (
     "toggle",
@@ -65,6 +68,8 @@ def handle_request(raw: bytes, dispatch) -> dict[str, Any]:
     try:
         result = dispatch(cmd) or {}
     except Exception as e:  # never let a handler kill the daemon's socket loop
+        # The caller is often a hotkey whose stderr goes nowhere; the daemon log is all there is.
+        log.exception("%s failed", cmd)
         return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
     return {"ok": True, **result}
 
