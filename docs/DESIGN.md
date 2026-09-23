@@ -438,7 +438,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 |---|---|
 | `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
-| `search-mode` | 検索モードに入る（表示中でなければ show してから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
+| `search-mode` | 検索モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら `toggle` と同じく差し替えてから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
 
 CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
 引数一覧は README「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、

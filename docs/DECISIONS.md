@@ -1134,6 +1134,11 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   そのまま `search` へ。`search` 中にもう一度 `search-mode` が来たら Esc と同じ経路で `normal` に戻す
   （keyboard_mode NONE → 前の view へ focus 復帰）。出口を増やさない。`edit` 中の `search-mode` は
   「編集中は検索しない」（0014）に合わせて拒否し、理由を表示する。検索ボタンは残す。
+  **（2026-09-23 追記）表示中でも context を取り直す。** 別の window から押したときは、`toggle` と同じく
+  overlay を閉じずに中身を差し替えてから `search` へ入る。同じ window ならそのまま。実機の T45 で、
+  Herdr の window で開いたままの overlay に対し、vi を動かす別の foot から押すと Herdr の hint を検索し、
+  抜けると Herdr に focus が戻った。hotkey は「いま見ているものの hint」（README）なので、表示中の
+  context をそのまま使う当初の文言が誤り。`edit-mode` は表示中のものを編集する意味なので取り直さない。
 
   **B. 検索欄の `Enter` で「コピーして戻る」。** 選択中の hint（結果の先頭行を自動選択する）に対して
   既存の「コピー」ボタンと同じ処理（`copy → command → key` の解決 → GDK clipboard）を行い、続けて

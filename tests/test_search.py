@@ -294,6 +294,23 @@ class SearchModeIpcTest(DaemonCase):
         self.assertTrue(self.window.visible)
         self.assertEqual(self.daemon._current_view().mode, "search")
 
+    def test_from_another_window_replaces_what_is_shown_then_searches(self):
+        self.daemon.resolver = Resolver("a")
+        reply = self.daemon.dispatch("search-mode")
+        self.assertEqual((reply["mode"], reply["sheet"]), ("search", "a"))
+        view = self.daemon._current_view()
+        self.assertIsNot(view, self.view)
+        self.assertEqual(view.context.active_sheet, "a")
+        self.assertEqual((view.mode, self.window.mode), ("search", "search"))
+        self.assertEqual(self.window.context.active_sheet, "a")
+
+    def test_from_the_same_window_keeps_the_view_it_has(self):
+        self.view.filter_query = "only in memory"  # a replaced view would read state.yaml
+        self.window.filter = "only in memory"
+        self.daemon.dispatch("search-mode")
+        self.assertIs(self.daemon._current_view(), self.view)
+        self.assertEqual(self.window.text, "only in memory")
+
     def test_refused_while_editing(self):
         self.view.mode = "edit"
         self.window.mode = "edit"

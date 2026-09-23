@@ -238,7 +238,7 @@ hotkey に割り当てるのは `toggle`。
 | `validate` | YAML を検証する。daemon を必要としない唯一の command。問題があれば exit 1 |
 | `context` | daemon が今どう context を解決するかを表示する(下の例) |
 | `edit-mode` | 編集モードに入る(表示中でなければ表示してから)。編集モード中に呼ぶと抜ける |
-| `search-mode` | 検索モードに入る(表示中でなければ表示してから)。検索中に呼ぶと抜ける(絞り込みは残る)。編集モード中は断る |
+| `search-mode` | 検索モードに入る(表示中でなければ表示してから。別の window で押すと、その window の hint に差し替えてから)。検索中に呼ぶと抜ける(絞り込みは残る)。編集モード中は断る |
 | `add TITLE` | hint の追加 |
 | `edit ID` | hint の編集 |
 | `remove ID` | hint の削除 |

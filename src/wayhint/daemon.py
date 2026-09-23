@@ -451,6 +451,12 @@ class Daemon:
 
         Symmetric like ``edit-mode``: pressing it again while searching leaves search the way
         Escape does, filter kept. Refused in edit mode, where searching is off (0014).
+
+        A hotkey means "the hints for what I am looking at", so an overlay already on screen is
+        not taken as it is: the context is resolved again, and one from another window replaces
+        what is shown before the search starts -- the way ``toggle`` replaces it. Searching the
+        previous window's hints would also hand the focus back to that window on the way out.
+        ``edit-mode`` does not do this: it edits what is on screen.
         """
         assert self.window is not None
         tr = translator(self.config.language)
@@ -465,7 +471,16 @@ class Daemon:
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
         if view is None or not self.window.is_shown():
             self.show()
-            view = self._current_view()
+        else:
+            ctx = self.resolver.resolve(self.store.sheets, self.config)
+            if ctx.target_key() != view.target_key():
+                log.info(
+                    "search-mode from another window: replacing %s with %s",
+                    view.context.active_sheet,
+                    ctx.active_sheet,
+                )
+                self._open_here(ctx)
+        view = self._current_view()
         if view is None:
             return {"ok": False, "error": "nothing to search"}
         view.mode = "search"

@@ -449,11 +449,17 @@ class SearchChecklistTest(unittest.TestCase):
         return "Search" in shown and "Done" not in shown
 
     def test_t45_the_hotkey_again_leaves_search_and_gives_the_keys_back(self) -> None:
-        root = config_root(self, self.OVERLAY, {"textsink": TEXTSINK_SHEET})
+        root = config_root(self, self.OVERLAY, {"demo": SHEET, "textsink": TEXTSINK_SHEET})
         typed = scratch(self, "wayhint-sink-") / "typed.txt"
         with HeadlessSession(
             root, width=WIDTH, height=HEIGHT, keybind=("W-S-h", "search-mode")
         ) as session:
+            # The overlay is already up for another window, the way it is left open while working:
+            # the hotkey has to search the hints of the window it was pressed in, not these, and
+            # leaving has to hand the keys to that window (found on the real desktop, 2026-09-23).
+            session.toplevel("wayhint-probe")
+            session.wayhint("show")
+            self.until(session, "the overlay never opened", lambda: "Demo" in self.showing(session))
             session.spawn([str(FIXTURE_BIN / "textsink"), str(typed)])
             self.until(
                 session,
@@ -464,6 +470,11 @@ class SearchChecklistTest(unittest.TestCase):
             session.press("win", "shift", "h")
             self.until(
                 session, "the hotkey did not start a search", lambda: self.searching(session)
+            )
+            self.until(
+                session,
+                "the search was not for the window the hotkey was pressed in",
+                lambda: "TextSink" in self.showing(session) and "Demo" not in self.showing(session),
             )
             session.type_text("box")  # into the overlay, not the application
             session.press("win", "shift", "h")
