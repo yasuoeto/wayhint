@@ -690,8 +690,8 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T46 `search` 中に別経路で sheet の内容を書き換える → 欄の文字列・カーソル・focus・絞り込みが残る
   **(自動テスト済: `T46aReloadWhileSearchingTest`)**。
   `search` 中に「エディタで編集」→ `normal` に戻り、保存のたびに絞り込まれた一覧が更新される
-  **(自動テスト済: `SearchChecklistTest`、in-place 保存と rename 保存の両方)**。実機で見るのは
-  本物の gvim で 1 回だけ
+  **(自動テスト済: `SearchChecklistTest`、in-place 保存と rename 保存の両方)**。本物の gvim でも
+  **(2026-09-23 確認済)**
 
 ## Known limits and future work
 
