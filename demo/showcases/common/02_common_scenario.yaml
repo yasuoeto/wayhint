@@ -53,14 +53,14 @@ steps:
   - id: wrong-hints
     pause: true
     wait_for: {overlay: hidden}
-    caption: {ja: "欲しいのは、いま動いているものの hint"}
+    caption: {ja: "欲しいのは、いま動いているもののヒント"}
     hold: 5.0
 
   # --- §2 いつも同じ場所 -------------------------------------------------------------------------
   - id: show-hints
     key: super+h
     wait_for: {overlay: visible, label: "Claude Code", hints: 15}
-    caption: {ja: "hotkey 一発で、focus 中のウィンドウの hint。位置は設定可能"}
+    caption: {ja: "hotkey 一発で、フォーカス中のウィンドウのヒント。位置は設定可能"}
     hold: 6.0
 
   - id: list-layout
@@ -104,13 +104,13 @@ steps:
   - id: switch-pane
     key: super+h
     wait_for: {overlay: visible, label: "Codex", hints: 9}
-    caption: {ja: "別の pane で押し直せば、閉じずに差し替わる"}
+    caption: {ja: "別のペインで押し直せば、閉じずに差し替わる"}
     hold: 8.0
 
   - id: parent-hints
     cli: refresh
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "親子関係のプロセスは自動で hint を混ぜる、Herdr の操作も並ぶ"}
+    caption: {ja: "親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ"}
     hold: 8.0
 
   # --- §4 主役2: 奪わない ------------------------------------------------------------------------
@@ -139,7 +139,7 @@ steps:
   - id: copy-and-leave
     key: enter
     wait_for: {button: search, hints: 2}
-    caption: {ja: "Enter で先頭の hint をコピーして戻る"}
+    caption: {ja: "Enter で先頭のヒントをコピーして戻る"}
     hold: 6.0
 
   - id: focus-back
@@ -152,7 +152,7 @@ steps:
     press: {button: clear-filter}
     precondition: {overlay: visible, hints: 2}
     wait_for: {overlay: visible, hints: 9}
-    caption: {ja: "絞り込みは sheet ごとに残る。解除は ×"}
+    caption: {ja: "絞り込みはシートごとに残る。解除は ×"}
     hold: 5.5
 
   # --- §5 主役3: その場で育てる -------------------------------------------------------------------
@@ -168,7 +168,7 @@ steps:
   - id: open-form
     key: a
     wait_for: {overlay: visible, label: "Title"}
-    caption: {ja: "追加先は、いま選んでいる hint と同じ sheet"}
+    caption: {ja: "追加先は、いま選んでいるヒントと同じシート"}
     hold: 4.0
 
   - id: type-title
@@ -230,7 +230,7 @@ steps:
   - id: stack
     pause: true
     wait_for: {overlay: hidden}
-    caption: {ja: "Wayland (labwc) / GTK4 / hint は YAML"}
+    caption: {ja: "Wayland (labwc) / GTK4 / ヒントは YAML"}
     hold: 6.0
 
   # =============================================================================================
@@ -243,7 +243,7 @@ steps:
   - id: open-yaml
     spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
     wait_for: {context: {active_sheet: vi, process_name: vi}, timeout: 30}
-    caption: {ja: "sheet は 1 アプリ 1 YAML"}
+    caption: {ja: "シートは 1 アプリ 1 YAML"}
     hold: 7.0
 
   - id: yaml-match
@@ -255,13 +255,13 @@ steps:
   - id: yaml-include
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "共通の hint は config.yaml の include で全 sheet に混ぜる"}
+    caption: {ja: "共通のヒントは config.yaml の include で全シートに混ぜる"}
     hold: 8.0
 
   - id: yaml-lang
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "hint は言語ごと。UI と同じ言語が出る"}
+    caption: {ja: "ヒントは言語ごと。UI と同じ言語が出る"}
     hold: 8.0
 
   - id: close-yaml

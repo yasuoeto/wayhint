@@ -85,13 +85,13 @@ steps:
   - id: no-terminal-sheet
     pause: true
     wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "端末そのものの sheet は要らない"}
+    caption: {ja: "端末そのもののシートは要らない"}
     hold: 7.0
 
   - id: foot-regex
     pause: true
     wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "端末の sheet を書くなら ^foot$ のまま"}
+    caption: {ja: "端末のシートを書くなら ^foot$ のまま"}
     hold: 8.0
 
   - id: context-cli

@@ -31,26 +31,26 @@
 |---|---|---|
 | 0–4 | Herdr の窓。pane は idle | Herdr の中を見る |
 | 4–7 | pane で Claude Code が立ち上がる | (字幕なし) |
-| 7–15 | `Super+H`。ヘッダーは `Herdr › Claude Code` | Herdr に focused pane を聞き、前面プロセスを取る |
+| 7–15 | `Super+H`。ヘッダーは `Herdr › Claude Code` | Herdr にフォーカス中のペインを聞き、前面プロセスを取る |
 | 15–22 | 同じ画面 | 前提: ウィンドウの app_id に herdr を含める |
-| 22–29 | 一覧に Herdr の `PgUp/PgDn` と中クリックペーストが混ざっている | 親子関係のプロセスは自動で hint を混ぜる、Herdr の操作も並ぶ |
-| 29–37 | Herdr の 6 件が全部入って 15 件(収まらない分はスクロールバーで分かる) | 何も書かなければ、親の hint は全部混ざる |
+| 22–29 | 一覧に Herdr の `PgUp/PgDn` と中クリックペーストが混ざっている | 親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ |
+| 29–37 | Herdr の 6 件が全部入って 15 件(収まらない分はスクロールバーで分かる) | 何も書かなければ、親のヒントは全部混ざる |
 
 ### §2 pane を移る(0:37–1:00)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 37–42 | 新しいタブ → Codex | (字幕なし) |
-| 42–50 | `Super+H` → `Herdr › Codex` に差し替わる | pane を移って押し直せば、その pane の sheet |
+| 42–50 | `Super+H` → `Herdr › Codex` に差し替わる | ペインを移って押し直せば、そのペインのシート |
 | 50–52 | 新しいタブ。pane は idle のまま | (字幕なし) |
-| 52–60 | `Super+H` → Herdr 自身の sheet(6 件 + wm) | 当たる sheet が無ければ、Herdr の hint が全部出る |
+| 52–60 | `Super+H` → Herdr 自身の sheet(6 件 + wm) | 当たるシートが無ければ、Herdr のヒントが全部出る |
 
 ### §3 書き方と切り分け(1:00–1:30)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 60–65 | overlay を閉じ、vi で `hints/ja/herdr.yaml` を開く | (字幕なし) |
-| 65–73 | 同じ画面(`nested:` は書いていない) | 絞るなら、親の sheet に nested.export_tags を書く |
+| 65–73 | 同じ画面(`nested:` は書いていない) | 絞るなら、親のシートに nested.export_tags を書く |
 | 73–75 | vi の窓を閉じる | (字幕なし) |
 | 75–83 | Herdr の窓だけ | wayhint context の chain と process で切り分ける |
 | 83–90 | 同じ画面 | 見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ |

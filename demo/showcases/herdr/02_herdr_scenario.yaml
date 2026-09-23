@@ -41,7 +41,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       hints: 15
-    caption: {ja: "Herdr に focused pane を聞き、前面プロセスを取る"}
+    caption: {ja: "Herdr にフォーカス中のペインを聞き、前面プロセスを取る"}
     hold: 8.0
 
   - id: precondition
@@ -53,13 +53,13 @@ steps:
   - id: parent-follows
     pause: true
     wait_for: {overlay: visible, label: "中クリックペースト"}
-    caption: {ja: "親子関係のプロセスは自動で hint を混ぜる、Herdr の操作も並ぶ"}
+    caption: {ja: "親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ"}
     hold: 7.0
 
   - id: parent-all
     pause: true
     wait_for: {overlay: visible, label: "中クリックペースト", hints: 15}
-    caption: {ja: "何も書かなければ、親の hint は全部混ざる"}
+    caption: {ja: "何も書かなければ、親のヒントは全部混ざる"}
     hold: 8.0
 
   - id: new-tab-codex
@@ -82,7 +82,7 @@ steps:
       overlay: visible
       label: "Codex"
       hints: 9
-    caption: {ja: "pane を移って押し直せば、その pane の sheet"}
+    caption: {ja: "ペインを移って押し直せば、そのペインのシート"}
     hold: 8.0
 
   - id: new-tab-idle
@@ -97,7 +97,7 @@ steps:
       overlay: visible
       label: "Herdr"
       hints: 8
-    caption: {ja: "当たる sheet が無ければ、Herdr の hint が全部出る"}
+    caption: {ja: "当たるシートが無ければ、Herdr のヒントが全部出る"}
     hold: 8.0
 
   - id: close-hints
@@ -115,7 +115,7 @@ steps:
   - id: yaml-export
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "絞るなら、親の sheet に nested.export_tags を書く"}
+    caption: {ja: "絞るなら、親のシートに nested.export_tags を書く"}
     hold: 8.0
 
   - id: close-yaml
