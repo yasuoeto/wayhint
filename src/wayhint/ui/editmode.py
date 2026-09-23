@@ -15,12 +15,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wayhint.models import Hint, ResolvedContext
+from wayhint.selection import search_hints
 
 MODES = ("normal", "search", "edit")
 
 PSEUDO_CATEGORY = "\x00inbox"
 """Stands for "no category" inside the filter. Never written to YAML: the label is i18n'd, and
 the value the user sees must not end up in a file (0014 D5)."""
+PSEUDO_TOKEN = "-"
+"""How the pseudo category is spelled in the search box (``#-``), and so in state.yaml. Not the
+label: a filter written in one language keeps its meaning after switching to the other (0033)."""
 FORM_FIELDS = ("title", "kind", "key", "command", "category", "remark")
 
 # Actions the window asks the daemon to perform. Names are the vocabulary of DESIGN §2.
@@ -39,6 +43,10 @@ it -- which hint is selected is the overlay's own business (0014 D2)."""
 EXIT_EDIT = "exit-edit"
 BEGIN_SEARCH = "begin-search"
 END_SEARCH = "end-search"
+COPY_AND_LEAVE = "copy-and-leave"
+"""Copy the selected hint and leave search (0033 B). The copy itself is the window's."""
+CLEAR_FILTER = "clear-filter"
+"""The chip's ``×``: drop the filter of the sheet on screen (0033 C)."""
 FORM_SAVE = "form-save"
 FORM_CANCEL = "form-cancel"
 FORM_NEXT = "form-next"
@@ -72,6 +80,7 @@ class WorkspaceView:
     context: ResolvedContext
     mode: str = "normal"
     form: FormDraft | None = None
+    filter_query: str = ""  # what the list is narrowed by, in and out of search (0033)
     selected_hint: str | None = None
     delete_pending: str | None = None
 
@@ -173,6 +182,25 @@ def capture_in_editable(action: str | None, *, preedit: bool = False) -> bool:
     return action in (FORM_NEXT, FORM_PREVIOUS, FORM_PARENT)
 
 
+def search_action(key: str, *, ctrl: bool = False, editable: bool = False) -> str | None:
+    """A key in search mode that is not the search box's (0033 B).
+
+    With the list focused, ``c`` and ``Enter`` copy the selected hint and leave, like ``Enter`` in
+    the box. In the box ``Enter`` arrives as the entry's ``activate`` instead -- after the input
+    method is done with it -- so nothing here takes it from a text field.
+    """
+    if editable or ctrl:
+        return None
+    if key in ("c", "Return", "KP_Enter"):
+        return COPY_AND_LEAVE
+    return None
+
+
+def copy_target(hint: Hint | None) -> str | None:
+    """What the Copy button would put on the clipboard for this hint, or ``None``."""
+    return hint.copy_text() if hint is not None else None
+
+
 def cancels_delete(action: str | None) -> bool:
     """``d`` waits for a second ``d``; anything else -- including no action -- calls it off."""
     return action not in (DELETE_CONFIRM, DELETE_COMMIT)
@@ -201,9 +229,45 @@ def parse_search(text: str) -> SearchQuery:
         return SearchQuery(text=text)
     head, sep, rest = text.partition(" ")
     name = head[1:]
+    category = PSEUDO_CATEGORY if name == PSEUDO_TOKEN else name or None
     if not sep:
-        return SearchQuery(category=name or None, text="", partial=name)
-    return SearchQuery(category=name or None, text=rest.strip())
+        return SearchQuery(category=category, text="", partial=name)
+    return SearchQuery(category=category, text=rest.strip())
+
+
+def filter_hints(hints: Sequence[Hint], text: str, limit: int | None = None) -> list[Hint]:
+    """The list as the filter ``text`` narrows it: the one rule for every mode (0033 C).
+
+    ``#name`` keeps one category (``#-`` the uncategorised hints), the rest is the substring +
+    token AND search. The text is never read as a pattern. ``limit`` (``search.max_results``)
+    only applies while something is being filtered; the full list is never cut.
+    """
+    query = parse_search(text)
+    out = [h for h in hints if matches_category(h, query.category)]
+    if query.text:
+        out = search_hints(out, query.text)
+    if limit is not None and (query.filtering or query.text):
+        out = out[:limit]
+    return out
+
+
+def category_token(category: str | None) -> str:
+    return PSEUDO_TOKEN if category == PSEUDO_CATEGORY else category or ""
+
+
+def with_category(text: str, category: str | None) -> str:
+    """``text`` with its leading ``#name`` replaced by ``category`` (or removed for ``None``)."""
+    query = parse_search(text)
+    rest = query.text if text.startswith("#") else text
+    if category is None:
+        return rest
+    return f"#{category_token(category)} {rest}"
+
+
+def cycle_filter_text(text: str, order: Sequence[str | None], forward: bool = True) -> str:
+    """Tab in the search box: the next category, written into the text (DESIGN §9, 0033 C)."""
+    current = parse_search(text).category
+    return with_category(text, cycle_category(order, current, forward))
 
 
 def category_order(hints: Sequence[Hint]) -> list[str | None]:

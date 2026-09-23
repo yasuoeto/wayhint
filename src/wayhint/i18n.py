@@ -57,7 +57,9 @@ EN: dict[str, str] = {
     "that sheet is gone": "that sheet is gone",
     "cannot move past another group": "cannot move past another group",
     "generic process name: check the match rule": ("generic process name: check the match rule"),
-    "filter: {category}": "filter: {category}",
+    "filter: {query}": "filter: {query}",
+    "nothing to copy": "nothing to copy",
+    "finish editing before searching": "finish editing before searching",
 }
 
 JA: dict[str, str] = {
@@ -107,7 +109,9 @@ JA: dict[str, str] = {
     "generic process name: check the match rule": (
         "汎用的なプロセス名です。match 規則を確認してください"
     ),
-    "filter: {category}": "絞り込み: {category}",
+    "filter: {query}": "絞り込み: {query}",
+    "nothing to copy": "コピーできる項目がありません",
+    "finish editing before searching": "編集を終えてから検索してください",
 }
 
 CATALOGS: dict[str, Mapping[str, str]] = {"en": EN, "ja": JA}

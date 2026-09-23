@@ -2,7 +2,7 @@
 
 One request per connection: the client sends a single JSON object terminated by ``\\n``, the
 daemon answers with one JSON object and closes. Requests: ``{"cmd": "toggle"|"show"|"hide"|
-"refresh"|"reload"|"ping"|"context"|"edit-mode"}``. Replies: ``{"ok": true, ...}`` or
+"refresh"|"reload"|"ping"|"context"|"edit-mode"|"search-mode"}``. Replies: ``{"ok": true, ...}`` or
 ``{"ok": false, "error": "..."}``. ``context`` answers with the part of the resolved context the
 CLI needs to pick a sheet; it stays small on purpose (the reply limit is 4096 bytes).
 
@@ -18,7 +18,17 @@ import socket
 from pathlib import Path
 from typing import Any
 
-COMMANDS = ("toggle", "show", "hide", "refresh", "reload", "ping", "context", "edit-mode")
+COMMANDS = (
+    "toggle",
+    "show",
+    "hide",
+    "refresh",
+    "reload",
+    "ping",
+    "context",
+    "edit-mode",
+    "search-mode",
+)
 MAX_MESSAGE = 4096
 
 

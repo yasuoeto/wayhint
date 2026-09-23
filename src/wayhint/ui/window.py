@@ -32,11 +32,11 @@ from wayhint.i18n import Translator, translator  # noqa: E402
 from wayhint.matcher import strip_pid_suffix  # noqa: E402
 from wayhint.models import HINT_KINDS, Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.selection import (  # noqa: E402
-    search_hints,
     sheet_for_hint,
     sort_hints,
     visible_hints,
 )
+from wayhint.state import MAX_QUERY_LEN, sanitize_query  # noqa: E402
 from wayhint.ui import editmode  # noqa: E402
 from wayhint.ui.editmode import FormDraft, keyboard_grab  # noqa: E402
 from wayhint.ui.geometry import Placement, placement, resize_delta  # noqa: E402
@@ -174,7 +174,10 @@ class HintWindow(Gtk.Window):
         self._included: list[HintSheet] = []
         self._preedit = False  # an input method conversion is open in one of the fields
         self._delete_pending: tuple[Path, str] | None = None
-        self._filter: str | None = None
+        # The filter outside search, as the daemon keeps it for the sheet on screen (0033). In
+        # search the box's own text is the filter, and this is only written back when leaving.
+        self._query = ""
+        self._rendered_query = ""  # what the rows on screen were filtered by
         self._completion: tuple[str, str] | None = None  # (typed prefix, candidate now shown)
         self._selected_id: tuple[Path, str] | None = None
         self._edges: frozenset[str] = frozenset({"top", "right"})  # set by _apply_placement
@@ -222,13 +225,26 @@ class HintWindow(Gtk.Window):
         self._search_row = search_row
         self._search = Gtk.SearchEntry(hexpand=True)
         self._fixed(self._search.set_placeholder_text, "search hints…")
-        self._search.connect("search-changed", lambda *_: self._render_list())
+        delegate = self._search.get_delegate()
+        if isinstance(delegate, Gtk.Text):
+            delegate.set_max_length(MAX_QUERY_LEN)  # the same limit state.yaml is read with
+        self._search.connect("search-changed", lambda *_: self._on_search_changed())
         self._search.connect("stop-search", lambda *_: self.end_search())
+        # ``activate`` is Enter after the input method is done with it, as in the form.
+        self._search.connect("activate", lambda *_: self._copy_and_leave())
         self._watch_preedit(self._search)
         search_row.append(self._search)
-        self._chip = Gtk.Label(visible=False)
+        # One chip for the filter, in and out of search. Outside search the box is hidden and the
+        # chip, with its ×, is what says the list is narrowed (0033 C).
+        self._chip = Gtk.Label(
+            visible=False, hexpand=True, xalign=0, ellipsize=Pango.EllipsizeMode.END
+        )
         self._chip.add_css_class("wayhint-chip")
         search_row.append(self._chip)
+        self._chip_clear = Gtk.Button(label="×", visible=False)
+        self._chip_clear.add_css_class("wayhint-chip-clear")
+        self._chip_clear.connect("clicked", lambda *_: self._on_action(editmode.CLEAR_FILTER, None))
+        search_row.append(self._chip_clear)
         root.append(search_row)
         self._list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self._list.connect("row-selected", self._on_row_selected)
@@ -379,6 +395,7 @@ class HintWindow(Gtk.Window):
             self._search_btn.set_label(tr("Done"))  # the fixed label above said "Search"
         if self._mode == "edit":
             self._help.set_label(self._help_text())
+        self._show_chip()
 
     @property
     def context(self) -> ResolvedContext | None:
@@ -449,6 +466,16 @@ class HintWindow(Gtk.Window):
     def is_shown(self) -> bool:
         return self.get_visible()
 
+    def set_filter(self, query: str, *, render: bool = True) -> None:
+        """The filter to apply outside search: the daemon's copy for the sheet on screen."""
+        self._query = query
+        if render:
+            self._render_list()
+
+    def search_text(self) -> str:
+        """What the search box holds, unsanitised; leaving search turns it into the filter."""
+        return self._search.get_text()
+
     @property
     def mode(self) -> str:
         return self._mode
@@ -460,6 +487,22 @@ class HintWindow(Gtk.Window):
         if widget.grab_focus():
             return
         GLib.idle_add(lambda: (widget.grab_focus(), False)[1])
+
+    def _focus_search(self) -> None:
+        """Focus the search box with everything in it selected; retry once if it is not ready."""
+
+        def focus() -> bool:
+            if not self._search.grab_focus():
+                return False
+            self._search.select_region(0, -1)
+            return True
+
+        if not focus():
+            GLib.idle_add(lambda: (focus(), False)[1])
+
+    def _search_focused(self) -> bool:
+        focus = self.get_focus()
+        return focus is not None and (focus is self._search or focus.is_ancestor(self._search))
 
     def _sync_keyboard_mode(self) -> None:
         """The only place that touches ``keyboard_mode``. See the module docstring.
@@ -485,12 +528,10 @@ class HintWindow(Gtk.Window):
         self._delete_pending = None
         self._search_btn.set_sensitive(mode != "edit")
         if mode != "search":
-            self._search.set_text("")
-            self._search_row.set_visible(False)
+            # The box is hidden but the filter stays: leaving search only lets go of the keyboard
+            # (0033 C). What it held has already been handed to set_filter by the daemon.
             self._search_btn.set_label(self._tr("Search"))
-            self._filter = None
             self._completion = None
-            self._chip.set_visible(False)
         if mode != "edit":
             self.close_form()
         self._help.set_visible(mode == "edit")
@@ -498,11 +539,16 @@ class HintWindow(Gtk.Window):
             self._help.set_label(self._help_text())
         self._sync_keyboard_mode()  # after the widgets, before anything can steal focus
         if mode == "search":
-            self._search_row.set_visible(True)
             self._search_btn.set_label(self._tr("Done"))  # the same button ends the search
+            if leaving != "search":
+                # Coming back finds the filter in the box, all selected: typing replaces it,
+                # End appends, Escape leaves it as it was (0033 C).
+                self._search.set_text(self._query)
+                self._list.unselect_all()
+                self._selected_id = None
         self._render_list()  # restoring the selection can take the focus, so grab it after
         if mode == "search":
-            self._focus_soon(self._search)
+            self._focus_search()
         if mode == "normal" and leaving != "normal" and refocus:
             try:
                 self._refocus(self._ctx.view_ref if self._ctx else None)
@@ -548,20 +594,53 @@ class HintWindow(Gtk.Window):
         name = Gdk.keyval_name(keyval) or ""
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
         if self._mode == "search":
-            return self._search_key(name)
+            return self._search_key(name, ctrl)
         if self._mode == "edit":
             return self._edit_key(name, ctrl)
         return False  # normal: the compositor does not even send us keys
 
-    def _search_key(self, name: str) -> bool:
-        # Escape is left to the entry's ``stop-search``: an input method needs it first, to cancel
-        # a conversion rather than the whole search.
+    def _search_key(self, name: str, ctrl: bool) -> bool:
+        # Escape is left to the entry's ``stop-search``, and Enter in the box to its ``activate``:
+        # an input method needs both first, to cancel or confirm a conversion.
         if self._preedit:
             return False  # Tab picks a candidate while a conversion is open
         if name in ("Tab", "ISO_Left_Tab"):
             self._cycle_filter(forward=name == "Tab")
             return True
+        action = editmode.search_action(name, ctrl=ctrl, editable=self._editable_focused())
+        if action == editmode.COPY_AND_LEAVE:
+            self._copy_and_leave()
+            return True
         return False
+
+    def _on_search_changed(self) -> None:
+        """Typing starts the selection over at the top: Enter copies the first result (0033 B)."""
+        if self._mode == "search":
+            self._render_from_top()
+
+    def _render_from_top(self) -> None:
+        self._list.unselect_all()
+        self._selected_id = None
+        self._render_list()
+
+    def _copy_and_leave(self) -> None:
+        """Enter in the box, or ``c`` / Enter on the list: copy the selection, then leave search.
+
+        Nothing to copy -- no result, or a hint with no copy / command / key -- says why and
+        stays, so the keyboard is not handed back for nothing. The box reports its changes after
+        a short delay, so a list that has not caught up with the text yet is brought up to date
+        first: Enter must copy the first result of what is in the box, not of what was.
+        """
+        if self._mode != "search":
+            return
+        if self._rendered_query != self._current_query():
+            self._render_from_top()
+        text = editmode.copy_target(self._selected())
+        if text is None:
+            self.show_message(f"⚠ {self._tr('nothing to copy')}")
+            return
+        clipboard.copy_text(text)
+        self.end_search()
 
     def _on_key_late(self, _ctrl, keyval, _keycode, state) -> bool:
         """Bubble phase: only runs when the focused widget and its IME let the key through."""
@@ -755,26 +834,34 @@ class HintWindow(Gtk.Window):
         else:
             self._error.set_visible(False)
 
-    def _render_list(self) -> None:
-        previous_index = self._selected_index()
-        hints = sort_hints(
-            visible_hints(
-                self._active_sheet(),
-                self._parent_sheet(),
-                self._config.parent_tags,
-                self._included,
-            )
-        )
+    def _current_query(self) -> str:
+        """The filter in force: the box while searching, the kept filter otherwise (0033 C)."""
         if self._mode == "search":
-            query = editmode.parse_search(self._search.get_text())
-            if query.filtering and query.partial is None:
-                self._filter = query.category
-            if self._filter:
-                hints = [h for h in hints if editmode.matches_category(h, self._filter)]
-            if query.text:
-                hints = search_hints(hints, query.text)
-            hints = hints[: self._config.max_results]
-            self._show_chip()
+            return sanitize_query(self._search.get_text())
+        return self._query
+
+    def _render_list(self) -> None:
+        """The one list. A filter narrows it the same way in every mode (0033 C).
+
+        While searching, a reload re-renders the rows and nothing else: the box keeps its text,
+        cursor, preedit and focus, and the filter is taken from the box (0033 D).
+        """
+        previous_index = self._selected_index()
+        query = self._current_query()
+        hints = editmode.filter_hints(
+            sort_hints(
+                visible_hints(
+                    self._active_sheet(),
+                    self._parent_sheet(),
+                    self._config.parent_tags,
+                    self._included,
+                )
+            ),
+            query,
+            self._config.max_results,
+        )
+        typing = self._mode == "search" and self._search_focused()
+        self._rendered_query = query
         self._hints = hints
         self._list.remove_all()
         for h in hints:
@@ -782,6 +869,13 @@ class HintWindow(Gtk.Window):
         self._detail.set_visible(False)
         self._copy_btn.set_sensitive(False)
         self._restore_selection(previous_index)
+        if typing and not self._search_focused():
+            # Selecting a row can move the focus; put it back without selecting the text, so
+            # the cursor stays where the user left it.
+            delegate = self._search.get_delegate()
+            if isinstance(delegate, Gtk.Text):
+                delegate.grab_focus_without_selecting()
+        self._show_chip()
 
     def _selected_index(self) -> int | None:
         row = self._list.get_selected_row()
@@ -837,6 +931,7 @@ class HintWindow(Gtk.Window):
 
         Pressing Tab again on a name this method completed keeps the prefix that was typed, so
         ``#s`` reaches both ``screen`` and ``session``. Touching the text any other way starts over.
+        Either way the category is written into the box, because the box is the filter (0033 C).
         """
         text = self._search.get_text()
         query = editmode.parse_search(text)
@@ -848,22 +943,42 @@ class HintWindow(Gtk.Window):
             match = editmode.next_completion(prefix, order, current, forward)
             if match is not None:
                 self._completion = (prefix, match)
-                self._search.set_text(f"#{match} ")
-                self._search.set_position(-1)
-                self._filter = match
-                self._render_list()
+                self._set_search_text(f"#{match} ")
                 return
         self._completion = None
-        self._filter = editmode.cycle_category(order, self._filter, forward)
-        self._render_list()
+        self._set_search_text(editmode.cycle_filter_text(text, order, forward))
+
+    def _set_search_text(self, text: str) -> None:
+        self._search.set_text(text)
+        self._search.set_position(-1)
+        self._render_from_top()
 
     def _show_chip(self) -> None:
-        if not self._filter:
-            self._chip.set_visible(False)
-            return
-        label = self._tr("inbox") if self._filter == editmode.PSEUDO_CATEGORY else self._filter
-        self._chip.set_label(self._tr("filter: {category}").format(category=label))
-        self._chip.set_visible(True)
+        """The filter row: the box while searching, the chip and its × whenever a filter is on.
+
+        In search the chip only names the category, since the box already shows the rest.
+        ``set_text``: the filter is whatever was typed and is never read as markup (0033 F).
+        """
+        searching = self._mode == "search"
+        query = self._current_query()
+        parsed = editmode.parse_search(query)
+        if searching:
+            shown = self._category_label(parsed.category) if parsed.filtering else None
+        elif parsed.category == editmode.PSEUDO_CATEGORY:
+            shown = f"#{self._tr('inbox')} {parsed.text}".rstrip()
+        else:
+            shown = query or None
+        if shown is not None:
+            self._chip.set_text(self._tr("filter: {query}").format(query=shown))
+        self._chip.set_visible(shown is not None)
+        self._chip_clear.set_visible(not searching and bool(query))
+        self._search.set_visible(searching)
+        self._search_row.set_visible(searching or bool(query))
+
+    def _category_label(self, category: str | None) -> str | None:
+        if category == editmode.PSEUDO_CATEGORY:
+            return self._tr("inbox")
+        return category
 
     # --- form --------------------------------------------------------------------------------
 
@@ -973,8 +1088,7 @@ class HintWindow(Gtk.Window):
         self._copy_btn.set_sensitive(hint.copy_text() is not None)
 
     def _copy_selected(self) -> None:
-        hint = self._selected()
-        text = hint.copy_text() if hint else None
+        text = editmode.copy_target(self._selected())
         if text is not None:
             clipboard.copy_text(text)
 

@@ -4,7 +4,7 @@ Three kinds of subcommand:
 
 - ``validate`` reads the configuration and says whether it is sound. No daemon.
 - ``toggle`` / ``show`` / ``hide`` / ``refresh`` / ``reload`` / ``ping`` / ``context`` /
-  ``edit-mode`` are one-line requests to ``wayhintd``.
+  ``edit-mode`` / ``search-mode`` are one-line requests to ``wayhintd``.
 - ``add`` / ``edit`` / ``remove`` / ``favorite`` / ``move`` / ``format`` / ``schema`` change hint
   sheets. They write the files themselves and never go through the daemon (DECISIONS 0014 D11);
   the daemon notices the change through its file monitor. The only thing they ask the daemon is
@@ -345,6 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
         "ping": "check that wayhintd is running",
         "context": "print the context the daemon resolves right now",
         "edit-mode": "enter edit mode in the overlay",
+        "search-mode": "enter search mode in the overlay; again to leave, keeping the filter",
     }
     for name in ipc.COMMANDS:
         c = sub.add_parser(name, help=help_[name])

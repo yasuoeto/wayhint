@@ -41,6 +41,7 @@ from wayhint.selection import (  # noqa: E402
     sort_hints,
     visible_hints,
 )
+from wayhint.state import load_state, sanitize_query, save_state, state_path  # noqa: E402
 from wayhint.ui import editmode  # noqa: E402
 from wayhint.ui.editmode import FormDraft, WorkspaceView  # noqa: E402
 from wayhint.yaml_store import (  # noqa: E402
@@ -106,9 +107,21 @@ def _load_gui() -> None:
 
 
 class Daemon:
-    def __init__(self, root: Path, socket_file: Path) -> None:
+    def __init__(self, root: Path, socket_file: Path, state_file: Path | None = None) -> None:
         self.root = root
         self.socket_file = socket_file
+        # Sheet id -> filter, kept in state.yaml (0033 D). ``None`` keeps them in memory only,
+        # which is what a test wants: nothing here may write to the real home directory.
+        self.state_file = state_file
+        self.filters: dict[str, str] = {}
+        self._written_filters: dict[str, str] = {}
+        if state_file is not None:
+            self.filters, warnings = load_state(state_file)
+            if warnings:
+                # One line, no filter text in it (0033 E / F). No ⚠ on screen: a broken
+                # state.yaml must not look like a broken sheet.
+                log.warning("%s: %s; starting without filters", state_file, "; ".join(warnings))
+            self._written_filters = dict(self.filters)
         self.config = GlobalConfig()
         self.config_issues: list[Issue] = []
         self.store = SheetStore(hints_dir(root, self.config.language), self.config.include)
@@ -283,6 +296,9 @@ class Daemon:
 
     def hide(self) -> dict:
         assert self.window is not None
+        view = self._open.get(self._workspace_key())
+        if view is not None and view.mode == "search":
+            self._leave_search(view, refocus=False)  # hiding ends a search; the filter stays
         self._open.pop(self._workspace_key(), None)
         self._shown_key = None
         self.window.hide_overlay()
@@ -329,7 +345,10 @@ class Daemon:
     def _open_here(self, ctx: ResolvedContext) -> dict:
         """Present a context and record it as what is open on the current workspace."""
         key = self._workspace_key()
-        view = WorkspaceView(context=ctx)
+        previous = self._open.get(key)
+        if previous is not None and previous.mode == "search":
+            self._leave_search(previous, refocus=False)  # its filter is kept before it is replaced
+        view = WorkspaceView(context=ctx, filter_query=self._filter_for(ctx, previous))
         self._open[key] = view
         self._present(key, view)
         log.info("overlay open on workspace %s: sheet %s", key or "-", ctx.active_sheet)
@@ -341,6 +360,7 @@ class Daemon:
         self._shown_key = key
         # Apply absence as well as presence; an edit list must not inherit the previous form.
         self.window.close_form()
+        self.window.set_filter(view.filter_query, render=False)  # present_context renders
         self.window.present_context(
             view.context, self.store.sheets, self.config, self._includes_for(view.context)
         )
@@ -426,6 +446,83 @@ class Daemon:
             self.window.open_form(view.form)
         return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
 
+    def enter_search_mode(self) -> dict:
+        """Show the overlay if needed and switch it to search (DECISIONS 0033 A).
+
+        Symmetric like ``edit-mode``: pressing it again while searching leaves search the way
+        Escape does, filter kept. Refused in edit mode, where searching is off (0014).
+        """
+        assert self.window is not None
+        tr = translator(self.config.language)
+        view = self._current_view()
+        if view is not None and view.mode == "edit":
+            message = tr("finish editing before searching")
+            if self.window.is_shown():
+                self.window.show_message(f"⚠ {message}")
+            return {"ok": False, "error": message}
+        if view is not None and view.mode == "search" and self.window.is_shown():
+            self._leave_search(view)
+            return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
+        if view is None or not self.window.is_shown():
+            self.show()
+            view = self._current_view()
+        if view is None:
+            return {"ok": False, "error": "nothing to search"}
+        view.mode = "search"
+        self.window.set_mode("search")
+        return {"visible": True, "mode": "search", "sheet": view.context.active_sheet}
+
+    def _leave_search(self, view: WorkspaceView, refocus: bool = True) -> None:
+        """The one way out of search: Escape, Enter / ``c``, ``search-mode``, hide, leaving.
+
+        Only the keyboard is let go of. What the box holds becomes the filter the list keeps,
+        and is written to state.yaml for the sheet on screen (0033 C / D).
+        """
+        assert self.window is not None
+        query = sanitize_query(self.window.search_text())
+        view.filter_query = query
+        view.mode = "normal"
+        self.window.set_filter(query, render=False)  # set_mode renders
+        self.window.set_mode("normal", refocus=refocus)
+        self._keep_filter(view.context.active_sheet, query)
+
+    def _filter_for(self, ctx: ResolvedContext, previous: WorkspaceView | None = None) -> str:
+        """The filter a freshly resolved context starts with.
+
+        A sheet's comes from state.yaml. A context with no sheet has nothing to key it by, so its
+        filter lives in the view alone and survives only a re-resolve of the same target.
+        """
+        if ctx.active_sheet is not None:
+            return self.filters.get(ctx.active_sheet, "")
+        if previous is not None and previous.target_key() == ctx.target_key():
+            return previous.filter_query
+        return ""
+
+    def _keep_filter(self, sheet_id: str | None, query: str) -> None:
+        """Remember ``query`` for ``sheet_id`` and write state.yaml if that changed anything."""
+        if sheet_id is None:
+            return  # memory only (0033 D)
+        if query:
+            self.filters[sheet_id] = query
+        else:
+            self.filters.pop(sheet_id, None)
+        if self.state_file is None or self.filters == self._written_filters:
+            return
+        try:
+            save_state(self.state_file, self.filters)
+        except OSError as e:
+            # Keep using what is in memory; the next change tries again (0033 E).
+            log.warning("cannot write %s: %s", self.state_file, e.strerror or type(e).__name__)
+            return
+        self._written_filters = dict(self.filters)
+
+    def _clear_filter(self, view: WorkspaceView) -> None:
+        """The chip's ×: back to the whole list, for this sheet from now on."""
+        assert self.window is not None
+        view.filter_query = ""
+        self.window.set_filter("")
+        self._keep_filter(view.context.active_sheet, "")
+
     # --- edit mode actions -----------------------------------------------------------------
 
     def on_edit_action(self, action: str, payload: dict | None) -> None:
@@ -455,8 +552,10 @@ class Daemon:
             return
         if action == editmode.END_SEARCH:
             if view.mode == "search":
-                view.mode = "normal"
-                self.window.set_mode("normal", refocus=payload.get("refocus", True))
+                self._leave_search(view, refocus=payload.get("refocus", True))
+            return
+        if action == editmode.CLEAR_FILTER:
+            self._clear_filter(view)
             return
         if action == editmode.EXIT_EDIT:
             self._exit_edit_mode(view)
@@ -672,8 +771,15 @@ class Daemon:
         self._write(sheet.path, lambda doc: toggle_favorite(doc, hint.id))
 
     def _move(self, payload: dict, down: bool, tr) -> None:
-        """Swap with the hint next to it on screen, inside the same group and sheet (D8)."""
+        """Swap with the hint next to it on screen, inside the same group and sheet (D8).
+
+        Not while the list is filtered: the hint next to it on screen need not be the one next to
+        it in the file, so nothing happens, as for a move past another group (0033 G).
+        """
         assert self.window is not None
+        view = self._current_view()
+        if view is not None and view.filter_query:
+            return
         found = self._hint_by_id(payload.get("hint_id", ""), payload.get("file"))
         if found is None:
             return
@@ -764,6 +870,7 @@ class Daemon:
             "refresh": self.refresh,
             "context": self.context_reply,
             "edit-mode": self.enter_edit_mode,
+            "search-mode": self.enter_search_mode,
         }[cmd]()
 
     def edit(self, sheet: HintSheet | None, hint: Hint | None) -> None:
@@ -792,6 +899,10 @@ class Daemon:
         assert self.window is not None
         view = self._current_view()
         if view is None or view.mode == "normal" or not self.window.is_shown():
+            return
+        if view.mode == "search":
+            log.info("editor started: leaving search so it can have the keyboard")
+            self._leave_search(view)
             return
         self._sync_shown()  # the window holds the live draft; keep it across the mode change
         draft = view.form
@@ -882,12 +993,20 @@ class Daemon:
         if workspace_action(active, self._open) == "restore":
             log.info("workspace %s: restoring the overlay", active)
             self._sync_shown()  # the workspace being left keeps its mode and draft
+            self._leave_shown_search()
             self._present(active or "", self._open[active])
         elif self.window.is_shown():
             log.info("workspace %s: hiding the overlay", active)
             self._sync_shown()
+            self._leave_shown_search()
             self.window.hide_overlay()
         return False
+
+    def _leave_shown_search(self) -> None:
+        """Leaving a workspace ends a search there; its filter stays (0033 C)."""
+        view = self._open.get(self._shown_key) if self._shown_key is not None else None
+        if view is not None and view.mode == "search":
+            self._leave_search(view, refocus=False)
 
     def _refocus(self, view_ref: str | None) -> None:
         if view_ref is not None and not self.desktop.focus_view(view_ref):
@@ -963,7 +1082,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     root = Path(args.config_dir) if args.config_dir else config_dir()
     sock = Path(args.socket) if args.socket else ipc.socket_path()
-    daemon = Daemon(root, sock)
+    daemon = Daemon(root, sock, state_path())
     app = Gtk.Application(
         application_id="dev.wayhint.daemon", flags=Gio.ApplicationFlags.NON_UNIQUE
     )

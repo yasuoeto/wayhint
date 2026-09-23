@@ -25,6 +25,8 @@ class Window:
         self.context = None
         self.includes = []
         self.visible = True
+        self.filter = ""  # what set_filter last handed over
+        self.text = ""  # what the search box holds
 
     def open_form(self, draft):
         self.form = draft
@@ -56,9 +58,17 @@ class Window:
         pass
 
     def set_mode(self, mode, *, refocus=True):
+        if mode == "search" and self.mode != "search":
+            self.text = self.filter  # the kept filter comes back in the box (0033 C)
         self.mode = mode
         if mode != "edit":
             self.close_form()
+
+    def set_filter(self, query, *, render=True):
+        self.filter = query
+
+    def search_text(self):
+        return self.text
 
 
 class Workspace:
