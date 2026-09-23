@@ -22,9 +22,13 @@ from unittest import mock
 from ruamel.yaml import YAML
 
 from tests.test_daemon_edit import Window, Workspace
+from tests.test_desktop_providers import needs_compositor
+from wayhint import ipc
 from wayhint.daemon import Daemon
+from wayhint.i18n import translator
 from wayhint.models import ResolvedContext
 from wayhint.ui import editmode as em
+from wayhint.yaml_store import load_sheet
 
 SHEET_B = (
     "id: b\ntitle: B\nhints:\n"
@@ -59,7 +63,7 @@ class Isolated(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
 
-    def daemon(self, window):
+    def make_daemon(self, window):
         daemon = Daemon(self.root, self.root / "unused.sock", self.state)
         daemon.config = replace(daemon.config, workspace_scope="all")
         daemon.store.load_all()
@@ -86,13 +90,13 @@ class T41RestartTest(FakeWindowCase):
 
     def test_a_second_daemon_on_the_same_state_restores_the_filter(self):
         first_window = self.fake()
-        first = self.daemon(first_window)
+        first = self.make_daemon(first_window)
         first.show()
         self.leave_search_with(first, first_window, "pane")
         del first  # nothing but the file survives
 
         window = self.fake()
-        second = self.daemon(window)
+        second = self.make_daemon(window)
         second.show()
         self.assertEqual(second._current_view().filter_query, "pane")
         self.assertEqual(window.filter, "pane")
@@ -108,7 +112,7 @@ class T42BrokenStateTest(FakeWindowCase):
         self.state.write_text("foo: [")
         window = self.fake()
         with self.assertLogs(level=logging.WARNING) as logs:
-            daemon = self.daemon(window)
+            daemon = self.make_daemon(window)
             daemon.show()
         about_state = [r for r in logs.records if "state.yaml" in r.getMessage()]
         self.assertEqual(len(about_state), 1, logs.output)  # not once per read, not per show
@@ -126,7 +130,7 @@ class T44WorkspaceTest(FakeWindowCase):
 
     def test_two_workspaces_share_the_filter_of_one_sheet(self):
         window = self.fake()
-        daemon = self.daemon(window)
+        daemon = self.make_daemon(window)
         workspace = Workspace()
         daemon._watcher = workspace
         daemon.show()  # on workspace A
@@ -138,6 +142,142 @@ class T44WorkspaceTest(FakeWindowCase):
         self.assertEqual(daemon._open["B"].filter_query, "#- pane")
         self.assertEqual(window.filter, "#- pane")
         self.assertEqual(daemon._open["A"].filter_query, "#- pane")
+
+
+def noop(*_args, **_kwargs):
+    return None
+
+
+@needs_compositor
+class RealWindowCase(Isolated):
+    """A real ``HintWindow`` wired to the daemon the way ``Daemon.start`` wires it.
+
+    Never mapped: ``present`` and ``set_visible`` are shadowed as in ``test_daemon_window``, so
+    nothing appears on the screen of whoever runs the tests. Keys go through the window's own
+    key handler -- the one its capture-phase controller calls -- rather than a compositor.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from wayhint import daemon
+
+        daemon._load_gui()  # the preload order DECISIONS 0009 requires
+        if not daemon.Gtk.init_check():
+            raise unittest.SkipTest("GTK could not open a display")
+        cls.gui = daemon
+
+    def setUp(self):
+        super().setUp()
+        (self.root / "config.yaml").write_text(
+            "appearance: {language: en}\ncontext: {workspace: all}\n"
+        )
+        self.visible = False
+        self.daemon = self.make_daemon(None)
+        self.daemon.reload_all()
+        d = self.daemon
+        self.window = self.gui.HintWindow(
+            None, d.edit, d.hide, d.on_edit_action, noop, noop, tr=translator("en")
+        )
+        self.addCleanup(self.window.destroy)
+        self.window.present = noop
+        self.window.set_visible = self._set_visible
+        self.window.get_visible = lambda: self.visible
+        d.window = self.window
+        d._start_workspace_watch = noop
+        d._stop_workspace_watch = noop
+
+    def _set_visible(self, value):
+        self.visible = bool(value)
+
+    def send(self, cmd):
+        return ipc.handle_request(f'{{"cmd":"{cmd}"}}\n'.encode(), self.daemon.dispatch)
+
+    def key(self, name):
+        from gi.repository import Gdk
+
+        return self.window._on_key(None, Gdk.keyval_from_name(name), 0, Gdk.ModifierType(0))
+
+    def rows(self):
+        out, index = [], 0
+        while (row := self.window._list.get_row_at_index(index)) is not None:
+            out.append(row.hint.id)
+            index += 1
+        return out
+
+    def selected(self):
+        row = self.window._list.get_selected_row()
+        return row.hint.id if row is not None else None
+
+    def sheet_ids(self):
+        sheet, issues = load_sheet(self.root / "hints" / "b.yaml")
+        self.assertEqual(issues, [])
+        return [h.id for h in sheet.hints], [h.id for h in sheet.hints if h.favorite]
+
+    def filter_by(self, text):
+        """Narrow the list the way a person does: search-mode, type, search-mode again."""
+        self.assertEqual(self.send("search-mode")["mode"], "search")
+        self.window._search.set_text(text)
+        self.assertEqual(self.send("search-mode")["mode"], "normal")
+        self.assertEqual(self.window._query, text)
+
+
+class T43EditWhileFilteredTest(RealWindowCase):
+    """T43: in edit mode on a filtered list, J / K do nothing and a / Enter / d d / f still work."""
+
+    def setUp(self):
+        super().setUp()
+        self.send("show")
+        self.filter_by("pane")
+        self.assertEqual(self.rows(), ["split", "close"])
+        # On a mapped window GTK takes the focus off the search box when the box is hidden
+        # (checked on the headless compositor: ``f`` then marks a hint). This window is never
+        # mapped, so GTK leaves the focus on the hidden box; clear it the way a mapped one does.
+        if not self.window._search.get_visible():
+            self.window.set_focus(None)
+        self.assertEqual(self.send("edit-mode")["mode"], "edit")
+        # A key reaching a text field is not an edit-mode key at all, which would make "J does
+        # nothing" pass for the wrong reason: the search box must not be holding the focus.
+        self.assertFalse(self.window._editable_focused())
+
+    def test_j_changes_neither_the_order_nor_the_selection(self):
+        before = self.sheet_ids()
+        self.assertTrue(self.key("J"))  # taken, like every edit-mode key ...
+        self.assertEqual((self.rows(), self.selected()), (["split", "close"], "split"))
+        self.assertEqual(self.sheet_ids(), before)  # ... and nothing is written
+        self.assertFalse(self.window._error.get_visible())  # not even a message
+
+    def test_k_changes_neither_the_order_nor_the_selection(self):
+        # Checked on its own: after a J that did swap, a K on the same pair would swap it back
+        # and the file would read as untouched.
+        self.key("Down")
+        before = self.sheet_ids()
+        self.assertTrue(self.key("K"))
+        self.assertEqual((self.rows(), self.selected()), (["split", "close"], "close"))
+        self.assertEqual(self.sheet_ids(), before)
+        self.assertFalse(self.window._error.get_visible())
+
+    def test_f_marks_the_selected_hint(self):
+        self.key("Down")
+        self.assertTrue(self.key("f"))
+        self.assertEqual(self.sheet_ids()[1], ["close"])
+
+    def test_a_opens_quick_add(self):
+        self.assertTrue(self.key("a"))
+        self.assertIsNotNone(self.window._form)
+        self.assertIsNone(self.window._form.hint_id)
+        self.assertIsNotNone(self.daemon._current_view().form)
+
+    def test_enter_opens_the_selected_hint(self):
+        self.key("Down")
+        self.assertTrue(self.key("Return"))
+        self.assertEqual(self.window._form.hint_id, "close")
+
+    def test_d_d_deletes_the_selected_hint(self):
+        self.key("Down")
+        self.key("d")
+        self.assertEqual(self.sheet_ids()[0], ["split", "close", "detach"])  # one d asks
+        self.key("d")
+        self.assertEqual(self.sheet_ids()[0], ["split", "detach"])
 
 
 if __name__ == "__main__":
