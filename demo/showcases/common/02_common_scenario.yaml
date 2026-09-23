@@ -21,109 +21,6 @@ windows:
 
 steps:
   # =============================================================================================
-  # 60 秒版。同じ操作でも尺が違うので、長い版とは別の step として書く(variant 別 override は
-  # 持たない設計。demo/README.md「variant の完全列」)。
-  # =============================================================================================
-  - id: open-herdr-60
-    spawn: {window: Herdr, argv: [foot-herdr]}
-    wait_for:
-      toplevel: "^foot-herdr$"
-      context: {active_sheet: herdr}
-      overlay: hidden
-      timeout: 40
-    caption: {ja: "Herdr の中で作業している"}
-    hold: 3.0
-
-  - id: start-claude-60
-    herdr: [pane, run, "w1:p1", claude]
-    wait_for:
-      context: {active_sheet: claude-code, process_name: claude}
-      overlay: hidden
-      timeout: 30
-    caption: {ja: "操作を忘れたら、いつも同じ場所を見ればいい"}
-    hold: 4.0
-
-  - id: show-hints-60
-    key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 10}
-    caption: {ja: "いま使っているものの、自分用チートシート"}
-    hold: 6.0
-
-  - id: whose-hints-60
-    cli: refresh
-    wait_for: {overlay: visible, label: "Claude Code"}
-    caption: {ja: "見ているのは窓ではなく、端末の中で動いているもの"}
-    hold: 7.0
-
-  - id: keep-typing-60
-    type: "/comp"
-    precondition: {overlay: visible}
-    wait_for:
-      overlay: visible
-      unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
-    caption: {ja: "出したまま、そのまま作業できる"}
-    hold: 8.0
-
-  - id: new-tab-60
-    herdr: [tab, create, --focus]
-    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
-    hold: 1.5
-
-  - id: start-codex-60
-    herdr: [pane, run, "w1:p2", codex]
-    wait_for:
-      context: {active_sheet: codex, process_name: codex}
-      overlay: visible
-      timeout: 30
-    hold: 2.5
-
-  - id: switch-pane-60
-    key: super+h
-    wait_for: {overlay: visible, label: "Codex", hints: 8}
-    caption: {ja: "別の pane に移って、もう一度"}
-    hold: 7.0
-
-  - id: edit-mode-60
-    key: super+ctrl+h
-    wait_for:
-      overlay: visible
-      label: "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
-    caption: {ja: "忘れた操作は、その場で追記"}
-    hold: 3.0
-
-  - id: open-form-60
-    key: a
-    wait_for: {overlay: visible, label: "Title"}
-    hold: 2.0
-
-  - id: type-title-60
-    type: "直前の検索を繰り返す"
-    wait_for: {overlay: visible, label: "Title", text: "直前の検索を繰り返す"}
-    hold: 2.5
-
-  - id: next-field-60
-    key: tab
-    wait_for: {overlay: visible, label: "Key"}
-    hold: 0.5
-
-  - id: type-key-60
-    type: "n"
-    wait_for: {overlay: visible, label: "Key", text: "n"}
-    hold: 2.5
-
-  - id: save-hint-60
-    key: enter
-    wait_for: {overlay: visible, no_label: "Title", hints: 9}
-    caption: {ja: "保存したら、キーボードは元のアプリへ"}
-    hold: 6.0
-
-  - id: close-60
-    key: super+h
-    wait_for: {overlay: hidden}
-    caption: {ja: "中身は YAML。自分で書いて育てる"}
-    hold: 4.5
-
-  # =============================================================================================
   # 3 分版 / 5 分版が共有する本編(storyboard §1–§6)
   # =============================================================================================
 
@@ -261,36 +158,6 @@ steps:
     caption: {ja: "忘れていた操作を見つけたら、その場で書く"}
     hold: 5.0
 
-  # The single-key operations come before the form on purpose: saving the form *leaves* edit
-  # mode (DECISIONS 0021), so anything pressed after it would land in the terminal instead --
-  # which is what the first cut of this did (B-7).
-  - id: move-down
-    # `type:`, not `key:`. wtype's -k sends the keysym with no shift level and the window sees
-    # `j`; its text mode is what delivers a capital (measured in B-7, labwc 0.20.2 / wtype 0.4).
-    # One press per step: a second one inside the same step lands while the list is still being
-    # rebuilt from the sheet it just wrote, and does nothing.
-    #
-    # The row that moves is the one the cursor is on, and that is the first one -- these scenes
-    # were written when nothing could move the selection at all (DECISIONS 0014, 改修
-    # 2026-09-23: `↑` / `↓` now do). Showing that off would mean re-recording all three cuts,
-    # so it waits for the next pass over the storyboard. That is also why no hint in
-    # `codex.yaml` starts out with a star -- `f` has to have one to add.
-    type: "J"
-    wait_for: {overlay: visible, first_hint: "実行を却下する"}
-    caption: {ja: "J / K で並べ替え。YAML の行がそのまま動く"}
-    hold: 7.0
-
-  - id: move-up
-    type: "K"
-    wait_for: {overlay: visible, first_hint: "実行を承認する"}
-    hold: 4.0
-
-  - id: favorite-hint
-    key: f
-    wait_for: {overlay: visible, label: "★ 実行を承認する"}
-    caption: {ja: "f で ★ を付け外し。★ は先頭にまとまる"}
-    hold: 8.0
-
   - id: open-form
     key: a
     wait_for: {overlay: visible, label: "Title"}
@@ -363,51 +230,6 @@ steps:
   # 5 分版だけの追加(storyboard §3–§6 の「加えて」の部分)。本編の step 列に差し込む。
   # =============================================================================================
 
-  # --- §3 追加: GUI アプリでも同じ ----------------------------------------------------------
-  # 端末の中のプロセスを見る話の裏返し。GUI には覗き込む foreground process が無く、窓の
-  # app_id だけで sheet が決まる(DECISIONS 0024)。`notes` は demo の GTK4 stub。
-  - id: open-notes
-    spawn: {window: Notes, argv: [notes]}
-    precondition: {overlay: visible}
-    wait_for:
-      toplevel: "^dev\\.wayhint\\.demo\\.Notes$"
-      context: {active_sheet: notes}
-      timeout: 30
-    caption: {ja: "GUI アプリでも同じ"}
-    hold: 5.0
-
-  - id: notes-hints
-    key: super+h
-    wait_for: {overlay: visible, label: "Notes", hints: 9}
-    caption: {ja: "端末は中のプロセス、GUI は窓の app_id"}
-    hold: 9.0
-
-  - id: notes-wm
-    pause: true
-    wait_for: {overlay: visible, label: "次の窓へ"}
-    caption: {ja: "窓の操作はどの sheet にも付いてくる"}
-    hold: 9.0
-
-  - id: close-notes-hints
-    key: super+h
-    wait_for: {overlay: hidden}
-    hold: 3.0
-
-  - id: quit-notes
-    # The recorder closes the window rather than pressing the stub's own Ctrl+Q: wtype's
-    # modifiers reach labwc's keybinds but not the client's keymap, so the accelerator never
-    # fires (measured in B-8, the same finding as `key: J` arriving as `j`).
-    close: {window: Notes}
-    wait_for: {context: {active_sheet: codex}, overlay: hidden, timeout: 20}
-    hold: 4.0
-
-  - id: back-to-codex
-    # §4 opens with the overlay already up ("出したまま作業できる"), so this scene has to hand
-    # it back the way it found it.
-    key: super+h
-    wait_for: {overlay: visible, label: "Codex"}
-    hold: 4.0
-
   # --- §4 追加: コピー ---------------------------------------------------------------------------
   - id: copy-hint
     press: {button: copy}
@@ -415,12 +237,6 @@ steps:
     wait_for: {overlay: visible, label: "Codex"}
     caption: {ja: "コピーボタンで、選んだ hint をクリップボードへ"}
     hold: 8.0
-
-  - id: no-run
-    pause: true
-    wait_for: {overlay: visible}
-    caption: {ja: "コピーするだけで、実行はしない"}
-    hold: 7.0
 
   # --- §5 追加: favorite と並べ替え ---------------------------------------------------------------
   # --- §6 追加: 仕組みと設定 -----------------------------------------------------------------------
@@ -434,12 +250,6 @@ steps:
     pause: true
     wait_for: {context: {active_sheet: vi}}
     caption: {ja: "match でどの窓・どのプロセスに出すかが決まる"}
-    hold: 8.0
-
-  - id: yaml-inherit
-    pause: true
-    wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "inherit.parent_tags — 親から混ぜるタグ"}
     hold: 8.0
 
   - id: yaml-include
@@ -467,64 +277,11 @@ steps:
 
 # =================================================================================================
 # 尺は storyboard の尺割りから引く。--dry-run が target ± tolerance を判定し、外れたら止まる。
+# 尺の variant は作らない(B-9): 短い版は素材を切り出すのではなく、別の showcase として撮る。
 # =================================================================================================
 variants:
-  60s:
-    target: 60
-    tolerance: 2
-    square: true
-    steps:
-      - open-herdr-60
-      - start-claude-60
-      - show-hints-60
-      - whose-hints-60
-      - keep-typing-60
-      - new-tab-60
-      - start-codex-60
-      - switch-pane-60
-      - edit-mode-60
-      - open-form-60
-      - type-title-60
-      - next-field-60
-      - type-key-60
-      - save-hint-60
-      - close-60
-
-  3min:
-    target: 160
-    tolerance: 30
-    steps:
-      - open-herdr
-      - start-claude
-      - nothing-remains
-      - wrong-hints
-      - show-hints
-      - list-layout
-      - detail-pane
-      - whose-hints
-      - new-tab
-      - start-codex
-      - switch-pane
-      - parent-hints
-      - keep-typing
-      - open-search
-      - type-search
-      - close-search
-      - focus-back
-      - edit-mode
-      - open-form
-      - type-title
-      - next-field
-      - type-key
-      - save-hint
-      - break-yaml
-      - fix-yaml
-      - close
-      - no-exec
-      - stack
-
-  5min:
-    target: 270
+  main:
+    target: 190
     tolerance: 20
     steps:
       - open-herdr
@@ -539,23 +296,13 @@ variants:
       - start-codex
       - switch-pane
       - parent-hints
-      - open-notes
-      - notes-hints
-      - notes-wm
-      - close-notes-hints
-      - quit-notes
-      - back-to-codex
       - keep-typing
       - open-search
       - type-search
       - close-search
       - focus-back
       - copy-hint
-      - no-run
       - edit-mode
-      - move-down
-      - move-up
-      - favorite-hint
       - open-form
       - type-title
       - next-field
@@ -566,7 +313,6 @@ variants:
       - close
       - open-yaml
       - yaml-match
-      - yaml-inherit
       - yaml-include
       - yaml-lang
       - close-yaml
