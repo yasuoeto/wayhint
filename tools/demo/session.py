@@ -253,7 +253,8 @@ class DemoSession:
         # demo/bin, and this must not be something that turned up in there. ``None`` when
         # Herdr is not installed -- a scenario that needs it has already been stopped by
         # ``check_requirements``, and one that does not is recorded without it.
-        self.herdr_path = shutil.which(HERDR)
+        self.wants_herdr = scenario.session.herdr
+        self.herdr_path = shutil.which(HERDR) if self.wants_herdr else None
         self.session = HeadlessSession(
             config_dir,
             width=scenario.output.width,
@@ -279,6 +280,8 @@ class DemoSession:
             "PATH": f"{self.demo_bin}:{os.environ.get('PATH', '')}",
             CONFIG_ENV: str(self.config_dir),
         }
+        # Nothing in a session without Herdr gets a path to it, so a wrapper started by
+        # accident stops rather than reaching for the one on the machine.
         if self.herdr_path is not None:
             env[HERDR_BIN_ENV] = self.herdr_path
         return env
@@ -287,8 +290,9 @@ class DemoSession:
         """Bring the session up, undoing each stage if a later one fails."""
         with contextlib.ExitStack() as stack:
             stack.enter_context(self.session)
-            stack.callback(self.stop_herdr)
-            self._write_herdr_config()
+            if self.wants_herdr:
+                stack.callback(self.stop_herdr)
+                self._write_herdr_config()
             self._check_stubs()
             self._check_output()
             stack.pop_all()
@@ -297,7 +301,8 @@ class DemoSession:
     def __exit__(self, *exc) -> None:
         home = self.session.home
         try:
-            self.stop_herdr()
+            if self.wants_herdr:
+                self.stop_herdr()
         finally:
             self.session.__exit__(*exc)
             # A Herdr that had to be killed writes its session file on the way out, which
@@ -317,7 +322,8 @@ class DemoSession:
         path = self.session.env()["PATH"]
         wanted = [(step.id, name) for step in self.scenario.steps.values()
                   for name in scenario_programs(step)]  # fmt: skip
-        wanted.append(("herdr's own panes", PANE_PROGRAM))
+        if self.wants_herdr:
+            wanted.append(("herdr's own panes", PANE_PROGRAM))
         for where, name in wanted:
             found = shutil.which(name, path=path)
             if found is None or Path(found).resolve().parent != self.demo_bin:

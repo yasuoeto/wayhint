@@ -145,7 +145,10 @@ def _herdr_one(pattern: re.Pattern, kind: str):
     return check
 
 
-TERMINALS = {"foot-wayhint": "command", "foot-herdr": "no command"}
+HERDR_TERMINAL = "foot-herdr"
+"""The wrapper that starts Herdr. Named here because ``session.herdr: false`` has to refuse
+it, and because it is the one terminal that brings its own program."""
+TERMINALS = {"foot-wayhint": "command", HERDR_TERMINAL: "no command"}
 """The wrappers in ``demo/bin`` a ``spawn`` may start, and whether each takes a program.
 
 ``foot-wayhint`` is a bare terminal, so it has to be told what to run: foot with no command
@@ -312,6 +315,21 @@ class Fonts:
 
 
 @dataclass(frozen=True)
+class SessionSpec:
+    """What the recording's session has running in it besides the daemon.
+
+    Herdr is the one real program a demo starts (DECISIONS 0032), and two of the four showcases
+    have nothing to do with it: a terminal on its own and a GUI application. Starting a Herdr
+    server for those would put a process in the session that the video never shows, and the
+    census that checks "no shell in here" would have to make room for it. So a scenario says
+    whether it wants one, and one that does not gets none -- no config, no environment, no
+    server, and no way to ask for one (the parser refuses the actions that would).
+    """
+
+    herdr: bool = True
+
+
+@dataclass(frozen=True)
 class Window:
     """Where a spawned window goes. Fixed, so the picture is the same on the next run.
 
@@ -436,6 +454,7 @@ class Scenario:
     windows: tuple[Window, ...]
     steps: dict[str, Step]
     variants: tuple[Variant, ...]
+    session: SessionSpec = SessionSpec()
 
     def variant(self, name: str) -> Variant:
         for item in self.variants:
@@ -469,9 +488,10 @@ def load(path: Path, demo_bin: Path | None = None) -> Scenario:
 
 
 def parse(doc: dict, demo_bin: Path | None = None) -> Scenario:
-    _unknown(doc, {"output", "fonts", "windows", "steps", "variants"}, "the scenario")
+    _unknown(doc, {"output", "fonts", "session", "windows", "steps", "variants"}, "the scenario")
     output = _output(_mapping(doc.get("output"), "output"))
     fonts = _fonts(_mapping(doc.get("fonts"), "fonts"))
+    session = _session(_mapping(doc.get("session"), "session"))
     windows = _windows(doc.get("windows"))
     raw = doc.get("steps")
     if not isinstance(raw, list) or not raw:
@@ -492,13 +512,42 @@ def parse(doc: dict, demo_bin: Path | None = None) -> Scenario:
                 f"step {step.id!r}: window {where!r} is not in windows "
                 f"({', '.join(sorted(placements))})"
             )
+    if not session.herdr:
+        _no_herdr(steps)
     variants = _variants(doc.get("variants"), steps)
     unused = sorted(set(steps) - {s.id for v in variants for s in v.steps})
     if unused:
         raise ScenarioError(
             f"steps in no variant: {', '.join(unused)} (a step nobody records is dead weight)"
         )
-    return Scenario(output, fonts, tuple(windows), steps, variants)
+    return Scenario(output, fonts, tuple(windows), steps, variants, session)
+
+
+def _session(doc: dict) -> SessionSpec:
+    _unknown(doc, {"herdr"}, "session")
+    herdr = doc.get("herdr", True)
+    if not isinstance(herdr, bool):
+        raise ScenarioError(f"session.herdr: expected true or false, got {herdr!r}")
+    return SessionSpec(herdr=herdr)
+
+
+def _no_herdr(steps: dict[str, Step]) -> None:
+    """``session.herdr: false`` means no Herdr, so nothing may ask for one.
+
+    Checked here rather than left to fail at record time: a scenario that contradicts itself
+    should say so before a compositor is started, and both routes to a Herdr are named -- the
+    ``herdr:`` action talks to the server, and the ``foot-herdr`` wrapper starts one.
+    """
+    for step in steps.values():
+        if step.action.kind == "herdr":
+            raise ScenarioError(
+                f"step {step.id!r}: session.herdr is false, so there is no Herdr to talk to"
+            )
+        if step.action.kind == "spawn" and step.action.payload["argv"][0] == HERDR_TERMINAL:
+            raise ScenarioError(
+                f"step {step.id!r}: session.herdr is false, so {HERDR_TERMINAL!r} "
+                "(which starts one) cannot be spawned"
+            )
 
 
 # --- pieces ------------------------------------------------------------------------------------

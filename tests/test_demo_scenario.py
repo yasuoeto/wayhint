@@ -386,6 +386,68 @@ class OutputDirTest(unittest.TestCase):
         self.assertTrue((elsewhere / "kept").is_dir(), "it deleted through the symlink")
 
 
+class SessionSpecTest(unittest.TestCase):
+    """``session: {herdr: …}``: whether a recording gets a Herdr at all (B-9 H3)."""
+
+    HERDR_STEP = (
+        "  - id: tab\n    herdr: [tab, create, --focus]\n"
+        "    wait_for: {overlay: visible}\n    hold: 1\n"
+    )
+
+    def test_a_scenario_says_nothing_and_gets_one(self) -> None:
+        """Every showcase written before this one has a Herdr in it."""
+        self.assertTrue(parse(MINIMAL).session.herdr)
+
+    def test_it_can_be_turned_off(self) -> None:
+        self.assertFalse(parse("session: {herdr: false}\n" + MINIMAL).session.herdr)
+
+    def test_anything_but_a_bool_is_refused(self) -> None:
+        for value in ("yes", 1, "null"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(scn.ScenarioError, "expected true or false"):
+                    parse(f"session: {{herdr: {value}}}\n" + MINIMAL)
+
+    def test_an_unknown_session_key_is_refused(self) -> None:
+        with self.assertRaisesRegex(scn.ScenarioError, "session"):
+            parse("session: {herdrr: false}\n" + MINIMAL)
+
+    def test_a_session_without_herdr_may_not_talk_to_one(self) -> None:
+        text = "session: {herdr: false}\n" + MINIMAL.replace(
+            "variants:", self.HERDR_STEP + "variants:"
+        ).replace("steps: [show]", "steps: [show, tab]")
+        with self.assertRaisesRegex(scn.ScenarioError, "no Herdr to talk to"):
+            parse(text)
+
+    def test_a_session_without_herdr_may_not_start_one(self) -> None:
+        """``foot-herdr`` is the other route: the wrapper starts the server itself."""
+        text = "session: {herdr: false}\n" + MINIMAL.replace(
+            "    cli: show\n", "    spawn: {window: main, argv: [foot-herdr]}\n"
+        )
+        with self.assertRaisesRegex(scn.ScenarioError, "cannot be spawned"):
+            parse(text, demo_bin=BIN)
+
+    def test_the_same_steps_are_fine_with_a_herdr(self) -> None:
+        text = MINIMAL.replace("variants:", self.HERDR_STEP + "variants:").replace(
+            "steps: [show]", "steps: [show, tab]"
+        )
+        self.assertIn("tab", parse(text).steps)
+
+    def test_the_session_starts_nothing_for_herdr(self) -> None:
+        """The wiring, not only the parse: no config, and no path to the binary in the env."""
+        work = scratch(self)
+        demo = sess.DemoSession(parse("session: {herdr: false}\n" + MINIMAL), work, work, work)
+        self.assertFalse(demo.wants_herdr)
+        self.assertIsNone(demo.herdr_path)
+        self.assertNotIn(sess.HERDR_BIN_ENV, demo._env())
+
+    def test_a_session_with_herdr_is_told_where_it_is(self) -> None:
+        work = scratch(self)
+        demo = sess.DemoSession(parse(MINIMAL), work, work, work)
+        self.assertTrue(demo.wants_herdr)
+        if shutil.which(sess.HERDR) is not None:  # not installed everywhere
+            self.assertIn(sess.HERDR_BIN_ENV, demo._env())
+
+
 class OutDirTest(unittest.TestCase):
     """``--out-dir`` writes outside the repository, so it takes only a directory of its own."""
 

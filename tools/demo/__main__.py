@@ -303,7 +303,10 @@ def _record(
         # from a key to the daemon, so they are never quietly replaced by the CLI: without
         # wtype the recording stops here and says so (DECISIONS 0031).
         tools = (*tools, "wtype")
-    if any(s.action.kind == "herdr" for s in variant.steps):
+    if script.session.herdr and any(
+        s.action.kind == "herdr" or s.action.payload.get("argv", [""])[0] == scn.HERDR_TERMINAL
+        for s in variant.steps
+    ):
         tools = (*tools, sess.HERDR)
     try:
         sess.check_requirements(
