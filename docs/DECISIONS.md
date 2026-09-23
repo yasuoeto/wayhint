@@ -362,6 +362,17 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - 0003 の「GUI からの書き戻しは行わない」は superseded。ruamel 採用の判断自体は維持。
 - Wayfire は未確認のまま keyboard grab を握る面積が増える。実機チェック項目で確認する。
 - 後日の改修候補: 親 sheet 混入 hint の並び替え、Tab の focus 移動との競合、filter の永続化。
+- **改修(2026-09-23): `↑` `↓` の選択移動は GTK 既定ではなく自前で受ける。** 当初の仕様は
+  「GTK 既定を使う」だったが、keyboard を EXCLUSIVE で掴んだ layer surface では window が
+  一覧に与えた focus が定着しない——`grab_focus()` は true を返すのに AT-SPI はどの行も
+  focused と報告せず、最初の矢印キーは「一覧に入る」だけで消える(labwc 0.20.2 実測)。
+  そのため**マウス無しでは 2 行目以降に `f` / `J` / `K` / `Enter` / `d` `d` が当たらない**
+  ——hotkey で開く overlay としては成立しない状態だった。他の単打キーと同じ CAPTURE の
+  経路に乗せ、移動先は `editmode.next_selection()` で決める(端で折り返さない。短い一覧で
+  先頭へ戻るのは「効かなかった」と区別がつかない)。テキスト欄ではカーソル移動なので受けない。
+  紹介動画の脚本を書いているときに見つかった(B-7)。検証は `tests/test_gui_headless.py` の
+  `EditModeKeyboardTest`——実 compositor で `↓` を送り、選択が動いたことと、次の `f` が
+  **その行**に効いたことの両方を見る。
 
 ## 0015 — labwc に合わせた配色は既定 CSS ではなく `examples/style.css` で配る
 

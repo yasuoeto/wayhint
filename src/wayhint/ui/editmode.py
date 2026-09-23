@@ -32,6 +32,10 @@ UNDO = "undo"
 FAVORITE = "favorite"
 MOVE_DOWN = "move-down"
 MOVE_UP = "move-up"
+SELECT_NEXT = "select-next"
+SELECT_PREVIOUS = "select-previous"
+"""Move the selection down / up one row. Handled in the window; the daemon never hears about
+it -- which hint is selected is the overlay's own business (0014 D2)."""
 EXIT_EDIT = "exit-edit"
 BEGIN_SEARCH = "begin-search"
 END_SEARCH = "end-search"
@@ -110,6 +114,13 @@ def edit_action(
     In the list, a modifier means the key is not ours: ``Ctrl+d`` is the terminal's, and taking
     it as "delete this hint" would act on a keystroke the user aimed somewhere else. Only
     ``Ctrl+P`` in a form has a meaning here, and that one is spelled out below.
+
+    ``↑`` and ``↓`` are taken here rather than left to GTK's list navigation, which is what the
+    design said first. On a layer surface holding the keyboard, the focus the window grabs for
+    the list does not stick: ``grab_focus()`` answers true, the row is never reported as
+    focused, and the first arrow key is spent entering the list instead of moving in it
+    (measured on labwc 0.20.2, 2026-09-23). Every other key in edit mode is already taken in
+    the capture phase, so these two join them.
     """
     if editable:
         if key == "Return" or key == "KP_Enter":
@@ -135,6 +146,10 @@ def edit_action(
         "f": FAVORITE,
         "J": MOVE_DOWN,
         "K": MOVE_UP,
+        "Down": SELECT_NEXT,
+        "KP_Down": SELECT_NEXT,
+        "Up": SELECT_PREVIOUS,
+        "KP_Up": SELECT_PREVIOUS,
         "Escape": EXIT_EDIT,
     }
     return simple.get(key)
@@ -250,6 +265,20 @@ def next_completion(
     if current is None or current not in found:
         return found[0] if forward else found[-1]
     return found[(found.index(current) + (1 if forward else -1)) % len(found)]
+
+
+def next_selection(count: int, current: int | None, delta: int) -> int | None:
+    """Where ``↑`` / ``↓`` put the selection: one row along, and no wrapping.
+
+    ``None`` when there is nothing to select. Nothing wraps: in a list this short, going round
+    from the last row to the first reads as "it did nothing" rather than as a move (0014 D2 is
+    about keeping a hint selected, not about how the cursor travels).
+    """
+    if count <= 0:
+        return None
+    if current is None:
+        return 0 if delta > 0 else count - 1
+    return max(0, min(current + delta, count - 1))
 
 
 def restore_index(

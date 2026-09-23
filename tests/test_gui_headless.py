@@ -255,5 +255,89 @@ class FocusFollowTest(unittest.TestCase):
             self.assertIn("replacing claude-code with vi", session.log_tail(60))
 
 
+ROWS_SHEET = """\
+id: demo
+title: Demo
+match:
+  wayland:
+    app_id_regex: ['wayhint-probe']
+hints:
+  - {id: copy, title: Copy, key: 'Ctrl+C', remark: 'row one'}
+  - {id: paste, title: Paste, key: 'Ctrl+V', remark: 'row two'}
+  - {id: quit, title: Quit, key: 'Ctrl+Q', remark: 'row three'}
+"""
+"""Three hints that say which row they are: the detail line under the list shows the remark of
+the selected hint, which is how the selection is read back here."""
+
+
+@needs_key_injection
+class EditModeKeyboardTest(unittest.TestCase):
+    """Edit mode is usable with the keyboard alone: ``↓`` moves what the next key acts on.
+
+    The single-key operations (``f``, ``J`` / ``K``, ``Enter``, ``d d``) all act on the selected
+    row, and the arrow keys are how that row is chosen (DESIGN 編集モード §2). They used to be
+    left to GTK's own list navigation, which never answered: the focus the window grabs for the
+    list does not stick on a layer surface holding the keyboard, so the selection stayed on the
+    first row and **nothing below it could be reached without a mouse** -- on an overlay that
+    exists to be driven from a hotkey. Found while scripting the demo (B-7), fixed 2026-09-23.
+
+    Both halves are checked, because either one alone would pass while the feature is broken:
+    the overlay says the selection moved, and the file says the key that followed acted on the
+    row it moved to.
+    """
+
+    OVERLAY = "{anchor: top-right, width: 400px, margin: {top: 20, right: 20}}"
+
+    def favourites(self, root: Path) -> list[str]:
+        from ruamel.yaml import YAML
+
+        doc = YAML().load(root / "hints" / "en" / "demo.yaml")
+        return [hint["id"] for hint in doc["hints"] if hint.get("favorite")]
+
+    def until(self, session: HeadlessSession, what: str, ready) -> None:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if ready():
+                return
+            time.sleep(0.2)
+        self.fail(f"{what}\n{session.log_tail()}")
+
+    def selected_row(self, session: HeadlessSession) -> str:
+        """Which row the overlay says is selected, by the remark in the detail line."""
+        shown = [node.name for node in session.a11y_nodes() if node.showing]
+        return next((name.split("\n")[0] for name in shown if name.startswith("row ")), "")
+
+    def test_the_arrow_keys_choose_the_row_a_single_key_acts_on(self) -> None:
+        root = config_root(self, self.OVERLAY, {"demo": ROWS_SHEET})
+        with HeadlessSession(root, width=WIDTH, height=HEIGHT) as session:
+            session.toplevel("wayhint-probe")
+            session.wayhint("show")
+            self.assertIn("mode=edit", session.wayhint("edit-mode"), session.log_tail())
+            self.until(
+                session,
+                "the first hint was never selected",
+                lambda: self.selected_row(session) == "row one",
+            )
+            # The first key of a session goes nowhere: the virtual keyboard is new and the
+            # compositor is still handing the keyboard to the layer surface (measured). Edit
+            # mode ignores "x", so this one is free to be the one that is lost.
+            session.press("x")
+            session.press("Down")
+            self.until(
+                session,
+                "the selection did not move to the second hint",
+                lambda: self.selected_row(session) == "row two",
+            )
+
+            session.press("f")  # and the key that follows acts on *that* row
+            self.until(
+                session,
+                "nothing was marked as a favourite",
+                lambda: bool(self.favourites(root)),
+            )
+            found = self.favourites(root)
+        self.assertEqual(found, ["paste"], "the key acted on the first row, not the chosen one")
+
+
 if __name__ == "__main__":
     unittest.main()

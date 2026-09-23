@@ -604,6 +604,9 @@ class HintWindow(Gtk.Window):
         if action == editmode.FORM_NEXT or action == editmode.FORM_PREVIOUS:
             self._move_focus(forward=action == editmode.FORM_NEXT)
             return True
+        if action in (editmode.SELECT_NEXT, editmode.SELECT_PREVIOUS):
+            self._move_selection(1 if action == editmode.SELECT_NEXT else -1)
+            return True
         if action == editmode.FORM_SAVE:
             self._save_form()
             return True
@@ -641,6 +644,20 @@ class HintWindow(Gtk.Window):
 
     def _editable_focused(self) -> bool:
         return isinstance(self.get_focus(), Gtk.Editable)
+
+    def _move_selection(self, delta: int) -> None:
+        """Move the selection one row, for the arrow keys in edit mode.
+
+        Every single-key operation acts on the selected hint, so this is what makes ``f``,
+        ``J`` / ``K``, ``Enter`` and ``d d`` reach anything but the first row without a mouse.
+        It moves the *selection* rather than the focus: the focus the window grabs for the list
+        does not stick on a layer surface that holds the keyboard (:func:`editmode.edit_action`).
+        """
+        index = editmode.next_selection(len(self._hints), self._selected_index(), delta)
+        row = self._list.get_row_at_index(index) if index is not None else None
+        if row is not None:
+            self._list.select_row(row)
+            self._scroll_to(row)
 
     def _move_focus(self, forward: bool) -> None:
         direction = Gtk.DirectionType.TAB_FORWARD if forward else Gtk.DirectionType.TAB_BACKWARD

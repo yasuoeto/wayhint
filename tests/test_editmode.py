@@ -52,6 +52,21 @@ class EditActionTest(unittest.TestCase):
         self.assertEqual(em.edit_action("Escape"), em.EXIT_EDIT)
         self.assertIsNone(em.edit_action("x"))
 
+    def test_the_arrow_keys_move_the_selection(self) -> None:
+        """Taken here, not left to GTK: the focus does not stick on the layer surface, so the
+        list never answered an arrow key and every single-key operation could only reach the
+        first row (found while scripting the demo, fixed 2026-09-23)."""
+        self.assertEqual(em.edit_action("Down"), em.SELECT_NEXT)
+        self.assertEqual(em.edit_action("Up"), em.SELECT_PREVIOUS)
+        self.assertEqual(em.edit_action("KP_Down"), em.SELECT_NEXT)
+        self.assertEqual(em.edit_action("KP_Up"), em.SELECT_PREVIOUS)
+
+    def test_the_arrow_keys_are_the_lists_in_a_text_field(self) -> None:
+        """In the form they move the caret, and nothing here may take them."""
+        for key in ("Down", "Up", "KP_Down", "KP_Up"):
+            with self.subTest(key=key):
+                self.assertIsNone(em.edit_action(key, editable=True))
+
     def test_a_modifier_makes_it_another_widgets_key(self) -> None:
         """Ctrl+d is "close the terminal", not "delete this hint" (DESIGN 編集モード §2)."""
         for key in ("a", "d", "u", "f", "J", "K", "Return"):
@@ -217,6 +232,26 @@ class RestoreSelectionTest(unittest.TestCase):
 
     def test_no_previous_selection(self) -> None:
         self.assertEqual(em.restore_index(["a", "b"], None, None), 0)
+
+
+class NextSelectionTest(unittest.TestCase):
+    """Where ``↑`` / ``↓`` put the selection (DESIGN 編集モード §2)."""
+
+    def test_one_row_at_a_time(self) -> None:
+        self.assertEqual(em.next_selection(3, 0, 1), 1)
+        self.assertEqual(em.next_selection(3, 2, -1), 1)
+
+    def test_it_stops_at_the_ends_rather_than_wrapping(self) -> None:
+        """Wrapping from the last row to the first reads as "it did nothing"."""
+        self.assertEqual(em.next_selection(3, 2, 1), 2)
+        self.assertEqual(em.next_selection(3, 0, -1), 0)
+
+    def test_nothing_selected_yet(self) -> None:
+        self.assertEqual(em.next_selection(3, None, 1), 0)
+        self.assertEqual(em.next_selection(3, None, -1), 2)
+
+    def test_an_empty_list(self) -> None:
+        self.assertIsNone(em.next_selection(0, None, 1))
 
 
 class SwapRuleTest(unittest.TestCase):

@@ -78,6 +78,12 @@ class A11yNode:
     name: str
     showing: bool
     actions: tuple[str, ...] = ()
+    focused: bool = False
+    """Whether this node holds the keyboard focus.
+
+    Which widget the keys go to is otherwise invisible from outside the process, and it decides
+    what a bare ``Down`` does: the overlay's list navigation is GTK's own, and GTK gives it to
+    the focused widget (DESIGN 編集モード §2)."""
     text: str = ""
     """What has been typed into this node, for the ones that can be typed into.
 
@@ -705,6 +711,7 @@ def describe(node):
             "role": node.get_role_name(),
             "name": node.get_name() or "",
             "showing": node.get_state_set().contains(Atspi.StateType.SHOWING),
+            "focused": node.get_state_set().contains(Atspi.StateType.FOCUSED),
             "actions": actions(node),
             "text": typed(node),
         }
