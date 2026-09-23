@@ -135,7 +135,12 @@ class HeadlessSession:
         # AF_UNIX paths are capped at about 108 bytes, so this has to be short; a directory under
         # a temporary root is already too long. It sits beside the real runtime dir, not in it.
         self.runtime = Path(os.environ["XDG_RUNTIME_DIR"]) / f"wh-{tag or 't'}{os.getpid()}"
-        self.home = Path(tempfile.mkdtemp(prefix="wayhint-headless-"))
+        # Made in ``__enter__``, like the runtime directory next to it -- a session that is
+        # built and never started has to leave nothing behind. ``mkdtemp`` in here meant every
+        # unit test that constructs a session to call one method on it left an empty directory
+        # in /tmp: three on every ``./scripts/check`` run, and a day of blaming D-Bus for them
+        # (2026-09-23).
+        self.home: Path | None = None
         self._procs: list[subprocess.Popen] = []
         self._bus: subprocess.Popen | None = None
         self._bus_address = ""
@@ -174,6 +179,7 @@ class HeadlessSession:
         stack undoes what has been done so far and is dismissed only on the way out.
         """
         with contextlib.ExitStack() as stack:
+            self.home = Path(tempfile.mkdtemp(prefix="wayhint-headless-"))
             # The log first and the tear-down second: the stack unwinds last-registered-first,
             # so this order runs the tear-down *before* the file is closed -- and the tear-down
             # is what writes into it when it has something to report.
@@ -252,7 +258,8 @@ class HeadlessSession:
         if left:
             return  # both directories stay; see the message above
         shutil.rmtree(self.runtime, ignore_errors=True)
-        shutil.rmtree(self.home, ignore_errors=True)
+        if self.home is not None:
+            shutil.rmtree(self.home, ignore_errors=True)
 
     def _keep_directories(self, reasons: list[str]) -> None:
         """Say what is being left behind and why, to stderr and into the session log."""

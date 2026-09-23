@@ -302,7 +302,7 @@ class DemoSession:
             self.session.__exit__(*exc)
             # A Herdr that had to be killed writes its session file on the way out, which
             # re-creates the directory the line above just removed (measured in C-A).
-            if home.exists():
+            if home is not None and home.exists():
                 shutil.rmtree(home, ignore_errors=True)
 
     def _check_stubs(self) -> None:

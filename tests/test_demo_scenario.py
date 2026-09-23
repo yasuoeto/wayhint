@@ -49,8 +49,23 @@ variants:
 
 def scratch(case: unittest.TestCase, prefix: str = "wayhint-demo-test-") -> Path:
     path = Path(tempfile.mkdtemp(prefix=prefix))
-    case.addCleanup(shutil.rmtree, path, ignore_errors=True)
+    case.addCleanup(remove_tree, path)
     return path
+
+
+def remove_tree(path: Path) -> None:
+    """Delete a tree the way ``shutil.rmtree`` would -- without calling it.
+
+    Some cases below mock ``shutil.rmtree`` out to see what the tear-down *would* delete, and
+    ``unittest.mock`` patches the attribute on the one ``shutil`` module everybody shares. A
+    cleanup registered while that is in place goes through the mock and deletes nothing, which
+    is how 58 empty ``wayhint-demo-test-*`` directories collected in /tmp (2026-09-23).
+    """
+    for child in sorted(path.rglob("*"), reverse=True):
+        with contextlib.suppress(OSError):
+            child.rmdir() if child.is_dir() and not child.is_symlink() else child.unlink()
+    with contextlib.suppress(OSError):
+        path.rmdir()
 
 
 def parse(text: str, demo_bin: Path | None = None) -> scn.Scenario:
@@ -867,6 +882,23 @@ class CommandLineNameTest(unittest.TestCase):
         self.assertIn(("showcase name", "herdr"), seen)
 
 
+class SessionDirectoryTest(unittest.TestCase):
+    """A headless session's HOME appears when it starts, and not before."""
+
+    def test_building_one_leaves_nothing_in_tmp(self) -> None:
+        """The constructor used to call ``mkdtemp``, and the cases here never start a session.
+
+        Three empty ``wayhint-headless-*`` directories were left in /tmp by every
+        ``./scripts/check`` run, and were read as the *session's* tear-down leaking them --
+        the note in STATUS blamed D-Bus-activated portals for a day (2026-09-23).
+        """
+        tmp = Path(tempfile.gettempdir())
+        before = set(tmp.glob("wayhint-headless-*"))
+        session = headless_mod.HeadlessSession(scratch(self))
+        self.assertIsNone(session.home, "the HOME is made by __enter__, not by __init__")
+        self.assertEqual(set(tmp.glob("wayhint-headless-*")), before)
+
+
 class WaitGroupGoneTest(unittest.TestCase):
     """The tear-down waits for the whole process group, and never signals its own.
 
@@ -885,9 +917,8 @@ class WaitGroupGoneTest(unittest.TestCase):
             return 0
 
     def session(self) -> headless_mod.HeadlessSession:
-        session = headless_mod.HeadlessSession(scratch(self))
-        self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
-        return session
+        # Nothing to clean up: a session makes its HOME when it starts, and this one never does.
+        return headless_mod.HeadlessSession(scratch(self))
 
     def killpg(self, *side_effect):
         patch = unittest.mock.patch.object(headless_mod.os, "killpg")
@@ -951,7 +982,8 @@ class KeepDirectoriesTest(unittest.TestCase):
 
     def session(self) -> headless_mod.HeadlessSession:
         session = headless_mod.HeadlessSession(scratch(self))
-        self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
+        # Set by ``__enter__`` in a real run, and this one is torn down without starting.
+        session.home = scratch(self)
         session._procs = [WaitGroupGoneTest.Proc(os.getpgrp() + 1)]
         return session
 
@@ -1000,8 +1032,9 @@ class StartupUnwindTest(unittest.TestCase):
     def headless(self) -> headless_mod.HeadlessSession:
         session = headless_mod.HeadlessSession(scratch(self))
         session.compositor = "labwc"  # nothing is actually started; the spawn is stubbed
-        self.addCleanup(shutil.rmtree, session.home, ignore_errors=True)
-        self.addCleanup(shutil.rmtree, session.runtime, ignore_errors=True)
+        # ``__enter__`` runs here, so both directories are real by the time these fire.
+        self.addCleanup(lambda: session.home and remove_tree(session.home))
+        self.addCleanup(remove_tree, session.runtime)
         # These cases stub out the tear-down, which is what would close the log.
         self.addCleanup(lambda: session.log.close() if session.log is not None else None)
         return session
@@ -1102,9 +1135,6 @@ class StartupUnwindTest(unittest.TestCase):
 
         work = scratch(self)
         demo = sess.DemoSession(parse(MINIMAL), work, work, work)
-        # Building one makes a real HeadlessSession, and that makes its HOME in /tmp. The fake
-        # below takes its place, so nothing else will ever remove it.
-        self.addCleanup(shutil.rmtree, demo.session.home, ignore_errors=True)
         fake = Fake(work)
         demo.session = fake
         demo._check_stubs = lambda: (_ for _ in ()).throw(sess.DemoError("no stub"))
