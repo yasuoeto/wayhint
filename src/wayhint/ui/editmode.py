@@ -81,6 +81,9 @@ class WorkspaceView:
     mode: str = "normal"
     form: FormDraft | None = None
     filter_query: str = ""  # what the list is narrowed by, in and out of search (0033)
+    # The overlay was hidden when edit / search was entered: the same hotkey again leaves the
+    # mode *and* hides it, back to how it was (0014 D4 amend, 2026-09-23). Cleared on leaving.
+    mode_entered_hidden: bool = False
     selected_hint: str | None = None
     delete_pending: str | None = None
 

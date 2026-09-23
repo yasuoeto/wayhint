@@ -261,8 +261,8 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 | 状態 | keyboard_mode | 入口 | 出口 |
 |---|---|---|---|
 | `normal` | NONE | show / toggle | hide、workspace 離脱 |
-| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`・`c`(コピー)、もう一度 `search-mode`、hide、workspace 離脱 |
-| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`、hide、workspace 離脱 |
+| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`・`c`(コピー)、もう一度 `search-mode`(入場時の表示状態へ戻る)、hide、workspace 離脱 |
+| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`（入場時の表示状態へ戻る）、hide、workspace 離脱 |
 
 - `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
   hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
@@ -278,7 +278,14 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
 - エラー行は共用。YAML error と context 取得の失敗は成り立つ間ずっと出し、操作への一回限りの答え
   (拒否の理由など)は **次のモード変更で消えて**前者に戻る(例: 編集中の `search-mode` の拒否は、編集を
   抜けると消える)。
-- `edit` 中の hotkey は hide / show（0013 の例外）。
+- `edit` と `search` 中の hotkey（`toggle`）は hide / show（0013 の例外。search は 2026-09-23 から）。
+  モードは保ったまま grab だけ外し、show で戻す。`Close` ボタンと `wayhint hide` は従来どおり閉じる
+  （search はそこで抜ける）。
+- **モード用 hotkey の 2 度目は入場時の表示状態へ戻る**（0014 D4 amend、2026-09-23）。非表示から入った
+  ときは、モードを抜けて hide する（NONE、前の view へ focus 復帰）。表示中から入ったときは、モードを
+  抜けて `normal` の表示を続ける。「非表示から入った」は view の `mode_entered_hidden`（メモリのみ）で
+  持ち、モードを抜けたときに消える。`toggle` の hide / show では消えず、edit は workspace の離脱・復帰でも
+  残る（search は workspace 離脱で抜けるので残らない）。`Esc` はモードを抜けるだけで表示は変えない。
 - エディタ起動（「エディタで編集」）では overlay を隠さない（DECISIONS 0023）。editor でキュレーション
   した結果を、保存のたびに reload で見たいため。`edit` / `search` のときは Escape と同じ経路で `normal`
   に戻し（keyboard_mode NONE、前の view へ focus 復帰）、editor が入力を受けられるようにする。`normal`
@@ -630,7 +637,8 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
 - T12 「閉じる」で閉じたあと workspace を往復しても再表示されない
 - T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る。
-  もう一度 `wayhint edit-mode` を呼んでも同じく抜ける（フォームが開いていれば 1 回目はフォームを閉じるだけ）
+  もう一度 `wayhint edit-mode` を呼んでも同じく抜ける（フォームが開いていれば 1 回目はフォームを閉じるだけ）。
+  作業中（非表示）から `Super+Ctrl+H` → もう一度 `Super+Ctrl+H` で overlay が消え、**元アプリにそのまま入力が通る**
 - T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
 - T15 edit 中の hotkey → hide / show、入力が残る
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
@@ -644,7 +652,8 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T17b `↑` `↓` で選択が 1 行ずつ動き、端で止まる。動かした行に `f` が効く（マウスを使わない）
   **(2026-09-23 確認済)**
 - T18 gvim で開いたまま GUI 保存 → gvim に W11
-- T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない
+- T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない。
+  作業中（非表示）から `Super+Shift+H` → もう一度 `Super+Shift+H` で overlay が消え、**元アプリにそのまま入力が通る**
 - T20 `#` 途中入力 + Tab → 補完
 - T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
 - T22 `d` `d` → 削除、`u` → 復帰

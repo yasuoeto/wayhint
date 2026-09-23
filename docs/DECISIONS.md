@@ -306,6 +306,17 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **hotkey（0013 の例外）**: 編集モード中の hotkey は「差し替え」ではなく overlay の **hide / show** とする。
   hotkey の意味は「いま見ているものの hint」だが、書き込み中は「いま書いているもの」に置き換わっていると解釈する。
   入力を破棄する経路は `Esc` のみ。
+- **（2026-09-23 amend）モード用 hotkey の 2 度目は「入った時の表示状態へ戻る」。** `edit-mode` と
+  `search-mode` の 2 度目は、非表示から入った場合はモードを抜けて hide し（NONE、前の view へ focus 復帰）、
+  表示中から入った場合はモードを抜けて `normal` の表示を続ける。「非表示から入った」は workspace ごとの
+  view に bool 1 つ（`mode_entered_hidden`、メモリのみ）で持ち、モードを抜けた時点で消す。`toggle` の
+  hide / show では消えない（edit は workspace の離脱・復帰でも残る）。フォームが開いているときの
+  `edit-mode` の 1 打目はフォームを閉じるだけで、次の 1 打で抜けて戻る（下書きを 1 打で捨てない）。
+  `toggle` と `Esc` は変えない。モードをまたぐ押下（edit 中の `search-mode` は拒否、search 中の
+  `edit-mode` はそのまま edit へ）も変えない。抜けて hide する経路は既存のモード終了と既存の hide を
+  順に呼ぶだけで、`keyboard_mode` を触るのは `_sync_keyboard_mode()` のまま。理由: 非表示から押した人は
+  同じキーで作業に戻ることを期待する。`toggle` は表示を、`edit-mode` / `search-mode` はモードを、それぞれ
+  「押した分だけ戻す」。
 
 #### D5. quick add
 
@@ -1134,6 +1145,11 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   そのまま `search` へ。`search` 中にもう一度 `search-mode` が来たら Esc と同じ経路で `normal` に戻す
   （keyboard_mode NONE → 前の view へ focus 復帰）。出口を増やさない。`edit` 中の `search-mode` は
   「編集中は検索しない」（0014）に合わせて拒否し、理由を表示する。検索ボタンは残す。
+  **（2026-09-23 追記）検索中の `toggle` も hide / show。** edit と同じく（0014 D4）、検索中の hotkey は
+  検索を保ったまま overlay を隠し、もう一度で検索欄の内容ごと戻す。当初の C の「hide は `search` を抜ける
+  経路」のうち、`toggle` による hide はここで外れる（`Close` ボタンと `wayhint hide` は従来どおり抜けて
+  閉じる。workspace 離脱も抜ける）。モード用 hotkey の 2 度目で入場時の表示状態へ戻す 0014 D4 amend
+  （同日）と揃えるため。隠れた検索に `search-mode` が来たら、edit と同じく表示し直して検索を続ける。
   **（2026-09-23 追記）表示中でも context を取り直す。** 別の window から押したときは、`toggle` と同じく
   overlay を閉じずに中身を差し替えてから `search` へ入る。同じ window ならそのまま。実機の T45 で、
   Herdr の window で開いたままの overlay に対し、vi を動かす別の foot から押すと Herdr の hint を検索し、

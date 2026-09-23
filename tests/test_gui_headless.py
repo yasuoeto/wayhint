@@ -367,7 +367,13 @@ class SearchModeTest(unittest.TestCase):
         root = config_root(self, self.OVERLAY)
         with HeadlessSession(root, width=WIDTH, height=HEIGHT) as session:
             session.toplevel("wayhint-probe")
+            # Open first: entered from a hidden overlay, the second search-mode would close it
+            # again (0014 D4 amend) and there would be no chip to read. The point here is the
+            # filter outliving the search, so the overlay has to stay.
+            session.wayhint("show")
+            self.until(session, "the overlay never opened", lambda: "Demo" in self.showing(session))
             self.assertIn("mode=search", session.wayhint("search-mode"), session.log_tail())
+            self.until(session, "search did not start", lambda: "Done" in self.showing(session))
             # The first key of a session can be lost while the compositor hands the keyboard
             # over (see EditModeKeyboardTest); whichever way it went, BackSpace leaves it empty.
             session.press("x")

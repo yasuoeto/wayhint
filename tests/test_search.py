@@ -242,11 +242,26 @@ class DaemonSearchTest(DaemonCase):
         self.assertEqual(load_state(self.state), ({"b": "pane"}, []))
 
     def test_replacing_the_view_keeps_the_filter_of_the_one_it_replaces(self):
+        # Replaced by ``show`` from another window. The toggle hotkey used to replace it too, but
+        # now holds a search the way it holds edit (0033 amend, 2026-09-23; see the next test).
         self.search("pane")
         self.daemon.resolver = Resolver("a")
-        self.daemon.toggle()  # another window: replace b with a
+        self.daemon.show()
         self.assertEqual(self.daemon.filters, {"b": "pane"})
         self.assertEqual(self.daemon._current_view().mode, "normal")
+
+    def test_the_toggle_hotkey_hides_a_search_and_shows_it_again_as_it_was(self):
+        self.search("pane")
+        self.daemon.resolver = Resolver("a")  # even from another window, as for edit (0014 D4)
+        self.assertEqual(self.daemon.toggle(), {"visible": False, "mode": "search"})
+        self.assertIs(self.daemon._current_view(), self.view)
+        self.assertEqual((self.view.mode, self.window.visible), ("search", False))
+        self.assertEqual(self.daemon.filters, {})  # nothing left search, so nothing was kept
+        self.daemon.toggle()
+        self.assertEqual(
+            (self.view.mode, self.window.mode, self.window.visible), ("search",) * 2 + (True,)
+        )
+        self.assertEqual(self.window.text, "pane")
 
     def test_leaving_the_workspace_ends_the_search_and_keeps_the_filter(self):
         workspace = Workspace()
@@ -346,3 +361,141 @@ class MoveWhileFilteredTest(DaemonCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BackToHowItWasTest(DaemonCase):
+    """The mode hotkey pressed again returns to how the overlay was when it was pressed first.
+
+    0014 D4 amend (2026-09-23): entered from a hidden overlay, the second ``edit-mode`` /
+    ``search-mode`` leaves the mode *and* hides; entered from one on screen, it only leaves.
+    ``toggle`` and Escape are unchanged. The flag lives on the view, survives ``toggle`` hide /
+    show (and, for edit, leaving the workspace), and is cleared whenever the mode is left.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.daemon.hide()  # at work in another application: nothing on screen
+        self.assertFalse(self.window.visible)
+
+    def grab(self):
+        return em.keyboard_grab(self.window.mode, self.window.visible)
+
+    def current(self):
+        return self.daemon._current_view()
+
+    def assert_hidden_and_normal(self, reply):
+        self.assertEqual((reply["visible"], reply["mode"]), (False, "normal"))
+        self.assertEqual((self.window.mode, self.window.visible), ("normal", False))
+        self.assertIsNone(self.current())  # closed, as it was before the first press
+        self.assertFalse(self.grab())
+
+    # --- edit ------------------------------------------------------------------------------
+
+    def test_edit_from_hidden_twice_hides_again(self):
+        self.assertEqual(self.daemon.dispatch("edit-mode")["mode"], "edit")
+        self.assertTrue(self.window.visible and self.grab())
+        self.assert_hidden_and_normal(self.daemon.dispatch("edit-mode"))
+
+    def test_edit_from_visible_twice_stays_on_screen(self):
+        self.daemon.show()
+        self.daemon.dispatch("edit-mode")
+        reply = self.daemon.dispatch("edit-mode")
+        self.assertEqual((reply["visible"], reply["mode"]), (True, "normal"))
+        self.assertEqual((self.window.mode, self.window.visible), ("normal", True))
+
+    def test_an_open_form_is_closed_first_and_the_next_press_hides(self):
+        self.daemon.dispatch("edit-mode")
+        self.daemon.on_edit_action(em.ADD, {})
+        self.assertIsNotNone(self.window.form)
+        reply = self.daemon.dispatch("edit-mode")
+        self.assertEqual((reply["visible"], reply["mode"]), (True, "edit"))
+        self.assertIsNone(self.window.form)
+        self.assertTrue(self.current().mode_entered_hidden)
+        self.assert_hidden_and_normal(self.daemon.dispatch("edit-mode"))
+
+    def test_the_toggle_round_trip_keeps_the_flag_for_edit(self):
+        self.daemon.dispatch("edit-mode")
+        self.daemon.toggle()
+        self.daemon.toggle()
+        self.assertEqual((self.current().mode, self.window.visible), ("edit", True))
+        self.assert_hidden_and_normal(self.daemon.dispatch("edit-mode"))
+
+    def test_leaving_the_workspace_and_coming_back_keeps_the_flag_for_edit(self):
+        workspace = Workspace()
+        workspace.known = lambda: {"A", "B"}
+        self.daemon._watcher = workspace
+        self.daemon.dispatch("edit-mode")  # on A
+        workspace.key = "B"
+        self.daemon._apply_workspace()
+        self.assertFalse(self.window.visible)
+        workspace.key = "A"
+        self.daemon._apply_workspace()
+        self.assertEqual((self.current().mode, self.window.visible), ("edit", True))
+        self.assert_hidden_and_normal(self.daemon.dispatch("edit-mode"))
+
+    def test_escape_leaves_edit_on_screen_and_clears_the_flag(self):
+        self.daemon.dispatch("edit-mode")
+        self.daemon.on_edit_action(em.EXIT_EDIT, {})
+        self.assertEqual((self.window.mode, self.window.visible), ("normal", True))
+        self.assertFalse(self.current().mode_entered_hidden)
+        self.daemon.dispatch("edit-mode")  # entered from a visible overlay now
+        reply = self.daemon.dispatch("edit-mode")
+        self.assertEqual((reply["visible"], reply["mode"]), (True, "normal"))
+
+    # --- search ----------------------------------------------------------------------------
+
+    def test_search_from_hidden_twice_hides_again_and_keeps_the_filter(self):
+        self.assertEqual(self.daemon.dispatch("search-mode")["mode"], "search")
+        self.window.text = "pane"
+        self.assert_hidden_and_normal(self.daemon.dispatch("search-mode"))
+        self.assertEqual(self.daemon.filters, {"b": "pane"})
+
+    def test_search_from_visible_twice_stays_on_screen(self):
+        self.daemon.show()
+        self.daemon.dispatch("search-mode")
+        reply = self.daemon.dispatch("search-mode")
+        self.assertEqual((reply["visible"], reply["mode"]), (True, "normal"))
+        self.assertEqual((self.window.mode, self.window.visible), ("normal", True))
+
+    def test_the_toggle_round_trip_keeps_the_flag_for_search(self):
+        self.daemon.dispatch("search-mode")
+        self.daemon.toggle()
+        self.assertEqual((self.current().mode, self.window.visible), ("search", False))
+        self.daemon.toggle()
+        self.assertEqual((self.current().mode, self.window.visible), ("search", True))
+        self.assert_hidden_and_normal(self.daemon.dispatch("search-mode"))
+
+    def test_search_mode_on_a_search_hidden_by_toggle_shows_it_again(self):
+        self.daemon.dispatch("search-mode")
+        self.daemon.toggle()
+        reply = self.daemon.dispatch("search-mode")
+        self.assertEqual((reply["visible"], reply["mode"]), (True, "search"))
+        self.assertTrue(self.current().mode_entered_hidden)
+
+    def test_escape_leaves_search_on_screen_and_clears_the_flag(self):
+        self.daemon.dispatch("search-mode")
+        self.daemon.on_edit_action(em.END_SEARCH, None)
+        self.assertEqual((self.window.mode, self.window.visible), ("normal", True))
+        self.assertFalse(self.current().mode_entered_hidden)
+        self.daemon.dispatch("search-mode")
+        reply = self.daemon.dispatch("search-mode")
+        self.assertEqual((reply["visible"], reply["mode"]), (True, "normal"))
+
+    # --- across modes: unchanged (decision 6) ------------------------------------------------
+
+    def test_search_mode_during_edit_is_still_refused(self):
+        self.daemon.dispatch("edit-mode")
+        self.assertFalse(self.daemon.dispatch("search-mode")["ok"])
+        self.assertEqual((self.current().mode, self.window.visible), ("edit", True))
+        self.assertTrue(self.current().mode_entered_hidden)
+
+    def test_edit_mode_during_search_still_goes_straight_to_edit(self):
+        """Pinned as it is, gap included: the box's text is not kept as the filter (0033 C says it
+        should be; left for a separate change, STATUS)."""
+        self.daemon.show()
+        self.daemon.dispatch("search-mode")
+        self.window.text = "pane"
+        self.assertEqual(self.daemon.dispatch("edit-mode")["mode"], "edit")
+        self.assertEqual((self.current().mode, self.window.mode), ("edit", "edit"))
+        self.assertEqual((self.current().filter_query, self.daemon.filters), ("", {}))
+        self.assertFalse(self.current().mode_entered_hidden)

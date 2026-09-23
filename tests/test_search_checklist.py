@@ -346,5 +346,26 @@ class T46aReloadWhileSearchingTest(RealWindowCase):
         self.assertEqual(self.selected(), "split")
 
 
+class ModeHotkeyTwiceTest(RealWindowCase):
+    """Entered from a hidden overlay, the second press hides and lets go of the keyboard.
+
+    0014 D4 amend (2026-09-23). The daemon tests pin the states; this one reads the grab the
+    real layer surface was left with, which is what decides whether the application gets its
+    keys back.
+    """
+
+    def test_edit_and_search_from_hidden_end_with_no_grab(self):
+        none = self.gui.LayerShell.KeyboardMode.NONE
+        for cmd in ("edit-mode", "search-mode"):
+            with self.subTest(cmd=cmd):
+                self.assertFalse(self.visible)
+                self.send(cmd)
+                self.assertNotEqual(self.gui.LayerShell.get_keyboard_mode(self.window), none)
+                reply = self.send(cmd)
+                self.assertEqual((reply["visible"], reply["mode"]), (False, "normal"))
+                self.assertFalse(self.visible)
+                self.assertEqual(self.gui.LayerShell.get_keyboard_mode(self.window), none)
+
+
 if __name__ == "__main__":
     unittest.main()

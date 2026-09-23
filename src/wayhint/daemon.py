@@ -311,17 +311,20 @@ class Daemon:
         self._start_workspace_watch()
         key = self._workspace_key()
         shown = self._open.get(key)
-        if shown is not None and shown.mode == "edit":
+        if shown is not None and shown.mode in ("edit", "search"):
             # 0014 D4: while editing, the hotkey is hide / show. "What I am looking at" is what
             # is being written, so it must come back unchanged -- even from another window.
+            # Search is held the same way (0033 amend, 2026-09-23): hiding lets go of the
+            # keyboard but keeps the box, and showing puts it back as it was.
+            mode = shown.mode
             if self.window.is_shown():
-                log.info("hotkey during edit: hiding, keeping the draft")
+                log.info("hotkey during %s: hiding, keeping the mode", mode)
                 self._sync_shown()
                 self.window.hide_overlay()
-                return {"visible": False, "mode": "edit"}
-            log.info("hotkey during edit: showing the draft again")
+                return {"visible": False, "mode": mode}
+            log.info("hotkey during %s: showing it again", mode)
             self._present(key, shown)
-            return {"visible": True, "sheet": shown.context.active_sheet, "mode": "edit"}
+            return {"visible": True, "sheet": shown.context.active_sheet, "mode": mode}
         ctx = self.resolver.resolve(self.store.sheets, self.config)
         action = toggle_action(
             shown is not None, shown is not None and shown.target_key() == ctx.target_key()
@@ -433,9 +436,14 @@ class Daemon:
                 view.form = None
                 self.window.close_form()
                 return {"visible": True, "mode": "edit", "sheet": view.context.active_sheet}
+            hidden = view.mode_entered_hidden
             self._exit_edit_mode(view)
+            if hidden:  # entered from a hidden overlay: back to hidden (0014 D4 amend)
+                self.hide()
+                return {"visible": False, "mode": "normal", "sheet": view.context.active_sheet}
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
-        if view is None or not self.window.is_shown():
+        hidden = view is None or not self.window.is_shown()
+        if hidden:
             self.show()
         elif view.form is None:
             self._follow_focus(view, "edit-mode")
@@ -449,6 +457,7 @@ class Daemon:
             self.window.show_message(f"⚠ {message}")
             return {"ok": False, "error": message}
         view.mode = "edit"
+        view.mode_entered_hidden = hidden
         self.window.set_mode("edit")
         if view.form is not None:  # a draft kept across an editor start (0023)
             self.window.open_form(view.form)
@@ -473,10 +482,18 @@ class Daemon:
             if self.window.is_shown():
                 self.window.show_message(f"⚠ {message}")
             return {"ok": False, "error": message}
-        if view is not None and view.mode == "search" and self.window.is_shown():
+        if view is not None and view.mode == "search":
+            if not self.window.is_shown():  # hidden by the toggle hotkey: bring it back as it was
+                self._present(self._workspace_key(), view)
+                return {"visible": True, "mode": "search", "sheet": view.context.active_sheet}
+            hidden = view.mode_entered_hidden
             self._leave_search(view)
+            if hidden:  # entered from a hidden overlay: back to hidden (0014 D4 amend)
+                self.hide()
+                return {"visible": False, "mode": "normal", "sheet": view.context.active_sheet}
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
-        if view is None or not self.window.is_shown():
+        hidden = view is None or not self.window.is_shown()
+        if hidden:
             self.show()
         else:
             self._follow_focus(view, "search-mode")
@@ -484,6 +501,7 @@ class Daemon:
         if view is None:
             return {"ok": False, "error": "nothing to search"}
         view.mode = "search"
+        view.mode_entered_hidden = hidden
         self.window.set_mode("search")
         return {"visible": True, "mode": "search", "sheet": view.context.active_sheet}
 
@@ -509,6 +527,7 @@ class Daemon:
         query = sanitize_query(self.window.search_text())
         view.filter_query = query
         view.mode = "normal"
+        view.mode_entered_hidden = False
         self.window.set_filter(query, render=False)  # set_mode renders
         self.window.set_mode("normal", refocus=refocus)
         self._keep_filter(view.context.active_sheet, query)
@@ -637,6 +656,7 @@ class Daemon:
         assert self.window is not None
         view.mode = "normal"
         view.form = None
+        view.mode_entered_hidden = False
         self.window.set_mode("normal")
 
     def _hint_by_id(self, hint_id: str, file: Path | str | None) -> tuple[Hint, HintSheet] | None:
