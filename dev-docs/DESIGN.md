@@ -377,6 +377,8 @@ edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/
   見ているものと同じ sheet に入れる。未選択、または所属ファイルが消えていれば active sheet、
   それも無ければ §7 で新規作成。`Ctrl+P` は追加先を親 sheet に切り替える。フォームの見出しに
   追加先の sheet 名を出す。混入 hint の編集は所属 sheet に書く（0014 D9）。
+  ただし**前面のアプリの sheet が無いか空**なら、選択に関係なく前面のアプリの sheet(無ければ §7 で新規作成)に
+  入れる(DECISIONS 0041)。一覧の行がすべて親・include のもので、先頭が自動で選ばれているため。
 
 ### 4. 書き戻し（yaml_store）
 
@@ -680,6 +682,9 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
 - T23c 混入 hint（親 sheet）を選んで `a` → フォームの見出しが親 sheet になり、保存すると
   親 sheet ファイルに追記される。未選択で `a` を押すと active sheet が追加先になる
+- T23d 親 sheet はあり、前面プロセスの sheet が無い(または `hints: []`)状態で、親のヒントが選ばれたまま `a`
+  → 見出しが「→ 新しいシート」(空の sheet ならその名前)になり、保存すると前面プロセスの sheet に入る。
+  `Ctrl+P` で親に切り替えれば親に入る(0041)
 - T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と
   id の不一致が出る **(2026-09-19 確認済)**
 - T30 `appearance.language` を `ja` / `en` で切り替える（または `LANG` を変えて daemon を起動）

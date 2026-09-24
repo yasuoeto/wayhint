@@ -1440,6 +1440,25 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: 件数は重複を除く前の数。`inspect` の `--parent` は仮定なので、実際の親と違えば結果も違う(実際の画面は
   `--shown`)。IPC の応答は絞りの説明の分だけ大きくなるが 4096 byte に余裕がある。
 
+## 0041 — 前面のアプリに自分のヒントが無いときの quick add は、そのアプリのシートに入れる
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Amends**: 0025
+- **Context**: 一覧を開くと先頭の行が自動で選ばれる(`restore_index`)。前面のアプリにシートが無い、またはシートが
+  空だと、一覧の行はすべて親か include のヒントなので、`a` を押すと 0025 に従って**別のアプリのシート**に入っていた。
+  端末の中の前面プロセスにシートが無いときは、resolver が端末のシートを active として出す(`active_sheet ==
+  parent_context`)ので、選択を外しても親に入り、前面プロセスのシートを作る経路(0014 D6)に届かなかった。
+- **Decision**: 前面のアプリのシートが無いか空のときは、選択に関係なく**前面のアプリのシート**を追加先にする。
+  無ければ保存時に作る(0014 D6、match は前面プロセスから)。`Ctrl+P` で親に切り替えられるのは従来どおり。
+  前面のアプリが自分のヒントを持っていれば 0025 のまま(選択中のヒントのシート)。「前面プロセスにシートが無い」
+  とみなすのは、`active_sheet == parent_context` で、前面プロセスが取れていて、親シートがそのプロセスに一致しない
+  ときだけ。プロセスが取れていない(端末そのものが前面)ときに作ると、端末の中の全コマンドに一致するシートになる(0027)。
+- **Alternatives**: resolver が前面プロセスにシートが無いとき active を `None` にする(表示・出力先の選択・`wayhint
+  context` まで変わる。困っているのは追加先だけ); 自動選択をやめる(親のヒントを `Enter` で開く操作に 1 手増える)。
+- **Consequences**: Herdr の中でシェルのプロンプトが前面のときに `a` を押すと、シェルのシートを作る(generic
+  process の警告付き、0027)。親に入れるには `Ctrl+P`。フォームの見出しが「→ 新しいシート」になるので見れば分かる。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

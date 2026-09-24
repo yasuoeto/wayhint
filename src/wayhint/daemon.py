@@ -33,7 +33,7 @@ from wayhint.context.workspace import (  # noqa: E402
 )
 from wayhint.editor import EditorError, edit_target, open_in_editor  # noqa: E402
 from wayhint.i18n import translator  # noqa: E402
-from wayhint.matcher import argv_basenames  # noqa: E402
+from wayhint.matcher import argv_basenames, match_process  # noqa: E402
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.selection import (  # noqa: E402
     effective_parent_tags,
@@ -757,18 +757,46 @@ class Daemon:
         selected hint's, not the context's active sheet. With nothing selected -- or a selection
         whose file is gone -- it falls back to the active sheet, and a context with no sheet at
         all still gets one made on save (§7).
+
+        Except when the front app has no hints of its own: no sheet, or a sheet with none in it
+        (0041). Every row on the list is then somebody else's -- the parent's, an include's --
+        and the first of them is selected on its own, so following the cursor would put the
+        first hint anyone writes for this app into another app's sheet. The front app's sheet
+        wins instead, made on save if there is none; ``Ctrl+P`` still reaches the parent.
         """
         assert self.window is not None
         warning = None
-        sheet = self._sheet_by_path(payload.get("file")) or self._sheet_by_id(
-            view.context.active_sheet
-        )
+        front = self._front_sheet(view.context)
+        if front is None or not front.hints:
+            sheet = front
+        else:
+            sheet = self._sheet_by_path(payload.get("file")) or front
         if sheet is None:
             _match, warning = match_rule_for_context(view.context)
         draft = FormDraft(sheet_id=sheet.id if sheet else None, fields={"kind": "shortcut"})
         draft.warning = warning
         view.form = draft
         self.window.open_form(draft)
+
+    def _front_sheet(self, context: ResolvedContext) -> HintSheet | None:
+        """The sheet of the app in front, or ``None`` when it has none.
+
+        Not simply the active sheet: inside a terminal whose foreground process has no sheet,
+        the resolver shows the terminal's own sheet in its place, so the active sheet *is* the
+        parent. Two cases look the same and are not that: no foreground process was found (the
+        terminal itself is in front, and a sheet made for it would match every command run in
+        it, 0027), and a parent sheet that matches the process as well (it is the process's).
+        """
+        active = self._sheet_by_id(context.active_sheet)
+        proc = context.foreground_process
+        if (
+            active is not None
+            and proc is not None
+            and context.active_sheet == context.parent_context
+            and match_process([active], proc) is None
+        ):
+            return None
+        return active
 
     def _open_edit_form(self, view: WorkspaceView, payload: dict) -> None:
         assert self.window is not None
@@ -811,7 +839,7 @@ class Daemon:
         sheet = self._sheet_by_id(sheet_id)
         if sheet is not None:
             if draft.to_parent:
-                child = self._sheet_by_id(view.context.active_sheet)
+                child = self._front_sheet(view.context)
                 tags = effective_parent_tags(child, self.config.parent_tags, sheet)
                 if tags:
                     fields["tags"] = list(tags)

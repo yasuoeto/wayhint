@@ -9,7 +9,7 @@ from unittest import mock
 from wayhint import daemon as daemon_module
 from wayhint.daemon import Daemon
 from wayhint.editor import EditorError
-from wayhint.models import ResolvedContext
+from wayhint.models import ProcessInfo, ResolvedContext
 from wayhint.ui import editmode as em
 from wayhint.ui.editmode import WorkspaceView
 from wayhint.yaml_store import SheetWriteError, load_sheet
@@ -444,6 +444,120 @@ class DaemonEditTest(unittest.TestCase):
         self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
         self.assertIsNotNone(self.window.form)
         self.assertTrue(self.window.messages[-1].startswith("⚠"))
+
+
+NVIM = ProcessInfo(pid=42, name="nvim", argv=("nvim",), cmdline="nvim")
+
+
+class FrontSheetQuickAddTest(unittest.TestCase):
+    """Quick add when the front app has no hints of its own (0041).
+
+    Every row on the list is then the parent's or an include's, and the first one is selected
+    on its own; following the cursor would put the app's first hint into another app's sheet.
+    """
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.hints = self.root / "hints"
+        self.hints.mkdir()
+        self.write(
+            "herdr",
+            "match: {wayland: {app_id_regex: ['^herdr$']}}\n"
+            "hints:\n  - {id: split, title: split the pane}\n",
+        )
+        self.daemon = Daemon(self.root, self.root / "unused.sock")
+        self.daemon.config = replace(self.daemon.config, workspace_scope="all")
+        self.window = Window()
+        self.daemon.window = self.window
+
+    def write(self, name, body):
+        (self.hints / f"{name}.yaml").write_text(f"id: {name}\ntitle: {name}\n{body}")
+
+    def open(self, context):
+        self.daemon.store.load_all()
+        self.view = WorkspaceView(context, mode="edit")
+        self.daemon._open[""] = self.view
+        self.daemon._shown_key = ""
+
+    def inside_herdr(self, active="herdr", proc=NVIM):
+        return ResolvedContext(
+            desktop_app="herdr",
+            parent_context="herdr",
+            foreground_process=proc,
+            active_sheet=active,
+        )
+
+    def add_on_the_parent_hint(self, title="first nvim hint", to_parent=False):
+        self.daemon.on_edit_action(em.ADD, {"file": str(self.hints / "herdr.yaml")})
+        target = self.window.form.sheet_id
+        self.window.form.fields.update(title=title)
+        self.window.form.to_parent = to_parent
+        self.daemon.on_edit_action(em.FORM_SAVE, {"draft": self.window.form})
+        return target
+
+    def titles(self, name):
+        sheet, issues = load_sheet(self.hints / f"{name}.yaml")
+        self.assertEqual(issues, [])
+        return [h.title for h in sheet.hints]
+
+    def test_a_process_without_a_sheet_gets_one_even_with_the_parent_hint_selected(self):
+        self.open(self.inside_herdr())
+        self.assertIsNone(self.add_on_the_parent_hint())
+        self.assertEqual(self.titles("herdr"), ["split the pane"])
+        made = [p for p in self.hints.glob("*.yaml") if p.name != "herdr.yaml"]
+        self.assertEqual(len(made), 1)
+        self.assertIn("argv_regex", made[0].read_text())
+        self.assertEqual(self.view.context.parent_context, "herdr")
+        self.assertEqual(self.view.context.active_sheet, load_sheet(made[0])[0].id)
+
+    def test_ctrl_p_still_puts_it_in_the_parent(self):
+        self.open(self.inside_herdr())
+        self.add_on_the_parent_hint(title="for herdr", to_parent=True)
+        self.assertEqual(self.titles("herdr"), ["split the pane", "for herdr"])
+        self.assertEqual(sorted(p.name for p in self.hints.glob("*.yaml")), ["herdr.yaml"])
+
+    def test_an_empty_sheet_of_the_process_is_the_target(self):
+        self.write("nvim", "match: {process: {argv_regex: ['^nvim$']}}\nhints: []\n")
+        self.open(self.inside_herdr(active="nvim"))
+        self.assertEqual(self.add_on_the_parent_hint(), "nvim")
+        self.assertEqual(self.titles("nvim"), ["first nvim hint"])
+        self.assertEqual(self.titles("herdr"), ["split the pane"])
+
+    def test_a_sheet_with_hints_of_its_own_still_follows_the_cursor(self):
+        # 0025 is unchanged once the app has rows of its own on the list.
+        self.write(
+            "nvim",
+            "match: {process: {argv_regex: ['^nvim$']}}\nhints:\n  - {id: w, title: write}\n",
+        )
+        self.open(self.inside_herdr(active="nvim"))
+        self.assertEqual(self.add_on_the_parent_hint(), "herdr")
+
+    def test_an_empty_sheet_outside_a_terminal_is_the_target(self):
+        self.write("notes", "match: {wayland: {app_id_regex: ['^notes$']}}\nhints: []\n")
+        self.open(ResolvedContext(desktop_app="notes", active_sheet="notes"))
+        self.assertEqual(self.add_on_the_parent_hint(), "notes")
+        self.assertEqual(self.titles("notes"), ["first nvim hint"])
+
+    def test_an_app_without_a_sheet_does_not_follow_an_included_hint(self):
+        self.open(ResolvedContext(desktop_app="notes"))
+        self.assertIsNone(self.add_on_the_parent_hint())
+        self.assertEqual(self.titles("herdr"), ["split the pane"])
+
+    def test_the_terminal_itself_in_front_is_not_a_process_without_a_sheet(self):
+        # No foreground process: a sheet made now would match every command in the terminal.
+        self.open(self.inside_herdr(proc=None))
+        self.assertEqual(self.add_on_the_parent_hint(), "herdr")
+
+    def test_a_parent_sheet_that_matches_the_process_is_the_process_s_sheet(self):
+        self.write(
+            "herdr",
+            "match: {wayland: {app_id_regex: ['^herdr$']}, process: {argv_regex: ['^nvim$']}}\n"
+            "hints:\n  - {id: split, title: split the pane}\n",
+        )
+        self.open(self.inside_herdr())
+        self.assertEqual(self.add_on_the_parent_hint(), "herdr")
 
 
 class DaemonHintsDirTest(unittest.TestCase):
