@@ -68,7 +68,7 @@ steps:
   - id: parent-follows
     pause: true
     wait_for: {overlay: visible, label: "中クリックペースト"}
-    caption: {ja: "親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ"}
+    caption: {ja: "親子関係にあるプロセスのヒントを同時に表示する、親である Herdr の操作も並ぶ"}
     hold: 7.0
 
   - id: parent-all

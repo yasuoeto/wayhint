@@ -105,7 +105,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       unchecked: "画面は前の step のまま。次の場面への言い渡しだけが進む"
-    caption: {ja: "見ているのはウィンドウではなく、中のプロセス"}
+    caption: {ja: "見ているのはウィンドウではなく、一番前のプロセス"}
     hold: 5.0
 
   - id: new-tab
@@ -124,13 +124,13 @@ steps:
   - id: switch-pane
     key: super+h
     wait_for: {overlay: visible, label: "Codex", hints: 9}
-    caption: {ja: "別のペインで押し直せば、閉じずに差し替わる"}
+    caption: {ja: "別のタブで押し直せば、閉じずに差し替わる"}
     hold: 8.0
 
   - id: parent-hints
     cli: refresh
     wait_for: {overlay: visible, label: "Codex"}
-    caption: {ja: "親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ"}
+    caption: {ja: "親子関係にあるプロセスのヒントを同時に表示する、親である Herdr の操作も並ぶ"}
     hold: 8.0
 
   # --- §4 主役2: 奪わない(search)/ §5 主役3(edit)の入口 --------------------------------------
