@@ -1,4 +1,3 @@
-# Herdr が無くても端末の foreground process を /proc から見る、を示すための sheet。
 id: vi
 title: Vi
 priority: 10
