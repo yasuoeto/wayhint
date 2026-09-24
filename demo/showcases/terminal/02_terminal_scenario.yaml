@@ -15,8 +15,9 @@ windows:
   - {title: less, x: 36, y: 56, width: 560, height: 380}
   - {title: vi, x: 112, y: 240, width: 560, height: 380}
   # The terminal `./scripts/setup-terminals` is read in. Wide, because no overlay is on screen
-  # while it is up and its longest line (the Ghostty .desktop) is about 80 columns.
-  - {title: setup, x: 36, y: 56, width: 1200, height: 360}
+  # while it is up and its longest line (the Ghostty .desktop) is about 80 columns; tall enough
+  # for four terminals' worth of output (about 20 lines) and still clear of the caption band.
+  - {title: setup, x: 36, y: 56, width: 1200, height: 480}
   # The terminal `wayhint context --shown` is read in, over the other two and clear of the
   # overlay: what it prints is about the overlay, so both have to be in view.
   - {title: shown, x: 40, y: 292, width: 620, height: 310}
@@ -36,7 +37,7 @@ steps:
   - id: supported
     pause: true
     wait_for: {overlay: hidden}
-    caption: {ja: "foot / kitty / Ghostty に対応"}
+    caption: {ja: "foot / kitty / Ghostty / Alacritty に対応"}
     hold: 6.0
 
   # --- the one step of setup, before it is used ------------------------------------------------

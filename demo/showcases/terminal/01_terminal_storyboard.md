@@ -41,13 +41,13 @@
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 0–5 | foot の窓 1 枚。中で less が sheet を開いている | herdr などの multiplexer を使っていない端末でも |
-| 5–11 | 同じ画面 | foot / kitty / Ghostty に対応 |
+| 5–11 | 同じ画面 | foot / kitty / Ghostty / Alacritty に対応 |
 
 ### §2 前準備(0:11–0:25)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
-| 11–17 | 横長の端末の窓が開き、`$ ./scripts/setup-terminals` と dry run の出力(foot / kitty / Ghostty ごとに wrapper と `.desktop` を「作成します」) | 端末で使うには、前準備が 1 つ要る |
+| 11–17 | 横長の端末の窓が開き、`$ ./scripts/setup-terminals` と dry run の出力(foot / kitty / Ghostty / Alacritty ごとに wrapper と `.desktop` を「作成します」) | 端末で使うには、前準備が 1 つ要る |
 | 17–25 | 同じ画面。最終行の「書き込むには --apply を付けてください」。25 秒で窓を閉じる | 準備は scripts/setup-terminals 一発。既定は確認だけ |
 
 ### §3 使う(0:25–0:51)
