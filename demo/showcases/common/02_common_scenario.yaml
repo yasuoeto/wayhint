@@ -21,8 +21,28 @@ windows:
 
 steps:
   # =============================================================================================
-  # 3 分版 / 5 分版が共有する本編(storyboard §1–§6)
+  # 4 つの variant(overview / search / edit / sheets)が使い回す step。どの variant も
+  # 単独で見られる 1 本なので、それぞれ Herdr と Claude Code の起動から始まる。overview 以外は
+  # 下の boot-* で字幕なしに起動する(overview の §1 の字幕を 4 回見せないため)。
   # =============================================================================================
+
+  # --- 字幕なしの起動(search / edit / sheets の冒頭) -----------------------------------------------
+  - id: boot-herdr
+    spawn: {window: Herdr, argv: [foot-herdr]}
+    wait_for:
+      toplevel: "^foot-herdr$"
+      context: {active_sheet: herdr}
+      overlay: hidden
+      timeout: 40
+    hold: 1.0
+
+  - id: boot-claude
+    herdr: [pane, run, "w1:p1", claude]
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: hidden
+      timeout: 30
+    hold: 2.0
 
   # --- §1 課題 ---------------------------------------------------------------------------------
   - id: open-herdr
@@ -113,14 +133,9 @@ steps:
     caption: {ja: "親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ"}
     hold: 8.0
 
-  # --- §4 主役2: 奪わない ------------------------------------------------------------------------
-  # Back to the Claude Code pane: its sheet is the one with commands to copy (codex.yaml and
-  # herdr.yaml hold keys only, and a key is not copied -- DECISIONS 0039).
-  - id: back-to-claude
-    herdr: [tab, focus, "w1:t1"]
-    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
-    hold: 1.5
-
+  # --- §4 主役2: 奪わない(search)/ §5 主役3(edit)の入口 --------------------------------------
+  # The Claude Code pane: its sheet is the one with commands to copy (codex.yaml and herdr.yaml
+  # hold keys only, and a key is not copied -- DECISIONS 0039).
   - id: claude-again
     key: super+h
     wait_for: {overlay: visible, label: "Claude Code", hints: 15}
@@ -258,13 +273,7 @@ steps:
     caption: {ja: "Wayland (labwc) / GTK4 / ヒントは YAML"}
     hold: 6.0
 
-  # =============================================================================================
-  # 5 分版だけの追加(storyboard §3–§6 の「加えて」の部分)。本編の step 列に差し込む。
-  # =============================================================================================
-
-  # --- §4 追加: コピー ---------------------------------------------------------------------------
-  # --- §5 追加: favorite と並べ替え ---------------------------------------------------------------
-  # --- §6 追加: 仕組みと設定 -----------------------------------------------------------------------
+  # --- sheets: シートの書き方 ----------------------------------------------------------------------
   - id: open-yaml
     spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
     wait_for: {context: {active_sheet: vi, process_name: vi}, timeout: 30}
@@ -302,12 +311,13 @@ steps:
 
 # =================================================================================================
 # 尺は storyboard の尺割りから引く。--dry-run が target ± tolerance を判定し、外れたら止まる。
-# 尺の variant は作らない(B-9): 短い版は素材を切り出すのではなく、別の showcase として撮る。
+# 尺の variant は作らない(B-9)。4 つの variant は長さ違いではなく、中身で分けた別の 1 本
+# (DECISIONS 0042)。どれも単独で完結する step 列を持つ。
 # =================================================================================================
 variants:
-  main:
-    target: 190
-    tolerance: 20
+  overview:
+    target: 70
+    tolerance: 7
     steps:
       - open-herdr
       - start-claude
@@ -321,7 +331,14 @@ variants:
       - start-codex
       - switch-pane
       - parent-hints
-      - back-to-claude
+      - close
+      - stack
+  search:
+    target: 50
+    tolerance: 6
+    steps:
+      - boot-herdr
+      - boot-claude
       - claude-again
       - keep-typing
       - erase-line
@@ -331,6 +348,14 @@ variants:
       - copy-and-leave
       - paste
       - clear-filter
+      - close
+  edit:
+    target: 49
+    tolerance: 6
+    steps:
+      - boot-herdr
+      - boot-claude
+      - claude-again
       - edit-mode
       - open-form
       - type-title
@@ -340,6 +365,12 @@ variants:
       - break-yaml
       - fix-yaml
       - close
+  sheets:
+    target: 51
+    tolerance: 6
+    steps:
+      - boot-herdr
+      - boot-claude
       - open-yaml
       - yaml-match
       - yaml-include

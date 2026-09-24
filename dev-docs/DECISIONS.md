@@ -1459,6 +1459,23 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: Herdr の中でシェルのプロンプトが前面のときに `a` を押すと、シェルのシートを作る(generic
   process の警告付き、0027)。親に入れるには `Ctrl+P`。フォームの見出しが「→ 新しいシート」になるので見れば分かる。
 
+## 0042 — common の紹介動画は中身で 4 つの variant(overview / search / edit / sheets)に分ける
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Context**: common は 192 秒の 1 本で、見つけ方の 3 本(47〜105 秒)の倍あった。字幕を 1 枚直すだけで
+  192 秒を撮り直すことになり、README の冒頭に置く紹介としても長い。台本はすでに主役 3 場面と書き方の節に
+  分かれていた。B-9 で決めた「尺違いの variant は作らない(短い版は別に撮る)」は変えない。
+- **Decision**: showcase は common のまま、中身で分けた 4 つの variant を持つ。`overview`(課題・いつも同じ
+  場所・中まで見て切り替わる)、`search`(奪わない・検索してコピー)、`edit`(その場で書く・壊しても戻る)、
+  `sheets`(シートの書き方・やらないこと)。どれも単独で見られる 1 本で、Herdr と Claude Code の起動から
+  始める。overview 以外は字幕なしの `boot-*` で起動し、overview の課題の字幕を繰り返さない。
+- **Alternatives**: showcase を 4 つに分ける(fixtures・舞台・台本の前提が同じなので、同じ説明を 4 か所に
+  書くことになる); 192 秒のまま字幕だけ直す(直すたびに全部撮り直す)。
+- **Consequences**: 共通の締め(「忘れた瞬間、いつも同じ場所に…」「Wayland (labwc) / …」)は variant を
+  またいで同じ step を使う。4 本と見つけ方の 3 本を 1 本にまとめる動画は `demo/showcases/all/` で作る予定で、
+  まだ無い。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):
