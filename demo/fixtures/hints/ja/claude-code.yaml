@@ -1,4 +1,3 @@
-# Claude Code running inside Herdr. Matched on the foreground process, not on the window.
 id: claude-code
 title: Claude Code
 priority: 10

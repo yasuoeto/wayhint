@@ -46,7 +46,7 @@
 ### hint sheet（`demo/fixtures/hints/ja/`）
 
 - `herdr.yaml` / `claude-code.yaml` / `codex.yaml` — 実機の `~/.config/wayhint/hints/ja/` の写し
-  (2026-09-24、文言も手を加えていない)。Herdr 6 件、Claude Code 7 件、Codex 1 件。tag の絞りは
+  (2026-09-24)。例外は `claude-code.yaml` 1 行目の英語のコメントで、sheets の vi に映るので写しからは消した。Herdr 6 件、Claude Code 7 件、Codex 1 件。tag の絞りは
   どこにも書いていないので、子の一覧には Herdr の hint が全部混ざる(DECISIONS 0034)。`favorite` は
   無いので ★ は出ない
 - `wm.yaml` — `match` 無し、2 件。`config.yaml` に `include: [wm]`
@@ -57,7 +57,7 @@
 ## 1. overview
 <!-- variant: overview -->
 
-16:9、実際の操作テンポ。合計 70 秒。
+16:9、実際の操作テンポ。合計 78 秒。
 
 ### §1 課題(0:00–0:18)
 
@@ -87,12 +87,13 @@
 | 42–50 | `Super+H` → `Herdr › Codex` に差し替わる | 別のタブで押し直せば、閉じずに差し替わる |
 | 50–58 | 一覧に Herdr の hint(スクロール、tab、ペースト)が混ざっている | 親子関係にあるプロセスのヒントを同時に表示する、親である Herdr の操作も並ぶ |
 
-### §4 締め(0:58–1:10)
+### §4 締め(0:58–1:18)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 58–64 | `Super+H` で閉じる | 忘れた瞬間、いつも同じ場所に、必要な情報がある |
-| 64–70 | 同じ画面 | Wayland (labwc) / GTK4 / ヒントは YAML |
+| 64–72 | 同じ画面 | やらないこと: コマンドの実行・AI 生成・画面の読み取り |
+| 72–78 | 同じ画面 | Wayland (labwc) / GTK4 / ヒントは YAML |
 
 ## 2. search
 <!-- variant: search -->
@@ -159,28 +160,33 @@ Claude Code のシートを壊すと、直したときに追記した hint ま�
 ## 4. sheets
 <!-- variant: sheets -->
 
-16:9。合計 51 秒。vi の stub は引数の sheet を実際に開く。字幕が指す `match` は画面のその行にあり、
-言語は status 行の `"hints/ja/claude-code.yaml"` に出る。`include` はこの sheet には書いておらず
-(実機の写しのため)、`config.yaml` の `include: [wm]` で全 sheet に混ざっている——字幕はその書き方を
-言う。親子関係のプロセスの絞り(`nested`)は `herdr` showcase が扱う。
+16:9。合計 58 秒。vi の stub は引数の sheet を実際に開く。字幕が指す `match` は画面のその行にあり、
+`include` と言語は `config.yaml` の `include: [wm]` と `appearance.language: ja` にある。どちらのファイルも
+先頭 14 行に入るよう、fixture の先頭にコメントを置かない。親子関係のプロセスの絞り(`nested`)は
+`herdr` showcase が扱う。
 
-### §1 シートの書き方(0:00–0:37)
+### §1 シートの書き方(0:00–0:26)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 0–3 | Herdr の中で Claude Code が立ち上がる | (字幕なし) |
 | 3–10 | vi で `hints/ja/claude-code.yaml` を開く | シートは 1 アプリ 1 YAML |
-| 10–18 | 同じ画面(5–7 行目の `match:`) | match でどのウィンドウ・どのプロセスに出すかが決まる |
-| 18–26 | 同じ画面(この sheet に `include:` は無い。wm は config.yaml の `include` で混ざる) | 共通のヒントは config.yaml の include で全シートに混ぜる |
-| 26–34 | 同じ画面(status 行の `hints/ja/`) | ヒントは言語ごと。UI と同じ言語が出る |
-| 34–37 | vi の窓を閉じる | (字幕なし) |
+| 10–18 | 同じ画面(`match:` の行) | match でどのウィンドウ・どのプロセスに出すかが決まる |
+| 18–26 | vi を閉じ、`Super+H` → `Herdr › Claude Code` の一覧 | match に当たったシートのヒントが出る |
 
-### §2 締め(0:37–0:51)
+### §2 共通のヒントと言語(0:26–0:51)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
-| 37–45 | Herdr の窓 | やらないこと: コマンドの実行・AI 生成・画面の読み取り |
-| 45–51 | 同じ画面 | Wayland (labwc) / GTK4 / ヒントは YAML |
+| 26–34 | vi で `config.yaml` を開く。`include: [wm]` が見えている。overlay は出たまま | 共通のヒントは config.yaml の include で全シートに混ぜる |
+| 34–42 | 同じ画面(`language: ja` と、overlay の日本語の UI) | ヒントは言語ごと。UI と同じ言語が出る |
+| 42–51 | vi を閉じ、新しいタブで `Super+H` → Herdr の 8 件。末尾に wm の `Alt+Tab` と `Super+Ctrl+H` | 共通のヒントは、どのシートでも末尾に並ぶ |
+
+### §3 締め(0:51–0:58)
+
+| 秒 | 画面 | 字幕 |
+|---|---|---|
+| 51–58 | `Super+H` で閉じる | Wayland (labwc) / GTK4 / ヒントは YAML |
 
 ## 2. 字幕の書き方メモ
 

@@ -346,22 +346,54 @@ steps:
     caption: {ja: "match でどのウィンドウ・どのプロセスに出すかが決まる"}
     hold: 8.0
 
-  - id: yaml-include
-    pause: true
-    wait_for: {context: {active_sheet: vi}}
+  - id: close-yaml
+    close: {window: vi}
+    wait_for: {context: {active_sheet: claude-code}, overlay: hidden, timeout: 20}
+    hold: 1.0
+
+  - id: sheet-hints
+    # What the file just shown does: the Claude Code sheet, chosen by its match.
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    caption: {ja: "match に当たったシートのヒントが出る"}
+    hold: 7.0
+
+  - id: open-config
+    # config.yaml, with `include: [wm]` and `appearance.language: ja` both within vi's 14 lines.
+    # vi takes the focus; the overlay stays, so the UI's language is on screen as well.
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "config.yaml"]}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: visible, timeout: 30}
     caption: {ja: "共通のヒントは config.yaml の include で全シートに混ぜる"}
     hold: 8.0
 
-  - id: yaml-lang
+  - id: config-lang
     pause: true
-    wait_for: {context: {active_sheet: vi}}
+    wait_for: {context: {active_sheet: vi}, overlay: visible}
     caption: {ja: "ヒントは言語ごと。UI と同じ言語が出る"}
     hold: 8.0
 
-  - id: close-yaml
+  - id: close-config
     close: {window: vi}
-    wait_for: {context: {active_sheet: claude-code}, timeout: 20}
-    hold: 3.0
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: idle-tab
+    # A tab with nothing running: Herdr's own 6 hints and wm's 2, short enough that the end of
+    # the list is on screen (Claude Code's 15 push wm's below the fold).
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: wm-at-end
+    key: super+h
+    wait_for: {overlay: visible, label: "次の窓へ", hints: 8}
+    caption: {ja: "共通のヒントは、どのシートでも末尾に並ぶ"}
+    hold: 7.0
+
+  - id: sheets-close
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
 
   - id: no-scrape
     pause: true
@@ -376,7 +408,7 @@ steps:
 # =================================================================================================
 variants:
   overview:
-    target: 70
+    target: 78
     tolerance: 7
     steps:
       - open-herdr
@@ -392,6 +424,7 @@ variants:
       - switch-pane
       - parent-hints
       - close
+      - no-scrape
       - stack
   search:
     target: 68
@@ -433,15 +466,19 @@ variants:
       - fix-yaml
       - close
   sheets:
-    target: 51
+    target: 58
     tolerance: 6
     steps:
       - boot-herdr
       - boot-claude
       - open-yaml
       - yaml-match
-      - yaml-include
-      - yaml-lang
       - close-yaml
-      - no-scrape
+      - sheet-hints
+      - open-config
+      - config-lang
+      - close-config
+      - idle-tab
+      - wm-at-end
+      - sheets-close
       - stack

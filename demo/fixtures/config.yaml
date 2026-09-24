@@ -1,8 +1,3 @@
-# The configuration the demo records against. A copy of this is made for each run and the copy
-# is what the daemon reads, so a recording never writes back here (tools/demo/session.py).
-#
-# appearance.language is replaced per language by the recorder; the value below is the one a
-# person reading this file should see. Japanese is written first (DECISIONS 0032).
 overlay:
   anchor: top-right
   width: 560px
