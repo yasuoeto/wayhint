@@ -17,6 +17,9 @@ windows:
   # The terminal `wayhint context --shown` is read in. Low on the screen and over the Herdr
   # window, not the overlay: what it prints is about the overlay, so both have to be in view.
   - {title: shown, x: 40, y: 292, width: 620, height: 310}
+  # The launch lines of docs/TERMINALS.md. Wide: no overlay is up yet, and the Ghostty line is
+  # about 80 columns.
+  - {title: launch, x: 36, y: 214, width: 1200, height: 200}
 
 steps:
   - id: intro
@@ -28,6 +31,21 @@ steps:
       timeout: 40
     caption: {ja: "Herdr の中を見る"}
     hold: 4.0
+
+  - id: precondition
+    # Before the first hotkey, as in the terminal showcase: the setup comes before the use.
+    spawn: {window: launch, argv: [foot-wayhint, -e, herdr-launch]}
+    wait_for:
+      context: {process_name: herdr-launch}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "前準備: Herdr は、名前に herdr を付けた端末で開く"}
+    hold: 8.0
+
+  - id: close-launch
+    close: {window: launch}
+    wait_for: {context: {active_sheet: herdr}, overlay: hidden, timeout: 20}
+    hold: 1.0
 
   - id: start-claude
     herdr: [pane, run, "w1:p1", claude]
@@ -44,14 +62,8 @@ steps:
       overlay: visible
       label: "Claude Code"
       hints: 15
-    caption: {ja: "Herdr にフォーカス中のペインを聞き、前面プロセスを取る"}
+    caption: {ja: "Herdr にフォーカス中のタブを聞き、動いているプロセスを取る"}
     hold: 8.0
-
-  - id: precondition
-    pause: true
-    wait_for: {overlay: visible, label: "Claude Code"}
-    caption: {ja: "前提: ウィンドウの app_id に herdr を含める"}
-    hold: 7.0
 
   - id: parent-follows
     pause: true
@@ -62,7 +74,7 @@ steps:
   - id: parent-all
     pause: true
     wait_for: {overlay: visible, label: "中クリックペースト", hints: 15}
-    caption: {ja: "何も書かなければ、親のヒントは全部混ざる"}
+    caption: {ja: "何も書かなければ、親に当たる Herdr のヒントが全て一緒に表示される"}
     hold: 8.0
 
   - id: new-tab-codex
@@ -79,7 +91,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       timeout: 30
-    caption: {ja: "ヒント画面は、押し直すまで前のペインのまま"}
+    caption: {ja: "ヒント画面は、押し直すまで前のタブのまま"}
     hold: 5.0
 
   - id: codex-hints
@@ -89,7 +101,7 @@ steps:
       overlay: visible
       label: "Codex"
       hints: 9
-    caption: {ja: "ペインを移って押し直せば、そのペインのシート"}
+    caption: {ja: "タブを移って押し直せば、そのタブのシート"}
     hold: 8.0
 
   - id: new-tab-idle
@@ -104,7 +116,7 @@ steps:
       overlay: visible
       label: "Herdr"
       hints: 8
-    caption: {ja: "当たるシートが無ければ、Herdr のヒントが全部出る"}
+    caption: {ja: "動いているプロセスに対応したシートが無ければ、Herdr のヒントが全部出る"}
     hold: 8.0
 
   - id: close-hints
@@ -133,7 +145,7 @@ steps:
   - id: yaml-export
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "絞るなら Herdr のシートに nested を書く。tag か category で"}
+    caption: {ja: "表示内容を絞り込みたい場合は、設定を書く"}
     hold: 8.0
 
   - id: close-yaml
@@ -185,13 +197,14 @@ steps:
 
 variants:
   main:
-    target: 103
+    target: 105
     tolerance: 10
     steps:
       - intro
+      - precondition
+      - close-launch
       - start-claude
       - claude-hints
-      - precondition
       - parent-follows
       - parent-all
       - new-tab-codex

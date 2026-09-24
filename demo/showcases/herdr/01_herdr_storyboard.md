@@ -15,6 +15,9 @@
 
 - 映すアプリ: Herdr + Claude Code / Codex の stub、`idle` の pane、vi の stub、
   `wayhint context --shown` を打った端末の stub(`wayhint-shown`。出力は本物)
+- §1 の前準備は stub `herdr-launch` が `docs/TERMINALS.md` の Herdr の起動例をその場で読んで出す
+  (動画と文書が別のことを言わないため)
+- 字幕は使う人の言葉で書く。Herdr の中の単位は、見る人に見えている「タブ」と言う
 - 混ざる sheet は 2 段: Herdr のウィンドウが `herdr.yaml`(6 件)、その pane のコマンドが
   `claude-code.yaml`(7 件)/ `codex.yaml`(1 件)。どこにも tag の絞りを書いていないので、親の
   Herdr の hint は全部混ざる(DECISIONS 0034)。3 枚とも実機の `~/.config/wayhint/hints/ja/` の写し
@@ -26,38 +29,38 @@
 ## 1. 本編
 <!-- variant: main -->
 
-16:9。合計 103 秒。
+16:9。合計 105 秒。
 
-### §1 中で動いているものを選ぶ(0:00–0:37)
+### §1 前準備と、中で動いているものを選ぶ(0:00–0:39)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 0–4 | Herdr の窓。pane は idle | Herdr の中を見る |
-| 4–7 | pane で Claude Code が立ち上がる | (字幕なし) |
-| 7–15 | `Super+H`。ヘッダーは `Herdr › Claude Code` | Herdr にフォーカス中のペインを聞き、前面プロセスを取る |
-| 15–22 | 同じ画面 | 前提: ウィンドウの app_id に herdr を含める |
-| 22–29 | 一覧に Herdr の `PgUp/PgDn` と中クリックペーストが混ざっている | 親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ |
-| 29–37 | Herdr の 6 件が全部入って 15 件(収まらない分はスクロールバーで分かる) | 何も書かなければ、親のヒントは全部混ざる |
+| 4–13 | 横長の端末の窓に `docs/TERMINALS.md` の起動例 3 行(kitty / Ghostty / foot を herdr の名前付きで開く)。13 秒で閉じる | 前準備: Herdr は、名前に herdr を付けた端末で開く |
+| 13–16 | pane で Claude Code が立ち上がる | (字幕なし) |
+| 16–24 | `Super+H`。ヘッダーは `Herdr › Claude Code` | Herdr にフォーカス中のタブを聞き、動いているプロセスを取る |
+| 24–31 | 一覧に Herdr の `PgUp/PgDn` と中クリックペーストが混ざっている | 親子関係のプロセスは自動でヒントを混ぜる、Herdr の操作も並ぶ |
+| 31–39 | Herdr の 6 件が全部入って 15 件(収まらない分はスクロールバーで分かる) | 何も書かなければ、親に当たる Herdr のヒントが全て一緒に表示される |
 
-### §2 pane を移る(0:37–1:01)
-
-| 秒 | 画面 | 字幕 |
-|---|---|---|
-| 37–43 | 新しいタブ → Codex。overlay は `Herdr › Claude Code` のまま | ヒント画面は、押し直すまで前のペインのまま |
-| 43–51 | `Super+H` → `Herdr › Codex` に差し替わる | ペインを移って押し直せば、そのペインのシート |
-| 51–53 | 新しいタブ。pane は idle のまま | (字幕なし) |
-| 53–61 | `Super+H` → Herdr 自身の sheet(6 件 + wm) | 当たるシートが無ければ、Herdr のヒントが全部出る |
-
-### §3 絞り方と確かめ方(1:01–1:43)
+### §2 タブを移る(0:39–1:03)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
-| 61–66 | overlay を閉じ、`herdr.yaml` に `nested.export_categories: [scroll, input]` を足して vi で開く | (字幕なし) |
-| 66–74 | vi の上の方に `nested:` の 2 行が見えている | 絞るなら Herdr のシートに nested を書く。tag か category で |
-| 74–78 | vi の窓を閉じ、Claude Code のタブへ戻る | (字幕なし) |
-| 78–86 | `Super+H` → `Herdr › Claude Code` が 12 件。Herdr の分は PgUp/PgDn と貼り付けの 3 件 | Herdr のヒントは scroll と input だけになる |
-| 86–95 | 端末の窓が開き、`wayhint context --shown` の出力(`parent herdr: 3/6 shown`、`categories: scroll, input -- nested.export_categories (herdr.yaml)`) | wayhint context --shown で、どこで絞ったかが分かる |
-| 95–103 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
+| 39–45 | 新しいタブ → Codex。overlay は `Herdr › Claude Code` のまま | ヒント画面は、押し直すまで前のタブのまま |
+| 45–53 | `Super+H` → `Herdr › Codex` に差し替わる | タブを移って押し直せば、そのタブのシート |
+| 53–55 | 新しいタブ。pane は idle のまま | (字幕なし) |
+| 55–63 | `Super+H` → Herdr 自身の sheet(6 件 + wm) | 動いているプロセスに対応したシートが無ければ、Herdr のヒントが全部出る |
+
+### §3 絞り方と確かめ方(1:03–1:45)
+
+| 秒 | 画面 | 字幕 |
+|---|---|---|
+| 63–68 | overlay を閉じ、`herdr.yaml` に `nested.export_categories: [scroll, input]` を足して vi で開く | (字幕なし) |
+| 68–76 | vi の上の方に `nested:` の 2 行が見えている | 表示内容を絞り込みたい場合は、設定を書く |
+| 76–80 | vi の窓を閉じ、Claude Code のタブへ戻る | (字幕なし) |
+| 80–88 | `Super+H` → `Herdr › Claude Code` が 12 件。Herdr の分は PgUp/PgDn と貼り付けの 3 件 | Herdr のヒントは scroll と input だけになる |
+| 88–97 | 端末の窓が開き、`wayhint context --shown` の出力(`parent herdr: 3/6 shown`、`categories: scroll, input -- nested.export_categories (herdr.yaml)`) | wayhint context --shown で、どこで絞ったかが分かる |
+| 97–105 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
 
 ## 2. 字幕の書き方メモ
 

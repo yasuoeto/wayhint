@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""A terminal showing how to start Herdr so that wayhint can look inside it, for the scene that
+says this is the one step of setup the herdr showcase needs.
+
+What it shows is not written here: it is the ``sh`` block under ``### Herdr`` in
+``docs/TERMINALS.md`` (one launch line each for kitty, Ghostty and foot), read when the stub
+starts. The document is where a person looks this up, so the video and the document cannot say
+two different things. The block not being found is a failure, and the rename below is skipped.
+
+``comm`` is renamed only *after* the text is written, as in ``wayhint-shown``: the scenario
+waits for this name, so a step that sees it knows the text is already on screen.
+"""
+
+import ctypes
+import os
+import sys
+from pathlib import Path
+
+DOC = Path(__file__).resolve().parent.parent.parent / "docs" / "TERMINALS.md"
+HEADING = "### Herdr"
+
+NOTE = "\033[38;5;103m"
+TEXT = "\033[38;5;252m"
+PROMPT = "\033[38;5;150m"
+OFF = "\033[0m"
+
+
+def rename() -> None:
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
+    except OSError:
+        pass
+
+
+def launch_lines(text: str) -> list[str]:
+    """The first ``sh`` block after the Herdr heading, or ``[]``."""
+    lines = text.splitlines()
+    try:
+        start = lines.index(HEADING)
+    except ValueError:
+        return []
+    block: list[str] | None = None
+    for line in lines[start + 1 :]:
+        if block is None and line.startswith("#"):
+            break  # the next section: the Herdr one has no block
+        if block is None:
+            if line.strip() == "```sh":
+                block = []
+        elif line.strip() == "```":
+            return block
+        else:
+            block.append(line)
+    return []
+
+
+def main() -> int:
+    lines = launch_lines(DOC.read_text())
+    if not lines:
+        sys.stderr.write(f"herdr-launch: no sh block under {HEADING!r} in {DOC}\n")
+        sys.stdin.read()
+        return 1
+    out = [f"{NOTE}# Herdr は、app_id に herdr を含めた端末で開く(docs/TERMINALS.md){OFF}"]
+    out += [f"{PROMPT}${OFF} {TEXT}{line}{OFF}" for line in lines]
+    sys.stdout.write("\n".join(out) + "\n")
+    sys.stdout.flush()
+    rename()
+    try:
+        sys.stdin.read()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

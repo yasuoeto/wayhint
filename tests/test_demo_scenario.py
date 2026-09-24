@@ -847,6 +847,31 @@ class SetupDryRunTest(unittest.TestCase):
         self.assertIn("setup-dry-run", text.split("STUBS='", 1)[1].split("'", 1)[0].split())
 
 
+class HerdrLaunchTest(unittest.TestCase):
+    """``demo/bin/herdr-launch`` shows the Herdr launch lines of docs/TERMINALS.md, read live."""
+
+    def stub(self):
+        loader = importlib.machinery.SourceFileLoader("demo_launch", str(BIN / "herdr-launch"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_the_document_still_has_one_line_per_terminal(self) -> None:
+        stub = self.stub()
+        lines = stub.launch_lines(stub.DOC.read_text())
+        self.assertEqual([line.split()[0] for line in lines], ["kitty", "ghostty", "foot"])
+        self.assertTrue(all("herdr" in line for line in lines))
+
+    def test_a_section_without_a_block_gives_nothing(self) -> None:
+        text = "### Herdr\n\nno block here\n\n### WezTerm\n\n```sh\nwezterm\n```\n"
+        self.assertEqual(self.stub().launch_lines(text), [])
+
+    def test_the_terminal_wrapper_lets_it_start(self) -> None:
+        text = (BIN / "foot-wayhint").read_text()
+        self.assertIn("herdr-launch", text.split("STUBS='", 1)[1].split("'", 1)[0].split())
+
+
 class NarrowedSheetTest(unittest.TestCase):
     """The narrowed herdr.yaml of the herdr showcase stays the fixture plus two lines."""
 

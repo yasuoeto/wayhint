@@ -325,13 +325,17 @@ session の使い捨て `$HOME` に対して実行し、本物の出力を出す
 home は録画ごとに名前が変わる runtime ディレクトリで、人が自分のパスを読む形でもない)。dry run は
 やることが残っていれば exit 1 なので、1 までは成功として扱い、2 以上なら rename せずに止める。
 
+`bin/herdr-launch` はコマンドを実行しない。`docs/TERMINALS.md` の `### Herdr` の下にある `sh` の
+ブロック(kitty / Ghostty / foot の起動例)を起動時に読んで出す。動画と文書が別のことを言わないため
+で、ブロックが見つからなければ rename せずに止める。
+
 `bin/foot-wayhint` は README「Terminal の複数窓」の wrapper(app_id に自分の pid を入れる)、
 `bin/foot-herdr` は Herdr 用(app_id に `herdr` を含める。`docs/TERMINALS.md` の前提)。どちらも
 `fixtures/foot.ini` を読む。
 
 **どちらの wrapper も引数を素通ししない。** 受け取るのは `--app-id=` と `--title=` だけで、
 `foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` `less`
-`wayhint-shown` `setup-dry-run` のいずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
+`wayhint-shown` `setup-dry-run` `herdr-launch` のいずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
 shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
 `foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
 wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。
