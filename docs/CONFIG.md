@@ -1,33 +1,38 @@
-# CONFIG — config.yaml と style.css の書き方
+# CONFIG — writing config.yaml and style.css
 
-wayhint 全体の設定は `config.yaml`、見た目は `style.css` に書く。ヒントそのものの書き方は
-README「ヒントを書く」。
+[日本語](CONFIG.ja.md)
 
-## 置き場所
+wayhint's overall settings go in `config.yaml`, and its look in `style.css`. How to write hints
+themselves is covered in the README, "Writing hints".
 
-`$XDG_CONFIG_HOME/wayhint/`(既定 `~/.config/wayhint/`)の下。
+## Where the files live
 
-| ファイル | 内容 |
+Under `$XDG_CONFIG_HOME/wayhint/` (default `~/.config/wayhint/`).
+
+| File | Contents |
 |---|---|
-| `config.yaml` | ヒント画面の位置・大きさ、言語、エディタ、混ぜるシートなど |
-| `style.css` | 任意。GTK CSS で見た目を上書きする |
-| `hints/<言語>/*.yaml` | ヒントのシート(README「ヒントを書く」) |
+| `config.yaml` | The overlay's position and size, language, editor, sheets to mix in, and so on |
+| `style.css` | Optional. Overrides the look with GTK CSS |
+| `hints/<language>/*.yaml` | Hint sheets (README, "Writing hints") |
 
-雛形は repository の `examples/` にある。`cp -r examples/. ~/.config/wayhint/` でまとめてコピーできる。
+Templates live in the repository's `examples/`. `cp -r examples/. ~/.config/wayhint/` copies them
+all at once.
 
-## 書き方の基本
+## The basics of writing it
 
-- YAML で書く。**全部の項目が省略できる**。ファイル自体が無くても、下の既定値で動く。
-- 知らない section や key は**エラー**になる(打ち間違いを黙って無視しないため)。
-- 書いたら `wayhint validate` で確かめる。問題があれば `file:line: message` が出て exit 1 になる。
-- 保存すると daemon が自動で読み直す。壊れている間は直前の正しい設定のまま動き、ヒント画面の上部に
-  `⚠` で理由が出る。
-- ヒント画面の大きさを grip で変えると、daemon が `overlay.width` / `height` だけを書き戻す。
-  ほかの行やコメントはそのまま残る。
+- Written in YAML. **Every item can be omitted.** Even with no file at all, it runs with the
+  defaults below.
+- An unknown section or key is an **error** (so a typo is never silently ignored).
+- Check what you wrote with `wayhint validate`. If there is a problem, it prints
+  `file:line: message` and exits 1.
+- On save, the daemon reloads it automatically. While it is broken, it keeps running with the
+  last good config, and the overlay shows the reason at the top with `⚠`.
+- Resizing the overlay with the grip makes the daemon write back only `overlay.width` /
+  `height`. Other lines and comments are left as they are.
 
-## 既定値の全体
+## The defaults, in full
 
-何も書かないとこの内容になる。変えたい項目だけを書けばよい。
+With nothing written, this is what you get. Write only the items you want to change.
 
 ```yaml
 overlay:
@@ -58,58 +63,59 @@ logging:
   level: warning
 ```
 
-## overlay — ヒント画面の位置と大きさ
+## overlay — the overlay's position and size
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `anchor` | `top-left` `top` `top-right` `left` `center` `right` `bottom-left` `bottom` `bottom-right` | `top-right` | 画面のどこに寄せるか |
-| `width` / `height` | `420`、`"420px"`、`"30%"` | `420px` / `60%` | 大きさ。`%` は表示先の画面(output)の大きさに対する割合(0〜100) |
-| `margin` | 整数(全辺)か `{top, right, bottom, left}` | `{top: 24, right: 24}` | 画面端からの距離(px)。書かなかった辺は 0 |
-| `output` | output 名(例 `eDP-1`) | なし | 表示先が決められないときに使う output |
+| `anchor` | `top-left` `top` `top-right` `left` `center` `right` `bottom-left` `bottom` `bottom-right` | `top-right` | Where on the screen to anchor it |
+| `width` / `height` | `420`, `"420px"`, `"30%"` | `420px` / `60%` | Size. `%` is a share (0-100) of the size of the destination screen (output) |
+| `margin` | an integer (all sides) or `{top, right, bottom, left}` | `{top: 24, right: 24}` | Distance from the screen edge (px). A side not written is 0 |
+| `output` | an output name (e.g. `eDP-1`) | none | The output to use when the destination cannot otherwise be decided |
 
-表示先の画面は、シートの `display.output` → 見ているウィンドウがある画面 → compositor がフォーカス中と
-言う画面 → この `output`、の順に決まる。
+The destination screen is decided in this order: the sheet's `display.output` → the screen the
+window being looked at is on → the screen the compositor says is focused → this `output`.
 
 ```yaml
 overlay:
   anchor: bottom-right
   width: 30%
   height: 500
-  margin: 0          # 画面の角にぴったり付ける
+  margin: 0          # flush against the corner of the screen
 ```
 
-### シートごとに変える
+### Changing it per sheet
 
-シートの `display:` に同じ key を書くと、そのシートを表示するときだけ上書きできる。書かなかった key は
-`config.yaml` の値を使う。
+Writing the same keys under a sheet's `display:` overrides them only while that sheet is shown.
+A key not written there uses the value from `config.yaml`.
 
 ```yaml
-# hints/ja/inkscape.yaml(match とヒントは省略)
+# hints/en/inkscape.yaml (match and hints omitted)
 id: inkscape
 title: Inkscape
 display: {anchor: top-left, width: 360px}
 ```
 
-## appearance — 見た目と言語
+## appearance — look and language
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `style` | ファイル名かパス | `style.css` | 読み込む CSS。相対パスは `~/.config/wayhint/` から |
-| `language` | `auto` `en` `ja` | `auto` | ボタンの文字と、読むヒントのディレクトリ(`hints/<言語>/`)。`auto` はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)で、日英以外は英語 |
-| `show_category` | `true` `false` | `true` | 一覧の右端に category を出すか |
+| `style` | a filename or path | `style.css` | The CSS to load. A relative path is taken from `~/.config/wayhint/` |
+| `language` | `auto` `en` `ja` | `auto` | The text on buttons, and which hint directory is read (`hints/<language>/`). `auto` follows the machine's locale (`LC_ALL` → `LC_MESSAGES` → `LANG`); anything other than Japanese or English falls back to English |
+| `show_category` | `true` `false` | `true` | Whether to show the category at the right edge of the list |
 
-`language` を変えると、ボタンの文字もヒントもその場で切り替わる。
+Changing `language` switches both the button text and the hints on the spot.
 
-## editor — エディタ
+## editor — the editor
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `command` | 文字列の list(argv) | `[gvim, --remote-silent, "+{line}", "{file}"]` | 「エディタで編集」で起動するコマンド |
-| `schema_modeline` | `true` `false` | `false` | 新しく作るシートと `wayhint format` の先頭に schema の行を付けるか |
-| `schema_path` | パス | `~/.config/wayhint/schema.json` | schema の行に書くパス。`wayhint schema --write` の既定の出力先 |
+| `command` | a list of strings (argv) | `[gvim, --remote-silent, "+{line}", "{file}"]` | The command launched by "Edit in editor" |
+| `schema_modeline` | `true` `false` | `false` | Whether to add a schema line at the top of newly created sheets and of `wayhint format`'s output |
+| `schema_path` | a path | `~/.config/wayhint/schema.json` | The path written into the schema line. Also the default output path for `wayhint schema --write` |
 
-`command` で使える placeholder は `{file}`(必須)、`{line}`、`{hint_id}` の 3 つ。shell を通さずに
-そのまま起動するので、引用符・パイプ・環境変数の展開は書けない。
+`command` supports three placeholders: `{file}` (required), `{line}`, and `{hint_id}`. It launches
+without going through a shell, so quoting, pipes, and environment-variable expansion cannot be
+written.
 
 ```yaml
 editor:
@@ -118,93 +124,95 @@ editor:
 
 ```yaml
 editor:
-  command: [foot, -e, nvim, "+{line}", "{file}"]   # 端末の中で開く
+  command: [foot, -e, nvim, "+{line}", "{file}"]   # open inside a terminal
 ```
 
-## nested — 親シートのヒント
+## nested — hints from the parent sheet
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `parent_tags` | タグの list | なし | 子シートの一覧に並べる親のヒントを、このタグで絞る |
-| `parent_categories` | category の list | なし | 同じく category で絞る。タグと両方書けば OR |
+| `parent_tags` | a list of tags | none | Restricts, by tag, which of the parent's hints are listed in the child sheet's list |
+| `parent_categories` | a list of categories | none | The same, restricted by category. If both tags and categories are written, it is OR |
 
-**ふつうは書かない。** 何も書かなければ親のヒントは全部並び、絞りたいときは親のシートに
-`nested.export_tags` / `export_categories` を書く。ここは「どの親のヒントも子に混ぜない」ときに `[]` を
-書くためのもの(`[]` はもう片方に何が書いてあっても 0 件)。
+**Normally you don't write this.** With nothing written, all of the parent's hints are listed; to
+restrict them, write `nested.export_tags` / `export_categories` on the parent sheet instead. This
+key exists for writing `[]` when you want "no parent hints mixed in at all," no matter what is
+written on the other side (`[]` always means zero, regardless of what the other key says).
 
 ```yaml
-nested: {parent_tags: []}   # 親のヒントを一切混ぜない
+nested: {parent_tags: []}   # never mix in any of the parent's hints
 ```
 
-ここに絞りを書くと全部の親シートの `export_*` より優先されるので、親ごとに絞りを変えられなくなる。
-規則の全体は [`SHEETS.md`](SHEETS.md) §3。
+Writing a restriction here takes priority over every parent sheet's `export_*`, which means you
+lose the ability to set a different restriction per parent. The full rules are in
+[`SHEETS.md`](SHEETS.md) §3.
 
-## include — 全シートに混ぜるシート
+## include — sheets mixed into every sheet
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `include` | シート id か `{sheet, tags, categories}` の list | `[]` | `include:` を書いていないシート全部に混ぜるシート。map にすると一部だけ混ぜる |
+| `include` | a list of sheet ids or `{sheet, tags, categories}` | `[]` | The sheets mixed into every sheet that does not write its own `include:`. Using a map mixes in only part of it |
 
-シートに `include:` を書くと、そのシートではこの値を**置き換える**(足し算ではない)。
+Writing `include:` on a sheet **replaces** this value for that sheet (it does not add to it).
 
 ```yaml
 include:
   - wm
-  - {sheet: git, categories: [基本]}   # git の「基本」category だけ
+  - {sheet: git, categories: [basics]}   # only git's "basics" category
 ```
 
-規則の全体は [`SHEETS.md`](SHEETS.md) §4。
+The full rules are in [`SHEETS.md`](SHEETS.md) §4.
 
-## context — ウィンドウの調べ方
+## context — how the window is examined
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `backend` | `auto` `wayland` `wayfire` | `auto` | どうやってフォーカス中のウィンドウを調べるか。`auto` は Wayland 標準の protocol を使い、無ければ Wayfire IPC |
-| `workspace` | `current` `all` | `current` | `current` は出した workspace にだけ出す。`all` は全 workspace に出す(compositor が `ext-workspace-v1` を出す場合だけ効く) |
-| `live_update` | `true` `false` | `false` | 書けるが、いまは効果が無い。中身は常にヒント画面を出した瞬間のウィンドウで決まる |
+| `backend` | `auto` `wayland` `wayfire` | `auto` | How the focused window is looked up. `auto` uses the standard Wayland protocol, falling back to the Wayfire IPC if it is unavailable |
+| `workspace` | `current` `all` | `current` | `current` shows the overlay only on the workspace it was opened on. `all` shows it on every workspace (only takes effect if the compositor exposes `ext-workspace-v1`) |
+| `live_update` | `true` `false` | `false` | Can be written, but currently has no effect. Contents are always decided by the window at the moment the overlay was opened |
 
-## search — 検索
+## search — search
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `max_results` | 1 以上の整数 | `50` | 検索で表示する件数の上限 |
+| `max_results` | an integer, 1 or more | `50` | The maximum number of results shown by search |
 
-## logging — ログ
+## logging — logging
 
-| key | 値 | 既定 | 意味 |
+| key | value | default | meaning |
 |---|---|---|---|
-| `level` | `debug` `info` `warning` `error` | `warning` | daemon のログの細かさ。`wayhintd -v` で起動すると info が前景に出る |
+| `level` | `debug` `info` `warning` `error` | `warning` | How detailed the daemon's log is. Starting `wayhintd -v` prints info-level logs to the foreground |
 
-## style.css — 見た目
+## style.css — the look
 
-GTK4 の CSS で書く。wayhint 既定の見た目の上に重ねて読まれるので、変えたいところだけ書けばよい。
-雛形 `examples/style.css` は labwc のテーマ(Syscrash)に合わせた配色で、使える class 名と書き方の例は
-そこを見るのが早い。
+Written in GTK4 CSS. It is layered on top of wayhint's default look, so write only the parts you
+want to change. The template `examples/style.css` matches labwc's Syscrash theme's colors; it is
+the fastest way to see which class names are available and how to use them.
 
-- **反映には daemon の再起動が要る**(README「daemon を再起動する」)。`config.yaml` やシートと違い、
-  保存しても自動では読み直さない。
-- ファイルが無ければ既定の見た目で動く。
-- 別の名前や場所にしたいときは `appearance.style` を変える。
+- **Applying it requires restarting the daemon** (README, "Restarting the daemon"). Unlike
+  `config.yaml` and sheets, saving it does not get reloaded automatically.
+- With no file, it runs with the default look.
+- To use a different name or location, change `appearance.style`.
 
-使える class 名:
+Available class names:
 
-| セレクタ | 部分 |
+| Selector | Part |
 |---|---|
-| `window.wayhint` | ヒント画面全体(背景色・文字色・角の丸み) |
-| `.wayhint-header` | 上部のシート名 |
-| `.wayhint-context` | シート名の下の context(`foot · vi · eDP-1`) |
-| `.wayhint-error` | `⚠` の行 |
-| `.wayhint-row` | 一覧の 1 行。favorite の行には `.favorite` も付く |
-| `.wayhint-key` / `.wayhint-title` / `.wayhint-command` / `.wayhint-category` | 行の中の key / title / command / category |
-| `.wayhint-detail` | 行を選んだときに開く詳細 |
-| `.wayhint-chip` | 絞り込み中を示す chip |
-| `.wayhint-toolbar` | 下部のボタン列(`.wayhint-toolbar button` でボタン) |
-| `.wayhint-form` / `.wayhint-form-title` / `.wayhint-form-label` / `.wayhint-form-note` | 編集モードのフォーム |
-| `.wayhint-help` | 編集モードで下に出るキーの説明 |
-| `.wayhint-grip-both` / `.wayhint-grip-x` / `.wayhint-grip-y` | 大きさを変える grip(角 / 横 / 縦) |
+| `window.wayhint` | The whole overlay (background color, text color, corner radius) |
+| `.wayhint-header` | The sheet name at the top |
+| `.wayhint-context` | The context below the sheet name (`foot · vi · eDP-1`) |
+| `.wayhint-error` | The `⚠` line |
+| `.wayhint-row` | One row of the list. A favorite row also gets `.favorite` |
+| `.wayhint-key` / `.wayhint-title` / `.wayhint-command` / `.wayhint-category` | The key / title / command / category parts within a row |
+| `.wayhint-detail` | The detail that opens when a row is selected |
+| `.wayhint-chip` | The chip showing that a filter is active |
+| `.wayhint-toolbar` | The button row at the bottom (`.wayhint-toolbar button` for the buttons) |
+| `.wayhint-form` / `.wayhint-form-title` / `.wayhint-form-label` / `.wayhint-form-note` | Edit mode's form |
+| `.wayhint-help` | The key description shown at the bottom in edit mode |
+| `.wayhint-grip-both` / `.wayhint-grip-x` / `.wayhint-grip-y` | The resize grip (corner / horizontal / vertical) |
 
 ```css
-/* 例: 少し大きな文字で、key を黄色に */
+/* Example: slightly larger text, and yellow keys */
 window.wayhint { font-size: 1.1em; }
 .wayhint-key { color: #f9e2af; }
 ```

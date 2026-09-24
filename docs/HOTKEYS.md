@@ -1,167 +1,175 @@
-# HOTKEYS — 3 つの hotkey とヒント画面の出入り
+# HOTKEYS — the 3 hotkeys and the overlay's comings and goings
+[日本語](HOTKEYS.ja.md)
 
-wayhint の hotkey は compositor の keybind から CLI を呼ぶ形で届く(DECISIONS 0004)。この文書は
-3 つの hotkey が状態ごとに何をするか、ヒント画面がいつ消えるかを 1 か所にまとめる。仕様の本文は
-`dev-docs/DESIGN.md`「編集モード」§1〜§2、経緯は DECISIONS 0012 / 0013 / 0014 D4 / 0023 / 0033 / 0035 / 0037。
+wayhint's hotkeys arrive by having the compositor's keybind call the CLI (DECISIONS 0004). This
+page brings together, in one place, what the 3 hotkeys do in each state and when the overlay goes
+away. The spec itself is in `dev-docs/DESIGN.ja.md`, "Edit mode" §1–§2; the history is in
+DECISIONS 0012 / 0013 / 0014 D4 / 0023 / 0033 / 0035 / 0037.
 
-| キー(labwc / Wayfire の割り当て) | コマンド | 意味 |
+| Key (as bound in labwc / Wayfire) | Command | Meaning |
 |---|---|---|
-| `Super+h` | `wayhint toggle` | いま見ているウィンドウのヒントを出す / しまう |
-| `Super+Shift+h` | `wayhint search-mode` | 検索に入る / 抜ける |
-| `Super+Ctrl+h` | `wayhint edit-mode` | 編集モードに入る / 抜ける |
+| `Super+h` | `wayhint toggle` | show / put away the hints for the window currently in focus |
+| `Super+Shift+h` | `wayhint search-mode` | enter / leave search |
+| `Super+Ctrl+h` | `wayhint edit-mode` | enter / leave edit mode |
 
-割り当ては compositor 側で設定する(README「compositor の設定」)。
+The binding is set up on the compositor side (README, "Setting up the compositor").
 
-## 1. 状態
+## 1. States
 
-ヒント画面の状態は workspace ごとに持つ(0012)。1 つの workspace について、次のどれかになる。
+The overlay's state is kept per workspace (0012). For a given workspace, it is always one of the
+following.
 
-| 状態 | 表示 | keyboard | 持っているもの |
+| State | Shown | Keyboard | Holds |
 |---|---|---|---|
-| 閉 | 無し | 取らない | 何も無い |
-| normal | 表示 | 取らない(NONE) | context、絞り込み |
-| search | 表示 | 取る(EXCLUSIVE) | 上に加えて検索欄 |
-| edit | 表示 | 取る(EXCLUSIVE) | 上に加えてフォームの下書き |
-| 隠れ(normal / search / edit) | 無し | 取らない | 表示中と同じものを保持 |
+| closed | none | not taken | nothing |
+| normal | shown | not taken (NONE) | context, filter |
+| search | shown | taken (EXCLUSIVE) | the above plus the search box |
+| edit | shown | taken (EXCLUSIVE) | the above plus the form's draft |
+| hidden (normal / search / edit) | none | not taken | keeps whatever was shown |
 
-「隠れ」は閉じたのではなく、表示を外しただけの状態。`Super+h`(か `wayhint hide`)を押す、または workspace を
-離れるとこの状態になる。もう一度出すと元の状態で戻る。
+"Hidden" is not closed, just not shown for the moment. Pressing `Super+h` (or `wayhint hide`), or
+leaving the workspace, moves into this state. Showing it again returns to the same state it was
+in.
 
-各モードは「**入ったときにヒント画面が表示されていたか**」を覚えている(0014 D4 amend)。
-モード用 hotkey を 2 度目に押すと、その状態へ戻る。
+Each mode remembers "**was the overlay shown when this mode was entered**" (0014 D4 amend).
+Pressing the mode's hotkey a second time returns to that state.
 
-## 2. 状態遷移
+## 2. State transitions
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> 閉
-    閉 --> normal: Super+h
-    閉 --> search: Super+Shift+h(入場=非表示)
-    閉 --> edit: Super+Ctrl+h(入場=非表示)
+    [*] --> closed
+    closed --> normal: Super+h
+    closed --> search: "Super+Shift+h (entered while hidden)"
+    closed --> edit: "Super+Ctrl+h (entered while hidden)"
 
-    normal --> 閉: Super+h(同じウィンドウ)
-    normal --> normal: Super+h(別のウィンドウなら差し替え)
-    normal --> search: Super+Shift+h / 検索ボタン(入場=表示中)
-    normal --> edit: Super+Ctrl+h / 編集ボタン(入場=表示中)
+    normal --> closed: "Super+h (same window)"
+    normal --> normal: "Super+h (different window: swap)"
+    normal --> search: "Super+Shift+h / search button (entered while shown)"
+    normal --> edit: "Super+Ctrl+h / edit button (entered while shown)"
 
-    search --> normal: Esc / Enter / c でコピー / 完了ボタン / 2 度目(入場=表示中)
-    search --> 閉: 2 度目(入場=非表示)
-    search --> edit: Super+Ctrl+h(欄の文字は絞り込みに残る)
-    search --> 隠れsearch: Super+h
-    隠れsearch --> search: Super+h / Super+Shift+h
+    search --> normal: "Esc / Enter / c to copy / done button / 2nd press (entered while shown)"
+    search --> closed: "2nd press (entered while hidden)"
+    search --> edit: "Super+Ctrl+h (text in the box stays as the filter)"
+    search --> hiddensearch: Super+h
+    hiddensearch --> search: Super+h / Super+Shift+h
 
-    edit --> normal: Esc / フォーム保存 / 2 度目(入場=表示中)
-    edit --> 閉: 2 度目(入場=非表示)
-    edit --> 隠れedit: Super+h / workspace 離脱
-    隠れedit --> edit: Super+h / Super+Ctrl+h / workspace 復帰
+    edit --> normal: "Esc / form saved / 2nd press (entered while shown)"
+    edit --> closed: "2nd press (entered while hidden)"
+    edit --> hiddenedit: "Super+h / leaving the workspace"
+    hiddenedit --> edit: "Super+h / Super+Ctrl+h / returning to the workspace"
 ```
 
-図に入れていない経路:
+Routes not shown in the diagram:
 
-- どの状態からでも、toolbar の「閉じる」で**閉**になる。search は抜けて絞り込みを保存する。edit の
-  下書きは捨てる。
-- `wayhint hide` は `Super+h` で隠すときと同じ(0037)。search / edit 中なら隠れ search / 隠れ edit に、
-  normal なら閉になる。
-- workspace を離れると、表示されていたものは隠れる(§4)。
-- edit 中の `Super+Shift+h` は拒否する(下の表)。
+- From any state, the toolbar's "close" button goes to **closed**. It leaves search, saving the
+  filter. It discards edit's draft.
+- `wayhint hide` behaves the same as hiding with `Super+h` (0037). During search / edit it goes to
+  hidden search / hidden edit; from normal it goes to closed.
+- Leaving the workspace hides whatever was shown (§4).
+- `Super+Shift+h` during edit is refused (see the table below).
 
-## 3. 状態 × キーの一覧
+## 3. State × key table
 
-「取り直す」は、押した時点の context を解決し直すこと。フォーカスが別のウィンドウ(Herdr の別タブなど)に
-移っていれば、そのウィンドウのヒントに差し替えてからモードに入る(0033 A / 0035)。
+"Re-resolve" means resolving the context again at the moment the key is pressed. If focus has
+moved to a different window (e.g. a different Herdr tab), it swaps to that window's hints before
+entering the mode (0033 A / 0035).
 
-### `Super+h`(toggle)
+### `Super+h` (toggle)
 
-| 状態 | 結果 |
+| State | Result |
 |---|---|
-| 閉 | context を取って normal で出す |
-| normal、同じウィンドウ | 閉じる |
-| normal、別のウィンドウ | そのウィンドウのヒントに差し替える(閉じない。0013) |
-| 隠れ normal | そのまま出し直す |
-| search / edit | 隠す。モード・検索欄・下書きはそのまま、keyboard は放す |
-| 隠れ search / edit | 差し替えずにそのまま出し直す。keyboard も取り直す |
+| closed | resolve context and show it in normal |
+| normal, same window | close |
+| normal, different window | swap to that window's hints (doesn't close, 0013) |
+| hidden normal | just show it again |
+| search / edit | hide. Mode, search box and draft are kept, keyboard is released |
+| hidden search / edit | show it again without swapping, keyboard is retaken too |
 
-search / edit 中の `Super+h` が差し替えではなく隠す / 出すなのは、書きかけのものを別のウィンドウのヒントで
-消さないため(0014 D4)。
+The reason `Super+h` during search / edit hides / shows instead of swapping is so that work in
+progress isn't wiped out by another window's hints (0014 D4).
 
-### `Super+Shift+h`(search-mode)
+### `Super+Shift+h` (search-mode)
 
-| 状態 | 結果 |
+| State | Result |
 |---|---|
-| 閉 / 隠れ normal | context を取って出し、search に入る(入場=非表示) |
-| normal | 取り直してから search に入る(入場=表示中) |
-| search | 抜ける。入場=非表示なら閉じる、表示中なら normal に戻る |
-| 隠れ search | そのまま出し直す(search のまま) |
-| edit | **拒否**。表示されていれば「編集を終えてから検索してください」を出す |
+| closed / hidden normal | resolve context, show it, and enter search (entered while hidden) |
+| normal | re-resolve, then enter search (entered while shown) |
+| search | leave. If entered while hidden, close; if entered while shown, return to normal |
+| hidden search | just show it again (stays in search) |
+| edit | **refused**. If shown, displays "finish editing before searching" |
 
-### `Super+Ctrl+h`(edit-mode)
+### `Super+Ctrl+h` (edit-mode)
 
-| 状態 | 結果 |
+| State | Result |
 |---|---|
-| 閉 / 隠れ normal | context を取って出し、edit に入る(入場=非表示) |
-| normal | 取り直してから edit に入る(入場=表示中)。エディタ起動で持ち越した下書きがある view は差し替えない(0023) |
-| search | 欄の文字を絞り込みとして残して search を抜け、取り直して edit に入る(入場=表示中。0033 C) |
-| 隠れ search | context を取り直して出す(search は抜けて絞り込みを保存)、edit に入る(入場=非表示) |
-| edit、フォームが開いている | フォームを閉じるだけ(`Esc` と同じ)。次の 1 打で抜ける |
-| edit、フォームが無い | 抜ける。入場=非表示なら閉じる、表示中なら normal に戻る |
-| 隠れ edit | そのまま出し直す(下書きも) |
-| 表示中のシートの YAML が壊れている | **拒否**して理由を出す。keyboard は取らない |
+| closed / hidden normal | resolve context, show it, and enter edit (entered while hidden) |
+| normal | re-resolve, then enter edit (entered while shown). A view that carried a draft over from launching the editor is not swapped out (0023) |
+| search | leave search, keeping the box's text as the filter, re-resolve, and enter edit (entered while shown, 0033 C) |
+| hidden search | re-resolve and show (leaves search, saving the filter), enter edit (entered while hidden) |
+| edit, a form is open | just close the form (same as `Esc`). The next press leaves edit |
+| edit, no form open | leave. If entered while hidden, close; if entered while shown, return to normal |
+| hidden edit | just show it again (draft included) |
+| the shown sheet's YAML is broken | **refused** with the reason shown. Keyboard is not taken |
 
-## 4. いつ消えるか
+## 4. When it goes away
 
 ```mermaid
 flowchart TD
-    E[イベント] --> T{何が起きたか}
-    T -- "Super+h(normal、同じウィンドウ)" --> C[閉じる]
-    T -- "閉じるボタン" --> C
-    T -- "wayhint hide(normal)" --> C
-    T -- "モード用 hotkey の 2 度目<br/>(非表示から入っていた)" --> C
-    T -- "Super+h / wayhint hide<br/>(search / edit 中)" --> H[隠れる<br/>状態は残る]
-    T -- "workspace を離れる" --> W[隠れる<br/>search は normal に戻す]
-    T -- "workspace が無くなる" --> D[その workspace の状態を捨てる]
-    T -- "Esc / Enter / c / フォーム保存 /<br/>エディタ起動 / ウィンドウのフォーカス移動" --> K[消えない]
+    E[Event] --> T{What happened}
+    T -- "Super+h (normal, same window)" --> C[Close]
+    T -- "Close button" --> C
+    T -- "wayhint hide (normal)" --> C
+    T -- "2nd press of a mode hotkey<br/>(entered while hidden)" --> C
+    T -- "Super+h / wayhint hide<br/>(during search / edit)" --> H[Hide<br/>state is kept]
+    T -- "Leaving the workspace" --> W[Hide<br/>search returns to normal]
+    T -- "Workspace goes away" --> D[Discard that workspace's state]
+    T -- "Esc / Enter / c / form saved /<br/>editor launched / window focus moves" --> K[Stays]
 ```
 
-**閉じる**(次に出すと context から取り直す):
+**Closes** (re-resolves from context on the next show):
 
-- normal で、同じウィンドウから `Super+h`。normal での `wayhint hide`。
-- toolbar の「閉じる」ボタン。search の絞り込みは保存する。edit の下書きは捨てる。
-- 非表示から入ったモードで、そのモードの hotkey をもう一度押す(0014 D4 amend)。
+- `Super+h` from normal, from the same window. `wayhint hide` from normal.
+- The toolbar's "close" button. Search's filter is saved; edit's draft is discarded.
+- Pressing a mode's hotkey again, for a mode entered while hidden (0014 D4 amend).
 
-**隠れる**(次に出すと同じ状態で戻る):
+**Hides** (returns to the same state on the next show):
 
-- search / edit 中の `Super+h` と `wayhint hide`。keyboard だけ放し、モードは残す(0037)。
-- workspace を離れる(0012)。戻ると自動で出し直す。search はこの時点で抜けて絞り込みを保存するので、
-  戻ったときは normal になっている。edit は下書きごと残る。
+- `Super+h` and `wayhint hide` during search / edit. Only the keyboard is released; the mode is
+  kept (0037).
+- Leaving the workspace (0012). Coming back shows it again automatically. Search leaves at this
+  point, saving the filter, so it's back in normal when you return. Edit is kept, draft included.
 
-**消えない**:
+**Stays**:
 
-- search の `Esc` / `Enter` / `c`(`c` はコピーしてから)、フォームの保存。モードを抜けて normal の表示に戻る
-  だけで、フォーカスは元のウィンドウへ返す(0021 / 0033 / 0039)。
-- 「エディタで編集」。search / edit を抜けて keyboard を放すが、ヒント画面は残る(0023)。edit の下書きは
-  次の `Super+Ctrl+h` で戻る。
-- 別のウィンドウにフォーカスを移すこと。context は hotkey を押したときにだけ取る(idle polling はしない)ので、
-  ヒント画面は前のウィンドウのヒントのまま残る。次に `Super+h` を押すとそのウィンドウのヒントに差し替わる。
-- normal では keyboard を取らないので、`Esc` などのキーはそもそもヒント画面に届かない。
+- Search's `Esc` / `Enter` / `c` (`c` copies first), the form being saved. This just leaves the
+  mode back to the normal view, returning focus to the original window (0021 / 0033 / 0039).
+- "Edit in editor". Leaves search / edit and releases the keyboard, but the overlay stays (0023).
+  Edit's draft comes back on the next `Super+Ctrl+h`.
+- Moving focus to a different window. Context is only resolved when a hotkey is pressed (no idle
+  polling), so the overlay stays showing the previous window's hints. The next `Super+h` swaps it
+  to that window's hints.
+- Normal doesn't take the keyboard, so keys like `Esc` never reach the overlay in the first place.
 
-## 5. 組み合わせの例
+## 5. A combined example
 
 ```mermaid
 sequenceDiagram
-    actor U as ユーザー
-    participant O as ヒント画面
-    U->>O: Super+Shift+h(閉から)
-    Note over O: search(入場=非表示)
-    U->>O: 「ペースト」と入力
+    actor U as User
+    participant O as Overlay
+    U->>O: Super+Shift+h (from closed)
+    Note over O: search (entered while hidden)
+    U->>O: types "paste"
     U->>O: Super+Ctrl+h
-    Note over O: 「ペースト」は絞り込みに残り<br/>edit(入場=表示中)
-    U->>O: f で favorite
+    Note over O: "paste" stays as the filter<br/>edit (entered while shown)
+    U->>O: f to favorite
     U->>O: Super+Ctrl+h
-    Note over O: normal に戻る(閉じない)<br/>絞り込み「ペースト」は残る
+    Note over O: back to normal (doesn't close)<br/>filter "paste" is kept
     U->>O: Super+h
-    Note over O: 閉じる
+    Note over O: closes
 ```
 
-search に非表示から入っていても、そこから edit に移ると「入場=表示中」になる。edit に入った時点では
-ヒント画面が表示されていたからである。そのため、edit を 2 度目で抜けても閉じずに normal へ戻る。
+Even having entered search while hidden, moving from there into edit makes it "entered while
+shown", because the overlay was shown at the moment edit was entered. That's why leaving edit on
+the second press doesn't close it, but returns to normal instead.

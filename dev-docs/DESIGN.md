@@ -1,13 +1,17 @@
 # wayhint — Design
 
-設計書 §12–§14, §45, §50–§59 を元に、決まっている範囲だけを書く。未決は「未決」と明記する。
+[日本語](DESIGN.ja.md)
+
+Based on the design document §12–§14, §45, §50–§59; writes only what is decided. Anything
+undecided is marked "undecided".
 
 ## Overview
 
-常駐 daemon(`wayhintd`)が GTK4 + gtk4-layer-shell の overlay window を1つ保持し、CLI
-(`wayhint toggle|show|hide|refresh|validate`)から Unix domain socket 経由で操作される。
-compositor の keybinding(labwc rc.xml / wayfire.ini)が `wayhint toggle` を実行する。show 時に context を1回解決し、一致した
-sheet(+ 親sheetのtag絞り込み)を描画する。
+A resident daemon (`wayhintd`) holds a single GTK4 + gtk4-layer-shell overlay window and is
+operated from the CLI (`wayhint toggle|show|hide|refresh|validate`) over a Unix domain socket.
+A compositor keybinding (labwc `rc.xml` / `wayfire.ini`) runs `wayhint toggle`. On show, the
+context is resolved once, and the matching sheet (+ tag filtering from the parent sheet) is
+rendered.
 
 ```text
 compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
@@ -23,90 +27,96 @@ compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
 
 ## Architecture
 
-- **adapter隔離**: pywayland を呼ぶのは `context/wayland.py` と `context/workspace.py` だけ、PyWayfire を呼ぶのは
-  `context/wayfire.py` だけ、`herdr` CLI を呼ぶのは `context/herdr.py` だけ。他モジュールからの直接呼び出しは禁止。
-- **一方向依存**: `ui/` は `ResolvedContext` と sheet データのみを受け取る。UI から
-  compositor/Herdr へ問い合わせない。
-- **snapshot**: context は show/refresh 時に解決して固定。live update は設定項目だけ用意し
-  V1では常に false。
-- **event-driven**: idle polling なし。file 監視は Gio.FileMonitor。
-- **plugin system は作らない**: `NestedContextProvider` interface だけ用意し、V1 実装は
-  `ProcAdapter` と `HerdrContextProvider` の 2 つ。判定材料で 2 群に分かれる —
-  **terminal introspection**(app_id を見て自分で foreground process を探す: `ProcAdapter`)と
-  **nested resolver**(host application に聞く: `HerdrContextProvider`)— が interface は共通で、
-  ContextResolver は登録順に `applies_to` を問い、最初に当たった 1 つに `foreground_process(app_id)`
-  を聞く。登録順を決める場所は `daemon._nested_providers()` の 1 か所。多段解決
-  (terminal → multiplexer → command)は DECISIONS 0027 で見送った。将来 Tmux/SSH/EditorMode を
-  同 interface で追加できる。
-- **窓 → プロセスは app_id の接尾辞で解く**: Wayland の protocol も labwc も toplevel の pid を
-  client に渡さないので、同じ端末の窓が 2 枚あると `/proc` だけでは区別できない。窓の側が
-  `--app-id foot.p<pid>` と名乗る規約にして、compositor が返す app_id から pid を読み戻す
-  (`matcher.strip_pid_suffix`、DECISIONS 0027)。接尾辞が無い app_id では、その端末の
-  プロセスが 1 つのときだけ答える。sheet の照合・生成と overlay の表示は接尾辞を外した base を
-  使い、`ResolvedContext.desktop_app` には接尾辞付きのまま入れる(窓が違えば context も違う)。
-  sheet の照合は `app_specificity` が app_id と base の**両方**を候補にする(接尾辞付きの窓が
-  `^foot$` の sheet に当たる。base だけにしないのは、たまたま `.p<数字>` で終わる app_id 向けの
-  rule を壊さないため)。前面プロセスは **pty ごとに 1 つ**存在するので、端末の子孫に複数の tty が
-  見つかったら(tab / split / tmux)深さや PID で推測せず**無判定**にする。
-  端末と launcher の設定手順は `docs/TERMINALS.md`。
+- **adapter isolation**: only `context/wayland.py` and `context/workspace.py` call pywayland,
+  only `context/wayfire.py` calls PyWayfire, only `context/herdr.py` calls the `herdr` CLI.
+  Calling them directly from any other module is forbidden.
+- **one-way dependency**: `ui/` receives only `ResolvedContext` and sheet data. The UI never
+  queries the compositor / Herdr.
+- **snapshot**: context is resolved and fixed at show/refresh time. A live-update config item
+  exists but is always `false` in V1.
+- **event-driven**: no idle polling. File watching uses `Gio.FileMonitor`.
+- **no plugin system is built**: only the `NestedContextProvider` interface exists, with two V1
+  implementations, `ProcAdapter` and `HerdrContextProvider`. They fall into two groups by how
+  they decide — **terminal introspection** (look at the app_id and find the foreground process
+  yourself: `ProcAdapter`) and **nested resolver** (ask the host application: `HerdrContextProvider`)
+  — but share one interface. `ContextResolver` asks each in registration order whether it
+  `applies_to`, and asks only the first match's `foreground_process(app_id)`. The single place
+  that decides registration order is `daemon._nested_providers()`. Multi-stage resolution
+  (terminal → multiplexer → command) was deferred in DECISIONS 0027. Tmux/SSH/EditorMode can be
+  added under the same interface in the future.
+- **window → process is resolved by the app_id suffix**: neither the Wayland protocol nor labwc
+  passes a toplevel's pid to the client, so if a terminal has two windows, `/proc` alone cannot
+  tell them apart. The convention is that the window itself declares `--app-id foot.p<pid>`, and
+  the pid is read back from the app_id the compositor returns (`matcher.strip_pid_suffix`,
+  DECISIONS 0027). For an app_id without a suffix, it answers only when that terminal has exactly
+  one process. Sheet matching/creation and the overlay display use the base with the suffix
+  stripped, while `ResolvedContext.desktop_app` keeps the suffixed form (a different window means
+  a different context). Sheet matching lets `app_specificity` consider **both** the app_id and the
+  base as candidates (a suffixed window matches a `^foot$` sheet — not restricted to base only, so
+  as not to break a rule meant for an app_id that happens to end in `.p<digits>`). Because there is
+  exactly **one** foreground process per pty, if a terminal's descendants turn up more than one tty
+  (tab / split / tmux), it is **left unresolved** rather than guessed by depth or PID. Terminal and
+  launcher setup steps are in `docs/TERMINALS.md`.
 
 ## Modules
 
-設計書 §53 の layout を `wayhint` に読み替えたもの。責務境界の目安であり、実装量が少なければ統合
-してよい(過剰分割禁止)。
+The design document's §53 layout, adapted to `wayhint`. This is a guide to responsibility
+boundaries; modules with little implementation may be merged (avoid over-splitting).
 
 ```text
 src/wayhint/
   cli.py                          `wayhint validate|toggle|show|hide|refresh|reload|ping`
-  daemon.py                       `wayhintd`: Gtk.Application、UDS server、Gio.FileMonitor(debounce)
+  daemon.py                       `wayhintd`: Gtk.Application, UDS server, Gio.FileMonitor(debounce)
   config.py                       global config(overlay/appearance/editor/nested/context/search/logging)
   models.py                       Hint, HintSheet, MatchRule, DisplayConfig, Size, Margin,
                                   ResolvedContext, ProcessInfo, OutputInfo, SourceLocation
-  yaml_store.py                   ruamel.yaml load、行番号、validation(Issue)、SheetStore(last-known-good)
-  matcher.py                      app_id / argv / cmdline regex matching、priority → specificity → file order
-  selection.py                    親 hint の 4 段の置き換え(0034)、favorite/category sort、search
+  yaml_store.py                   ruamel.yaml load, line numbers, validation(Issue), SheetStore(last-known-good)
+  matcher.py                      app_id / argv / cmdline regex matching, priority → specificity → file order
+  selection.py                    4-stage replacement of parent hints(0034), favorite/category sort, search
   context/base.py                 DesktopContextProvider / NestedContextProvider(Protocol)
-  context/resolver.py             ContextResolver(§56 の流れ、output 優先順位)
-  context/wayland.py              pywayland 隔離: wlr-foreign-toplevel で active toplevel/output、activate
-  context/_wlr_foreign_toplevel.py  生成物(protocols/*.xml → scripts/gen-protocol)
-  context/wayfire.py              PyWayfire 隔離(optional backend): focused view/output、set_focus
-  context/select.py               `context.backend` auto|wayland|wayfire の選択と auto fallback
-  context/workspace.py            pywayland 隔離: ext-workspace-v1 で active workspace 監視、toggle/切替の判定
-  models.py の ResolvedContext.target_key()  overlay が何を出しているかの比較キー(title は含めない)
-  context/herdr.py                herdr CLI 隔離: pane current → process-info --pane
-  context/proc.py                 /proc 隔離: terminal の子孫から foreground process(pgrp == tpgid)
-  context/process.py              ProcessInfo 正規化
-  ui/geometry.py                  anchor → layer-shell edges + margin、px/% 解決、
-                                  resize_delta(掴んだ角の drag → 新サイズ)(純粋、テスト対象)
-  i18n.py                         UI 文字列カタログ(en/ja)、locale 検出(純粋、テスト対象)
-  ui/window.py, ui/style.py       HintWindow(list/detail/search/toolbar)、CSS
-  editor.py                       edit_target(開く file/line の決定、純粋)、placeholder 置換 + Popen(shell=False)
+  context/resolver.py             ContextResolver(the §56 flow, output priority order)
+  context/wayland.py              pywayland isolation: active toplevel/output via wlr-foreign-toplevel, activate
+  context/_wlr_foreign_toplevel.py  generated (protocols/*.xml → scripts/gen-protocol)
+  context/wayfire.py              PyWayfire isolation(optional backend): focused view/output, set_focus
+  context/select.py               selection and auto fallback of `context.backend` auto|wayland|wayfire
+  context/workspace.py            pywayland isolation: watches active workspace via ext-workspace-v1, decides toggle/switch
+  ResolvedContext.target_key() in models.py  the comparison key for what the overlay is currently showing (title excluded)
+  context/herdr.py                herdr CLI isolation: pane current → process-info --pane
+  context/proc.py                 /proc isolation: foreground process from the terminal's descendants(pgrp == tpgid)
+  context/process.py              ProcessInfo normalization
+  ui/geometry.py                  anchor → layer-shell edges + margin, px/% resolution,
+                                  resize_delta(drag on a grabbed corner → new size)(pure, tested)
+  i18n.py                         UI string catalog(en/ja), locale detection(pure, tested)
+  ui/window.py, ui/style.py       HintWindow(list/detail/search/toolbar), CSS
+  editor.py                       edit_target(decides which file/line to open, pure), placeholder substitution + Popen(shell=False)
   clipboard.py                    GDK clipboard
-  ipc.py                          socket path、JSON encode/decode、client、handle_request
+  ipc.py                          socket path, JSON encode/decode, client, handle_request
 ```
 
-設計書 §53 の `matcher/` `ui/hint_list.py` 等は実装量が少ないため上記に統合した。
+`matcher/`, `ui/hint_list.py`, etc. from the design document's §53 were merged into the above
+because their implementation is small.
 
 ## Data model
 
-- `Hint`: `id`, `title`(必須); `kind`, `key`, `command`, `category`, `tags`, `favorite`,
-  `copy`, `remark`, `source`, `learned`; `location: SourceLocation(file, line)`。
+- `Hint`: `id`, `title` (required); `kind`, `key`, `command`, `category`, `tags`, `favorite`,
+  `copy`, `remark`, `source`, `learned`; `location: SourceLocation(file, line)`.
 - `HintSheet`: `version`, `id`, `title`, `priority`, `match: MatchRule`, `display: DisplayConfig`
-  (部分指定、global から継承), `inherit.parent_tags`, `nested.export_tags`(`export_tags`、親として渡す
-  hint の tag。未指定は `None` = 全部), `hints: list[Hint]`, `path`。
-- `MatchRule`: `wayland.app_id_regex[]`(旧綴り `wayfire` も読む), `process.argv_regex[]`, `process.cmdline_regex[]`。
+  (partial, inherits from global), `inherit.parent_tags`, `nested.export_tags` (`export_tags`, the
+  tags of hints passed to children as a parent; unspecified means `None` = all), `hints: list[Hint]`, `path`.
+- `MatchRule`: `wayland.app_id_regex[]` (the old spelling `wayfire` is also read), `process.argv_regex[]`, `process.cmdline_regex[]`.
 - `ResolvedContext`: `desktop_app`, `desktop_title`, `output: OutputInfo(name, width, height)`,
-  `view_ref`(検索後の focus 復帰先。backend 固有の不透明文字列), `parent_context`(親sheet id),
-  `foreground_process: ProcessInfo | None`, `active_sheet`, `error`(desktop context 取得不可時の表示文)。
-- `ProcessInfo`: `pid`, `name`, `argv`, `cmdline`, `cwd`。
-- 設定ファイル: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/<lang>/*.yaml`(`.yml` も可、
-  ファイル名順に読む)。schema は設計書 §21, §43 を元に Phase 1 で確定(DECISIONS 0006)。
-- **ファイルの 3 区分**(DECISIONS 0033): 内容は `hints/`(人が書く)、設定は `config.yaml`(人が書き、
-  リサイズだけ daemon が書き戻す)、状態は `$XDG_STATE_HOME/wayhint/state.yaml`(daemon だけが書く)。
+  `view_ref` (the focus-restore target after search; an opaque backend-specific string), `parent_context` (parent sheet id),
+  `foreground_process: ProcessInfo | None`, `active_sheet`, `error` (the message shown when the desktop context cannot be obtained).
+- `ProcessInfo`: `pid`, `name`, `argv`, `cmdline`, `cwd`.
+- Config files: `$XDG_CONFIG_HOME/wayhint/config.yaml`, `style.css`, `hints/<lang>/*.yaml` (`.yml` too,
+  read in filename order). The schema is fixed in Phase 1 based on the design document §21, §43 (DECISIONS 0006).
+- **The three file categories** (DECISIONS 0033): content lives in `hints/` (written by humans), config in
+  `config.yaml` (written by humans; only resizing is written back by the daemon), state in
+  `$XDG_STATE_HOME/wayhint/state.yaml` (written only by the daemon).
 
-### state.yaml(実装: `state.py`、DECISIONS 0033)
+### state.yaml (implementation: `state.py`, DECISIONS 0033)
 
-既定 `~/.local/state/wayhint/state.yaml`。sheet ごとの絞り込み(検索欄の文字列)を持つ。
+Defaults to `~/.local/state/wayhint/state.yaml`. Holds the per-sheet filter (the search box string).
 
 ```yaml
 version: 1
@@ -115,476 +125,570 @@ filters:
   herdr: "#session"
 ```
 
-- キーは active(子)sheet の id。値は親 / include 込みの一覧全体に掛かる絞り込み。
-- 書くのは daemon だけで、`search` を抜けた時点で前回書いた内容と違えば一時ファイル + rename で書く。
-  空の絞り込みはキーを消す。監視しない。active sheet が無い context の絞り込みはメモリだけ。
-- **壊れていても止めない**: 無い / 読めない / YAML 不正 / 先頭が mapping でない / `version` ≠ 1 /
-  64 KiB 超 → 絞り込み無しで起動し WARN を 1 行。UI に `⚠` は出さず、`.bak` も作らない(次の書き込みで
-  上書きされる)。値が文字列でない、sheet id が `^[A-Za-z0-9][A-Za-z0-9._-]*$` に合わない、値が 200 文字超、
-  の項目はその項目だけ捨てる。257 項目目以降は捨てる。知らない sheet id は残し、知らないキーは書き戻しで
-  消える。重複した sheet id は後勝ち。書き込み失敗は WARN にしてメモリ上の値を使い続ける。
-  `wayhint validate` は見ない。
-- 絞り込み文字列は既存の substring + token AND にだけ使い、regex・パス・shell・markup として扱わない。
-  Unicode `Cc` は入力時と読み込み時に落とす。WARN に絞り込みの内容は書かない。
+- The key is the id of the active (child) sheet. The value is the filter applied to the whole
+  list including parent/include contributions.
+- Only the daemon writes it, and only when it differs from what it last wrote, at the moment
+  `search` is exited, via a temp file + rename. An empty filter removes the key. It is not watched.
+  A filter for a context with no active sheet is kept in memory only.
+- **Never blocks startup even if broken**: missing / unreadable / invalid YAML / top-level is not a
+  mapping / `version` ≠ 1 / over 64 KiB → starts with no filters and a single WARN line. No `⚠` is
+  shown in the UI, and no `.bak` is made (the next write overwrites it). An entry whose value is
+  not a string, whose sheet id doesn't match `^[A-Za-z0-9][A-Za-z0-9._-]*$`, or whose value is over
+  200 characters is dropped, entry by entry. From the 257th entry on, entries are dropped. Unknown
+  sheet ids are kept; unknown keys are dropped on write-back. A duplicate sheet id: the later one
+  wins. A write failure is a WARN, and the in-memory value keeps being used.
+  `wayhint validate` does not look at it.
+- The filter string is only used for the existing substring + token AND matching; it is never
+  treated as regex, a path, shell, or markup. Unicode `Cc` is stripped both on input and on load.
+  The WARN never includes the filter contents.
 
-### config.yaml(実装: `config.py`)
+### config.yaml (implementation: `config.py`)
 
-使う人向けの全項目の説明は `docs/CONFIG.md`。項目を足す・変えるときは両方を直す。
+The full description of every item, for users, is in `docs/CONFIG.md`. When adding or changing an
+item, fix both.
 
 ```yaml
 overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, right: 24}, output: null}
 appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
 editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"], schema_modeline: false,
              schema_path: ~/.config/wayhint/schema.json}
-nested:     {parent_tags: null, parent_categories: null}   # null = 書いていない。[] で全体の opt-out(docs/SHEETS.md §3)
+nested:     {parent_tags: null, parent_categories: null}   # null = not written. [] opts the whole thing out(docs/SHEETS.md §3)
 context:    {live_update: false, backend: auto, workspace: current}  # backend: auto|wayland|wayfire
                                                                      # workspace: current|all
 search:     {max_results: 50}
 logging:    {level: warning}
-include:    []          # 既定で全 sheet に混ぜる sheet(id か {sheet, tags, categories}。0026 / 0039)。sheet 側 include が勝つ
+include:    []          # sheets mixed in by default for every sheet(id, or {sheet, tags, categories}. 0026 / 0039); a sheet's own include wins
 ```
 
-- 全項目任意、ファイル自体も無くてよい(上記が既定値)。未知の section / key は error。
-- size: 整数(px)、`"420px"`、`"30%"`(0–100)。margin: 整数(全辺)か `{top,right,bottom,left}`。
-- `editor.command` は argv list。placeholder は `{file}` `{line}` `{hint_id}` のみ、`{file}` 必須。
-  未知の `{...}` は error。展開は文字列置換のみで shell を通らない。
-- `editor.schema_modeline`: true なら新規 sheet と format が先頭に
-  `# yaml-language-server: $schema=` を付ける(DECISIONS 0014 D6)。
-- `editor.schema_path`: モードラインの `$schema=` に書く path。`wayhint schema --write` の
-  既定出力先。
+- Every item is optional, and the file itself may be absent (the above are the defaults). An
+  unknown section/key is an error.
+- size: an integer (px), `"420px"`, or `"30%"` (0–100). margin: an integer (all sides) or
+  `{top,right,bottom,left}`.
+- `editor.command` is an argv list. The only placeholders are `{file}` `{line}` `{hint_id}`,
+  and `{file}` is required. An unknown `{...}` is an error. Expansion is plain string
+  substitution and never goes through a shell.
+- `editor.schema_modeline`: if true, new sheets and `format` add a
+  `# yaml-language-server: $schema=` line at the top (DECISIONS 0014 D6).
+- `editor.schema_path`: the path written into the modeline's `$schema=`, and the default output
+  destination of `wayhint schema --write`.
 
-### hints/<lang>/*.yaml(実装: `yaml_store.py`)
+### hints/<lang>/*.yaml (implementation: `yaml_store.py`)
 
-使う人向けの全項目の説明は `docs/SHEET-FORMAT.md`。schema を変えるときは両方を直す。
+The full description of every item, for users, is in `docs/SHEET-FORMAT.md`. When changing the
+schema, fix both.
 
-置き場所は言語ごとに 1 ディレクトリ(DECISIONS 0024)。`hints/<lang>/` → `hints/en/` →
-`hints/*.yaml`(フラット、単一言語や移行前の配置)の順に**最初に見つかった 1 つだけ**を読む。
-`<lang>` は UI と同じ `resolve_language()`(設定 `appearance.language` → locale → 未知なら `en`)。
-読み書き・新規作成・監視はすべてそのディレクトリに対して行い、言語設定を変えると読み直す。
+The placement is one directory per language (DECISIONS 0024). `hints/<lang>/` → `hints/en/` →
+`hints/*.yaml` (flat, for a single language or a pre-migration layout) are tried in order, and
+**only the first one found** is read. `<lang>` uses the same `resolve_language()` as the UI
+(config `appearance.language` → locale → `en` if unknown). Reading, writing, creating new files,
+and watching are all done against that one directory, and it is re-read when the language setting
+changes.
 
 
 ```yaml
-version: 1              # 任意、1 のみ
-id: claude              # 必須 ^[A-Za-z0-9][A-Za-z0-9._-]*$、ファイル名(stem)と同じ、全 sheet で一意
-title: Claude Code      # 必須
-priority: 10            # 任意 int、既定 0
-match:                                                 # 省略可。無い sheet は active にならない
-  wayland: {app_id_regex: [...]}                       # 旧綴り wayfire: も同義
-  process: {argv_regex: [...], cmdline_regex: [...]}   # Python re でコンパイルできること
-include: [wm, {sheet: git, tags: [daily], categories: [基本]}]   # 混ぜる sheet。省略時は global include
-display: {anchor, width, height, margin, output}       # 部分指定、global overlay から継承
-inherit: {parent_tags: [terminal, ai], parent_categories: [ペイン]}   # 親 hint の絞り。省略時は下の順で決まる
-nested: {export_tags: [pane], export_categories: [ペイン]}   # 親として子に渡す hint。省略時は全部
+version: 1              # optional, only 1
+id: claude              # required ^[A-Za-z0-9][A-Za-z0-9._-]*$, same as filename(stem), unique across all sheets
+title: Claude Code      # required
+priority: 10            # optional int, default 0
+match:                                                 # optional. A sheet without one never becomes active
+  wayland: {app_id_regex: [...]}                       # old spelling wayfire: means the same
+  process: {argv_regex: [...], cmdline_regex: [...]}   # must compile as Python re
+include: [wm, {sheet: git, tags: [daily], categories: [basics]}]   # sheets to mix in. defaults to the global include if omitted
+display: {anchor, width, height, margin, output}       # partial, inherits from global overlay
+inherit: {parent_tags: [terminal, ai], parent_categories: [pane]}   # filter on parent hints. see below for the order used when omitted
+nested: {export_tags: [pane], export_categories: [pane]}   # hints passed to children as a parent. all, if omitted
 hints:
-  - {id, title,            # 必須。id は sheet 内で一意
+  - {id, title,            # required. id unique within the sheet
      kind: shortcut|command|tip|note, key, command, category, tags: [], favorite: false,
      copy, remark, source, learned}
 ```
 
-- **他 sheet の hint の混ざり方**(親 sheet と `include`)は `docs/SHEETS.md` にまとめた。同文書の各節の
-  実装: §1 active / 親 sheet の決定は `context/resolver.py` の `ContextResolver.resolve`、§2 一覧の組み立ては
-  `selection.visible_hints` → `selection.sort_hints`、§3 親 hint の絞りは `selection.effective_parent_tags` /
-  `effective_parent_categories` と `models.HintFilter`、§4 include は `yaml_store.resolve_includes`(絞った
-  sheet は `hints` だけを減らした写しで、hint は元の object のまま)、§6 の確認は `selection.explain_filters`
-  (`wayhint inspect` / `context --shown`)、§7 の所属ファイルは
-  `hint.location.file`。要点だけ:
-  - **`include`**(DECISIONS 0026 / 0039): 要素は sheet id(全部)か `{sheet, tags, categories}`(絞る)。
-    sheet 側の `include` は config の `include` を**置き換える**。include 先の include は辿らない。
-    解決できない id と自己参照は warning で、その id だけ無視する。
-  - **親 hint の絞り**(DECISIONS 0034 / 0039): tag は子の `inherit.parent_tags` → config の
-    `nested.parent_tags` → 親の `nested.export_tags` → 全部、の 4 段で最初に書いてあった段だけを使う。
-    category も `parent_categories` / `export_categories` で同じ規則を独立に解決する。
-  - **tag と category の組み合わせ**(0039): 書いた方の OR。どちらかが `[]` なら、もう片方に関係なく 0 件
-    (config の `nested.parent_tags: []` が全体の opt-out のまま効くため。0036)。category の無い hint は
-    どの category にも当たらない。
-- **`match` は省略可**。`match` の無い sheet はどの context でも active にならず、`include` からだけ
-  一覧に出る(共通 hint 用)。`match` があっても include 対象にはできる。
-- 一覧の連結順は active → 親 sheet(絞った分) → include(記述順、絞った分)で、その後 D7 のソートを掛ける。
-  同じ hint が 2 経路から来たときは `(ファイル, id)` で 1 件に落とす(0019)。
-- `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで canonical 順
-  (`id` `title` `kind` `key` `command` `category` `tags` `favorite` `copy` `remark` `source`
-  `learned`)に出力する。読み込む際は key の順序と省略を問わない(DECISIONS 0014 D2)。
-- 表示順: favorite 区画(YAML 記述順、category 無視)→ 非 favorite 区画(**非 favorite の hint だけで
-  採番した** category 初出順 → YAML 記述順)。category null は 1 グループとして初出順に入り、
-  ラベルは擬似 category(DECISIONS 0014 D7)。
-- 各 hint の `location` は list 要素の開始行(1-based)。`learned` の日付は ISO 文字列に正規化。
-- validation は 1 ファイル内の問題を全部集めて `Issue(file, line, message)` で返す。1 つでも
-  あれば sheet は採用しない。`SheetStore` は採用済みの sheet を保持し(last-known-good)、次に
-  clean に parse できた時だけ置き換える。
+- How hints from other sheets get mixed in (a parent sheet and `include`) is collected in
+  `docs/SHEETS.md`. Implementation of each section there: §1 deciding the active/parent sheet is
+  `context/resolver.py`'s `ContextResolver.resolve`; §2 assembling the list is
+  `selection.visible_hints` → `selection.sort_hints`; §3 filtering parent hints is
+  `selection.effective_parent_tags` / `effective_parent_categories` and `models.HintFilter`; §4
+  include is `yaml_store.resolve_includes` (a filtered sheet is a copy with only `hints` reduced;
+  the hints themselves stay the original objects); §6 checking is `selection.explain_filters`
+  (`wayhint inspect` / `context --shown`); §7 the owning file is
+  `hint.location.file`. In short:
+  - **`include`** (DECISIONS 0026 / 0039): an element is either a sheet id (everything) or
+    `{sheet, tags, categories}` (filtered). A sheet's own `include` **replaces** the config's
+    `include`. An include target's own include is not followed. Unresolvable ids and
+    self-references are ignored one by one, with a warning.
+  - **Parent hint filtering** (DECISIONS 0034 / 0039): for tags, the child's `inherit.parent_tags` →
+    config's `nested.parent_tags` → parent's `nested.export_tags` → everything, four stages, and
+    only the first stage that is actually written is used. category resolves the same rule
+    independently via `parent_categories` / `export_categories`.
+  - **Combining tag and category** (0039): OR of whichever is written. If either is `[]`, the
+    result is 0 regardless of the other (so that config's `nested.parent_tags: []` keeps acting as
+    a global opt-out. 0036). A hint with no category never matches any category.
+- **`match` is optional**. A sheet without `match` never becomes active for any context, and
+  appears in the list only via `include` (for shared hints). Even a sheet with `match` can be an
+  include target.
+- The list is concatenated in the order active → parent sheet (filtered) → include (in written
+  order, filtered), and then the D7 sort is applied. When the same hint arrives by two routes, it
+  collapses to one by `(file, id)` (0019).
+- Everything except `id` and `title` is optional. Hints written by GUI/CLI/format output all 12
+  fields, nulls included, in canonical order (`id` `title` `kind` `key` `command` `category`
+  `tags` `favorite` `copy` `remark` `source` `learned`). Reading does not care about key order or
+  omission (DECISIONS 0014 D2).
+- Display order: the favorite block (in YAML order, category ignored) → the non-favorite block
+  (category first-seen order, **numbered using only the non-favorite hints** → YAML order). A
+  null category forms one group in first-seen order, labeled as a pseudo-category (DECISIONS
+  0014 D7).
+- Each hint's `location` is the 1-based start line of the list element. `learned` dates are
+  normalized to an ISO string.
+- Validation collects every problem within a file and returns them as `Issue(file, line,
+  message)`. If there is even one, the sheet is not adopted. `SheetStore` holds the adopted sheet
+  (last-known-good) and replaces it only the next time it parses clean.
 
 ## Interfaces
 
-- **CLI ↔ daemon**: Unix domain socket `$XDG_RUNTIME_DIR/wayhint.sock`。ネットワーク socket は
-  使わない。メッセージは 1 接続 1 リクエストの改行終端 JSON(DECISIONS 0008): client が
-  `{"cmd": "<name>"}\n` を 1 つ送って書き込み側を閉じ、daemon が `{"ok": true, ...}` か
-  `{"ok": false, "error": "..."}` を 1 つ返して切断する。上限 4096 bytes、未知の `cmd` は error。
-- **Wayland (既定)**: `wlr-foreign-toplevel-management-unstable-v1`(pywayland、呼び出し毎に接続)。
-  取得: activated な toplevel の app_id / title / output(wl_output v4 の name、mode ÷ scale)。
-  focus 復帰は `activate(seat)`。handle は接続をまたげないので `view_ref = "<app_id>\t<title>"` を
-  再解決する(完全一致 → app_id 単一一致 → 諦める)。focused output は protocol に無く、
-  output が 1 枚のときだけ埋める。
-- **Wayfire (fallback / 明示)**: PyWayfire(IPC plugin 必須)。取得: active view, その output,
-  app-id, title。focus 復帰は `set_focus`。`context.backend: auto` では foreign-toplevel が無く
-  `WAYFIRE_SOCKET` がある場合だけ使う。
-- **workspace**: `ext-workspace-v1`(pywayland)。どこかの workspace で overlay が開いている間だけ
-  接続し、manager の `done` ごとに active workspace を再計算する。接続の fd は daemon が GLib main
-  loop に載せ、読めるようになったら `flush → read → dispatch` で socket を空にする
-  (`dispatch` だけでは socket を読まず fd が readable のままになり、watch が回り続ける)。
-  polling は無い。daemon は workspace key → `ResolvedContext` の dict を持ち、切り替え時に
-  その workspace の分だけ出し直す。overlay の「閉じる」と close-request は daemon の `close` を
-  呼び、その workspace の entry を落とす(`wayhint hide` は `toggle` の hide と同じ。DECISIONS 0037)。`HintWindow.hide_overlay` は surface を隠すだけで、
-  workspace 切り替えで隠すときに使う。
-- **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
-  し、adapter 内部で吸収する。**前提**: adapter が選ばれるのは app_id が `app_id_pattern`
-  (既定 `herdr`、部分一致)に当たる窓だけで、これは config ではなく `HerdrContextProvider` の
-  既定値。`herdr.yaml` の `app_id_regex` と対になっており、どちらも満たさない窓
-  (素の kitty で `herdr` を起動した、など)は `/proc` 経路に落ちて「`herdr` というプロセスが
-  動いている」までしか分からない。その状態は `proc.SELF_REPORTING` の判定で INFO ログに出す。
-  **呼び出し規約**(DECISIONS 0028): 環境から `HERDR_` で始まる変数を
-  除いて呼ぶ——`pane current` は `HERDR_PANE_ID` があればその pane を返すので、Herdr の pane 内から
-  起動した daemon はその pane に固定されてしまう。`pane current` が `focused: false` を返したとき
-  だけ保険として `pane list` を呼び、`focused: true` の pane が 1 つのときだけ採る。時間予算は
-  lookup 開始時の deadline に対して使い、各 call には `min(CALL_TIMEOUT, 残り時間)` を渡す
-  (最大 3 call でも合計は `LOOKUP_BUDGET` 以内)。
-- **editor**: `editor.command` argv の `{file}` `{line}` `{hint_id}` を置換して `Popen`。開く場所は
-  `edit_target(sheet, hint)`(純粋、テスト対象)が決める。**hint を選んでいるときは hint の
-  `location` が sheet より優先する**: nested 表示では親 sheet の hint が一覧に混ざるため、active
-  sheet の file を使うと別ファイルの行番号で開いてしまう。hint が無いときだけ sheet の file:1。
-- **layer-shell**: layer overlay, exclusive_zone 0。keyboard_mode は状態から導出する。
-  normal = none、search / edit = exclusive。設定箇所は `_sync_keyboard_mode()` の 1 つ。
-  anchor 名(9種)→ layer-shell anchor + margin へ変換。
-- **手動リサイズ**: layer surface に compositor 側の frame / interactive resize は無いので、
-  anchor の反対側に grip を `Gtk.Overlay` で重ね、`Gtk.GestureDrag` で掴む。角
-  (`.wayhint-grip-both`、16px)が縦横、自由な 2 辺の帯(`.wayhint-grip-x` / `-y`、6px)が
-  幅だけ・高さだけ。帯は動かさない側の delta を 0 にして同じ `resize_delta` に渡す。
-  重なる部分は後から `add_overlay` した角が勝つ。drag 中は `set_size_request`、drag 終了で
-  daemon が `config.yaml` の
-  `overlay.width` / `height` を px で書き戻す(DECISIONS 0018)。pointer だけで完結するので
-  keyboard_mode は触らない。サイズ計算は `geometry.resize_delta`(純粋)。
+- **CLI ↔ daemon**: a Unix domain socket, `$XDG_RUNTIME_DIR/wayhint.sock`. No network socket is
+  used. Messages are newline-terminated JSON, one request per connection (DECISIONS 0008): the
+  client sends `{"cmd": "<name>"}\n` once and closes the write side, and the daemon returns one
+  `{"ok": true, ...}` or `{"ok": false, "error": "..."}` and disconnects. Limit 4096 bytes; an
+  unknown `cmd` is an error.
+- **Wayland (default)**: `wlr-foreign-toplevel-management-unstable-v1` (pywayland, connecting
+  fresh on each call). Obtains: the activated toplevel's app_id / title / output (wl_output v4's
+  name, mode ÷ scale). Focus is restored with `activate(seat)`. Handles do not survive across
+  connections, so `view_ref = "<app_id>\t<title>"` is re-resolved (exact match → single app_id
+  match → give up). The focused output is not in the protocol, and is filled in only when there
+  is a single output.
+- **Wayfire (fallback / explicit)**: PyWayfire (requires the IPC plugin). Obtains: the active
+  view, its output, app-id, title. Focus is restored with `set_focus`. With
+  `context.backend: auto`, it is used only when there is no foreign-toplevel and `WAYFIRE_SOCKET`
+  is set.
+- **workspace**: `ext-workspace-v1` (pywayland). Connects only while the overlay is open on some
+  workspace, and recomputes the active workspace on every `done` from the manager. The daemon puts
+  the connection's fd on the GLib main loop, and once it's readable does
+  `flush → read → dispatch` to drain the socket (`dispatch` alone doesn't read the socket, leaving
+  the fd readable and the watch firing repeatedly). There is no polling. The daemon keeps a
+  workspace key → `ResolvedContext` dict, and re-displays only that workspace's entry on a switch.
+  The overlay's "Close" and a close-request both call the daemon's `close`, which drops that
+  workspace's entry (`wayhint hide` is the same as `toggle`'s hide. DECISIONS 0037).
+  `HintWindow.hide_overlay` only hides the surface, used when hiding on a workspace switch.
+- **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`. The output format is
+  confirmed on real hardware and absorbed inside the adapter. **Precondition**: the adapter is
+  chosen only for a window whose app_id matches `app_id_pattern`
+  (default `herdr`, substring match) — this is not a config item but a default of
+  `HerdrContextProvider`. It pairs with `herdr.yaml`'s `app_id_regex`; a window that satisfies
+  neither (e.g. running `herdr` in a plain kitty) falls through to the `/proc` route, which can
+  only tell that "a process named `herdr` is running." That state is logged at INFO via
+  `proc.SELF_REPORTING`. **Call convention** (DECISIONS 0028): called with environment variables
+  starting with `HERDR_` stripped out — `pane current` returns the pane named by
+  `HERDR_PANE_ID` if set, so a daemon started from inside a Herdr pane would get pinned to that
+  pane. `pane list` is called as a fallback only when `pane current` returns `focused: false`, and
+  only adopted when exactly one pane has `focused: true`. The time budget is spent against a
+  deadline set at the start of lookup, and each call gets `min(CALL_TIMEOUT, remaining time)`
+  (the total across up to 3 calls still stays within `LOOKUP_BUDGET`).
+- **editor**: substitutes `{file}` `{line}` `{hint_id}` in the `editor.command` argv and `Popen`s
+  it. Where to open is decided by `edit_target(sheet, hint)` (pure, tested). **When a hint is
+  selected, the hint's `location` takes priority over the sheet's**: because nested display mixes
+  in hints from a parent sheet, using the active sheet's file would open the wrong file at the
+  wrong line. Only when there is no hint does it fall back to the sheet's file:1.
+- **layer-shell**: layer overlay, exclusive_zone 0. keyboard_mode is derived from state: normal =
+  none, search / edit = exclusive. The one place it is set is `_sync_keyboard_mode()`.
+  Anchor names (9 kinds) are converted to layer-shell anchor + margin.
+- **manual resize**: since a layer surface has no compositor-side frame / interactive resize, a
+  grip is overlaid with `Gtk.Overlay` on the side opposite the anchor and grabbed with
+  `Gtk.GestureDrag`. Corners (`.wayhint-grip-both`, 16px) resize both axes; the free-edge bands
+  (`.wayhint-grip-x` / `-y`, 6px) resize width-only or height-only. A band zeroes the delta of the
+  axis it doesn't move and feeds the same `resize_delta`. Where they overlap, whichever corner was
+  added later with `add_overlay` wins. During drag, `set_size_request` is used; when the drag
+  ends, the daemon writes `overlay.width` / `height` back into `config.yaml` in px
+  (DECISIONS 0018). Since it's pointer-only, keyboard_mode is untouched. The size math is
+  `geometry.resize_delta` (pure).
 
-## 編集モード（Phase 7）
+## Edit mode (Phase 7)
 
-DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。3 つの hotkey の状態別の挙動と overlay が
-消えるタイミングは、図付きで `docs/HOTKEYS.md` にまとめてある。実装は `daemon.py` の `toggle` /
-`enter_search_mode` / `enter_edit_mode` / `hide` / `close`、「入ったときに画面が出ていたか」は
-`WorkspaceView.mode_entered_hidden`。
+The spec text is DECISIONS 0014; see 0014 for the reasoning behind it. The three hotkeys'
+per-state behavior and when the overlay disappears are collected, with diagrams, in
+`docs/HOTKEYS.md`. Implemented in `daemon.py`'s `toggle` / `enter_search_mode` /
+`enter_edit_mode` / `hide` / `close`; "was the screen showing when it was entered" is
+`WorkspaceView.mode_entered_hidden`.
 
-### 1. 状態と keyboard_mode
+### 1. States and keyboard_mode
 
-| 状態 | keyboard_mode | 入口 | 出口 |
+| state | keyboard_mode | entry | exit |
 |---|---|---|---|
-| `normal` | NONE | show / toggle | hide、workspace 離脱 |
-| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`、一覧の `c`(コピーしてから)、もう一度 `search-mode`(入場時の表示状態へ戻る)、閉じるボタン、workspace 離脱 |
-| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`（入場時の表示状態へ戻る）、閉じるボタン、workspace 離脱 |
+| `normal` | NONE | show / toggle | hide, leaving the workspace |
+| `search` | EXCLUSIVE | the search button, IPC `search-mode` | Esc, `Enter`, the list's `c` (after copying), `search-mode` again (returns to the display state at entry), the close button, leaving the workspace |
+| `edit` | EXCLUSIVE | IPC `edit-mode` (compositor keybinding), the toolbar button | Esc, `edit-mode` again (returns to the display state at entry), the close button, leaving the workspace |
 
-- `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
-  hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
-- EXCLUSIVE を使う理由: `ON_DEMAND` では compositor が surface への再クリックまで keyboard focus を
-  渡さず、検索ボタンを押しただけでは入力が下のアプリへ行ってしまう（labwc 0.20.2 で確認）。
-- **絞り込みは一覧の状態、`search` はその上に入力欄と grab が乗るだけ**(DECISIONS 0033)。一覧の
-  描画は 1 本で、絞り込みは `normal` の表示(favorite 区画込み)にも掛かる。`search` を抜けるどの経路も
-  grab を外すだけで絞り込みは残し、`normal` では chip(`×` で解除)で絞り込み中を示す。再入時は保存済みの
-  絞り込みを欄に入れて全選択する。`Enter` と `Esc` はコピーせずに `normal` に戻る。検索欄の `↓` で
-  一覧へ移り(先頭行の `↑` で欄へ戻る)、一覧の `c` は選択中の hint の `copy` → `command` をコピーして
-  `normal` に戻る。コピー対象が無ければコピーせずに戻る(DECISIONS 0039)。キーはすべて window の
-  capture 段で読み、一覧の focus には頼らない(`editmode.search_action`)。search 中は一覧の下にキーの
-  説明を出す(edit と同じ `_help`)。`edit` 中の `search-mode` は拒否して理由を表示する。
-- `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
-- エラー行は共用。YAML error と context 取得の失敗は成り立つ間ずっと出し、操作への一回限りの答え
-  (拒否の理由など)は **次のモード変更で消えて**前者に戻る(例: 編集中の `search-mode` の拒否は、編集を
-  抜けると消える)。
-- `edit` と `search` 中の hotkey（`toggle`）は hide / show（0013 の例外。search は 2026-09-23 から）。
-  モードは保ったまま grab だけ外し、show で戻す。`wayhint hide` も同じ(DECISIONS 0037)。`Close`
-  ボタンは閉じる(search は抜けて絞り込みを保存、edit の下書きは捨てる)。
-- **モード用 hotkey の 2 度目は入場時の表示状態へ戻る**（0014 D4 amend、2026-09-23）。非表示から入った
-  ときは、モードを抜けて hide する（NONE、前の view へ focus 復帰）。表示中から入ったときは、モードを
-  抜けて `normal` の表示を続ける。「非表示から入った」は view の `mode_entered_hidden`（メモリのみ）で
-  持ち、モードを抜けたときに消える。`toggle` の hide / show では消えず、edit は workspace の離脱・復帰でも
-  残る（search は workspace 離脱で抜けるので残らない）。`Esc` はモードを抜けるだけで表示は変えない。
-- エディタ起動（「エディタで編集」）では overlay を隠さない（DECISIONS 0023）。editor でキュレーション
-  した結果を、保存のたびに reload で見たいため。`edit` / `search` のときは Escape と同じ経路で `normal`
-  に戻し（keyboard_mode NONE、前の view へ focus 復帰）、editor が入力を受けられるようにする。`normal`
-  のときは何もしない。開いていた下書きは view に残し、次の `edit-mode` で開き直す。起動に失敗したときは
-  モードも変えずエラーを表示する。
-- 編集状態（モード、開いているフォーム、フォームの入力値、対象 hint id、追加先 sheet）は workspace ごとの context dict と同じ粒度で保持する。メモリのみ。
-- モード変更とフォームのキャンセルは daemon を経由し、UI はその状態を描画する。復帰先にフォームが
-  無い場合も明示的に閉じ、他 workspace のフォームを残さない。編集中は検索ボタンを無効にし、
-  編集を終了してから検索する。非表示の編集画面への `edit-mode` は保持した下書きを再表示する。`normal` からの `edit-mode` は
-  `search-mode` と同じく context を取り直す(0035)。
-- **保存後の状態は操作で分ける**(DECISIONS 0021)。
+- The one place that sets `keyboard_mode` directly is `_sync_keyboard_mode()`, called on every
+  state change. hide / leaving the workspace drop it to `NONE` while keeping the state; show /
+  returning re-applies it according to state.
+- Why EXCLUSIVE: with `ON_DEMAND`, the compositor does not hand keyboard focus over until the
+  surface is clicked again, so pressing the search button alone leaves input going to the app
+  below (confirmed on labwc 0.20.2).
+- **Filtering is a property of the list; `search` only layers an input box and a grab on top**
+  (DECISIONS 0033). The list is drawn by one code path, and filtering applies to `normal`'s
+  display too (favorite block included). Every way of exiting `search` only drops the grab and
+  keeps the filter, and `normal` shows the active filter as a chip (cleared with `×`).
+  Re-entering fills the box with the saved filter and selects it all. `Enter` and `Esc` return to
+  `normal` without copying. `↓` in the search box moves to the list (`↑` on the first row returns
+  to the box), and `c` on the list copies the selected hint's `copy` → `command` and returns to
+  `normal`. If there is nothing to copy, it returns without copying (DECISIONS 0039). All keys are
+  read at the window's capture phase, not relying on the list's focus (`editmode.search_action`).
+  While searching, a line of key hints is shown below the list (the same `_help` as edit).
+  `search-mode` while in `edit` is refused, with the reason shown.
+- Entry condition for `edit`: the active sheet must not be showing last-known-good (refused while
+  `⚠ YAML error` is shown, with the reason).
+- The error line is shared. A YAML error and a context-fetch failure are shown for as long as they
+  hold; a one-off answer to an action (e.g. a refusal reason) **is cleared on the next mode
+  change** and reverts to the former (e.g. a `search-mode` refusal shown during edit disappears
+  once edit is exited).
+- The hotkey (`toggle`) during `edit` and `search` is hide / show (an exception to 0013; for
+  search, since 2026-09-23). The mode is kept, only the grab is dropped, and show restores it.
+  `wayhint hide` does the same (DECISIONS 0037). The `Close` button actually closes (search is
+  exited with the filter saved, edit's draft is discarded).
+- **A second press of a mode hotkey returns to the display state at entry** (0014 D4 amend,
+  2026-09-23). If entered while hidden, it exits the mode and hides (NONE, focus restored to the
+  previous view). If entered while showing, it exits the mode and keeps showing `normal`.
+  "Entered while hidden" is held in the view's `mode_entered_hidden` (memory only) and cleared on
+  exiting the mode. It is not cleared by `toggle`'s hide/show, and edit keeps it across leaving and
+  returning to the workspace (search doesn't keep it, since it's exited on leaving the workspace).
+  `Esc` only exits the mode without changing the display.
+- Launching the editor ("Edit in editor") does not hide the overlay (DECISIONS 0023), so results
+  curated in the editor can be seen via reload after each save. When in `edit` / `search`, it
+  returns to `normal` via the same path as Escape (keyboard_mode NONE, focus restored to the
+  previous view), so the editor can receive input. In `normal`, nothing happens. Any open draft is
+  kept on the view and reopened on the next `edit-mode`. If launching fails, an error is shown
+  without changing mode.
+- Edit state (mode, open form, form field values, target hint id, destination sheet for adding) is
+  kept at the same granularity as the per-workspace context dict. Memory only.
+- Mode changes and form cancellation go through the daemon, and the UI just renders that state.
+  If the view returned to has no form, it is explicitly closed, so another workspace's form is
+  never left behind. The search button is disabled while editing; search after finishing editing.
+  `edit-mode` on a hidden edit screen redisplays the kept draft. `edit-mode` from `normal`
+  re-fetches context, same as `search-mode` (0035).
+- **The state after saving depends on the action** (DECISIONS 0021).
 
-  | 操作 | 完了後 |
+  | action | after completion |
   |---|---|
-  | quick add フォーム（`a` → Enter） | `normal`（keyboard_mode NONE、前の view へ focus 復帰） |
-  | 編集フォーム（Enter → Enter） | `normal`（同上） |
-  | `f` / `J` `K` / `d` `d` / `u` | `edit` に留まる |
-  | フォームの `Esc`（入力破棄） | `edit` に留まる |
-  | validation 失敗 | フォームを開いたまま `edit` に留まる |
+  | quick add form (`a` → Enter) | `normal` (keyboard_mode NONE, focus restored to previous view) |
+  | edit form (Enter → Enter) | `normal` (same as above) |
+  | `f` / `J` `K` / `d` `d` / `u` | stays in `edit` |
+  | form's `Esc` (discard input) | stays in `edit` |
+  | validation failure | stays in `edit`, form left open |
 
-  フォーム保存の処理順は、ファイル書き込み成功 → mode を `normal` に変更 → `_sync_keyboard_mode()`
-  → focus 復帰（search 終了と同じ経路）。書き込みに失敗したら mode は変えない。§7 の sheet 新規作成を
-  伴う quick add も同じく `normal` に戻る。「保存して留まる」別キーや config 項目は作らない。
+  The order of operations for saving a form is: file write succeeds → mode changes to `normal` →
+  `_sync_keyboard_mode()` → focus restored (same path as exiting search). If the write fails, the
+  mode is not changed. Quick add that also creates a new sheet (§7) returns to `normal` the same
+  way. No separate "save and stay" key or config item is provided.
 
-### 2. key 割当（edit 中）
+### 2. Key bindings (while in edit)
 
-| key | 動作 |
+| key | action |
 |---|---|
-| `a` | quick add フォームを開く（追加先は選択中の hint の sheet、§3） |
-| `Enter` | 選択 hint の編集フォームを開く |
-| `d` `d` | 選択 hint を削除（1 回目で確認表示、2 回目で確定。他の key で取り消し） |
-| `u` | 直前に削除した 1 件を元の sheet 末尾に戻す（メモリ保持は 1 件、セッション限り） |
-| `f` | favorite toggle |
-| `J` / `K` | 画面上の下 / 上の hint と swap（§5 の制約）。絞り込み中は無効（0033） |
-| `↑` `↓` | 選択移動（`KP_Up` / `KP_Down` も同じ。単打キーと同様 CAPTURE で受ける） |
-| `Esc` | フォームが開いていればフォームを閉じる（入力破棄）、開いていなければ `edit` を抜ける |
+| `a` | opens the quick add form (destination is the selected hint's sheet, §3) |
+| `Enter` | opens the edit form for the selected hint |
+| `d` `d` | deletes the selected hint (first press shows a confirmation, second confirms; any other key cancels) |
+| `u` | restores the last deleted hint to the end of its original sheet (holds 1 item in memory, session only) |
+| `f` | toggles favorite |
+| `J` / `K` | swaps with the hint below / above on screen (constraints in §5). Disabled while filtered (0033) |
+| `↑` `↓` | moves the selection (`KP_Up` / `KP_Down` do the same. handled by CAPTURE, like the single-key bindings) |
+| `Esc` | closes the open form (discarding input) if one is open, otherwise exits `edit` |
 
-一覧の単打キーと `Tab` / `Shift+Tab` は CAPTURE フェーズの `EventControllerKey` で受ける（ListBox の
-行操作や Tab の focus 移動より先に処理するため）。テキスト欄の `Enter` / `Esc` は input method に先に
-渡し、bubble フェーズで受ける（変換の確定・取り消しを奪わないため）。
+Single-key bindings in the list and `Tab` / `Shift+Tab` are handled by an `EventControllerKey` at
+the CAPTURE phase (to run before the ListBox's row handling or Tab's focus movement). `Enter` /
+`Esc` in text fields go to the input method first and are handled at the bubble phase (so as not
+to steal IME commit/cancel).
 
-`↑` `↓` も同じ経路で受ける（2026-09-23 変更。当初は「GTK 既定を使う」だった）。keyboard を
-EXCLUSIVE で掴んだ layer surface では、window が一覧に与えた focus が定着しない——`grab_focus()`
-は true を返すのに AT-SPI はどの行も focused と報告せず、最初の矢印キーは「一覧に入る」だけで
-消える（labwc 0.20.2 で実測）。結果として**マウス無しでは 2 行目以降に `f` / `J` / `K` / `Enter` /
-`d` `d` が当たらない**状態になっていた。選択移動は `editmode.next_selection()` の純粋関数で決め、
-端では折り返さない。テキスト欄では矢印はカーソル移動なので、`editable` のときは受けない。
+`↑` `↓` are handled through the same path (changed 2026-09-23; originally "use the GTK default").
+In a layer surface grabbing the keyboard with EXCLUSIVE, focus given to the list by the window
+does not stick — `grab_focus()` returns true, but AT-SPI reports no row as focused, and the first
+arrow key just "enters the list" and is consumed (measured on labwc 0.20.2). The result had been
+that **without a mouse, `f` / `J` / `K` / `Enter` / `d` `d` never reached the second row on**.
+Moving the selection is decided by the pure function `editmode.next_selection()`, which does not
+wrap at the ends. In a text field, arrows move the cursor, so they are not intercepted while
+`editable`.
 
-一覧のキーは修飾なしのときだけ受ける。`Ctrl+d` 等は別のアプリ・ウィジェットのキーであり、
-これを削除確認に使うと狙っていない操作が走る。テキスト欄で先に受ける `Tab` / `Shift+Tab` /
-`Ctrl+P` も、**変換中（preedit あり）は input method に渡す**（候補選択・候補移動に使われるため）。
-preedit の有無は `GtkText::preedit-changed` で追う。
+The list's keys are handled only with no modifier. `Ctrl+d` and the like belong to another app or
+widget, and using them for delete confirmation would trigger an action nobody intended.
+`Tab` / `Shift+Tab` / `Ctrl+P`, which are also intercepted in a text field, **go to the input
+method while composing (preedit present)** (used for candidate selection/navigation). Preedit
+presence is tracked via `GtkText::preedit-changed`.
 
-edit 中は overlay 下部にこの割当を 1〜2 行で表示する（i18n en/ja）。
+While in edit, this key list is shown at the bottom of the overlay in 1-2 lines (i18n en/ja).
 
-フォーム内: `Enter` で保存、`Esc` で破棄、`Tab` / `Shift+Tab` で欄移動、`Ctrl+P` で追加先を親 sheet に toggle（quick add のみ）。
+Inside a form: `Enter` saves, `Esc` discards, `Tab` / `Shift+Tab` moves between fields, `Ctrl+P`
+toggles the destination to the parent sheet (quick add only).
 
-### 3. フォーム（quick add / 編集は同じフォーム）
+### 3. Form (quick add and edit share the same form)
 
-| 欄 | 必須 | 備考 |
+| field | required | notes |
 |---|---|---|
 | title | ✓ | |
-| kind | ✓ | `shortcut` / `command` / `tip` / `note`。quick add の既定は `shortcut` |
-| key / command | – | kind が決める。`shortcut` → `key`、`command` → `command`、`tip` → **両方**、`note` → **どちらも無し**。tip と note は覚え書き |
-| category | – | 空なら null（表示上は擬似 category inbox / 未定義） |
+| kind | ✓ | `shortcut` / `command` / `tip` / `note`. quick add default is `shortcut` |
+| key / command | – | decided by kind. `shortcut` → `key`, `command` → `command`, `tip` → **both**, `note` → **neither**. tip and note are memos |
+| category | – | empty means null (shown as the pseudo-category `inbox`; `未定義` in Japanese) |
 | remark | – | |
 
-- 編集フォームは既存値を prefill。`id` は表示のみ。
-- 保存時の自動設定（quick add のみ）: `id`（title の slug、衝突 `-2`…、空なら `q-YYYYMMDD-HHMMSS`）、`learned`（当日）、`favorite: false`、他は null。親 sheet 指定時は `effective_parent_tags` の tag を付与(0034 の段 1〜3 で絞りが決まっているときだけ。全部渡すときは付けない)。
-- 保存前に validation。失敗時はフォーム内にエラーを出し書かない（`edit` のまま、フォームも開いたまま）。
-- 保存に成功したらフォームを閉じ、`edit` を抜けて `normal` に戻る（§1 の表）。続けて追加するときは
-  もう一度 `wayhint edit-mode` → `a`。
-- 追加先: **選択中の hint の所属 sheet**（DECISIONS 0025）。一覧には親 sheet の hint が混ざるため、
-  見ているものと同じ sheet に入れる。未選択、または所属ファイルが消えていれば active sheet、
-  それも無ければ §7 で新規作成。`Ctrl+P` は追加先を親 sheet に切り替える。フォームの見出しに
-  追加先の sheet 名を出す。混入 hint の編集は所属 sheet に書く（0014 D9）。
-  ただし**前面のアプリの sheet が無いか空**なら、選択に関係なく前面のアプリの sheet(無ければ §7 で新規作成)に
-  入れる(DECISIONS 0041)。一覧の行がすべて親・include のもので、先頭が自動で選ばれているため。
+- The edit form is prefilled with existing values. `id` is display-only.
+- Auto-set on save (quick add only): `id` (slug of title, collision → `-2`…, `q-YYYYMMDD-HHMMSS`
+  if it can't be generated), `learned` (today), `favorite: false`, everything else null. When a
+  parent sheet destination is given, the tag from `effective_parent_tags` is attached (only when
+  stages 1-3 of 0034 have decided a filter; not attached when everything is passed through).
+- Validated before saving. On failure, the error is shown inside the form and nothing is written
+  (stays in `edit`, form stays open).
+- On successful save, the form closes, `edit` is exited, and it returns to `normal` (see §1's
+  table). To keep adding, call `wayhint edit-mode` → `a` again.
+- Destination: **the selected hint's owning sheet** (DECISIONS 0025). Since the list mixes in
+  parent-sheet hints, an addition goes into the same sheet as what's being looked at. With
+  nothing selected, or if the owning file is gone, the active sheet is used, and failing that,
+  a new sheet is created per §7. `Ctrl+P` switches the destination to the parent sheet. The form's
+  heading shows the destination sheet's name. Editing a mixed-in hint writes to its owning sheet
+  (0014 D9). However, **if the foreground app's sheet is missing or empty**, the addition goes to
+  the foreground app's sheet regardless of selection (creating one per §7 if needed) (DECISIONS
+  0041), because every row in the list is then from a parent/include and the first one gets
+  auto-selected.
 
-### 4. 書き戻し（yaml_store）
+### 4. Writing back (yaml_store)
 
-純粋関数として実装し、GTK / pywayland を import しない。
+Implemented as pure functions, importing neither GTK nor pywayland.
 
-| 関数 | 内容 |
+| function | content |
 |---|---|
-| `write_document(path, doc)` | tmp（`.yaml` / `.yml` 以外の拡張子、同一ディレクトリ、**writer ごとに別名**）→ validate → `st_mode` コピー → `os.replace` |
-| `build_hint(fields) -> CommentedMap` | 12 項目 canonical 順、未設定 null、`tags` は flow style |
-| `append_hint(doc, hint)` | `hints` 末尾に追加 |
-| `update_hint(doc, id, fields)` | 該当 hint を canonical 順で再構築。見つからなければ `HintNotFoundError` |
-| `delete_hint(doc, id) -> removed` | 直前ブロックコメントも削除。除いた node を返す（undo 用） |
-| `swap_hints(doc, id_a, id_b)` | 位置 swap。`ca.items` の直前コメントを付け替える |
+| `write_document(path, doc)` | temp file (extension other than `.yaml`/`.yml`, same directory, **a distinct name per writer**) → validate → copy `st_mode` → `os.replace` |
+| `build_hint(fields) -> CommentedMap` | 12 fields in canonical order, unset as null, `tags` in flow style |
+| `append_hint(doc, hint)` | appends to the end of `hints` |
+| `update_hint(doc, id, fields)` | rebuilds the matching hint in canonical order. `HintNotFoundError` if not found |
+| `delete_hint(doc, id) -> removed` | also removes the preceding block comment. returns the removed node (for undo) |
+| `swap_hints(doc, id_a, id_b)` | swaps position. re-attaches the preceding comment in `ca.items` |
 | `set_favorite(doc, id, value)` | |
-| `ensure_modeline(doc, schema_path)` | 先頭にモードライン。既にあれば何もしない |
-| `match_rule_for_context(ctx) -> (match, warning)` | §7。警告は呼び出し側（UI / CLI）が表示する |
-| `create_sheet(ctx, first_hint, config, hints_dir=None, existing_ids=(), now=None)` | §7。戻り値 `(path, doc)`。`hints_dir` / `now` は注入用で、既定は `config_dir()/hints` と現在時刻 |
-| `normalize_sheet(doc, modeline_path=None)` | format: 全 hint を canonical 順・12 項目化。sheet メタは触らない |
-| `slug(text, existing=(), now=None)` | id / ファイル名。衝突は `-2`、生成できなければ `q-YYYYMMDD-HHMMSS` |
+| `ensure_modeline(doc, schema_path)` | adds a modeline at the top. does nothing if already present |
+| `match_rule_for_context(ctx) -> (match, warning)` | §7. the warning is shown by the caller (UI/CLI) |
+| `create_sheet(ctx, first_hint, config, hints_dir=None, existing_ids=(), now=None)` | §7. returns `(path, doc)`. `hints_dir` / `now` are injectable, defaulting to `config_dir()/hints` and the current time |
+| `normalize_sheet(doc, modeline_path=None)` | format: puts every hint in canonical order, all 12 fields. sheet metadata untouched |
+| `slug(text, existing=(), now=None)` | id / filename. collision → `-2`, `q-YYYYMMDD-HHMMSS` if none can be generated |
 
-例外は `SheetWriteError`（書き込み不能・validation 失敗。`.issues` を持つ）と、その subclass の
-`HintNotFoundError`。定数は `CANONICAL_HINT_KEYS` / `DUMP_WIDTH` / `MODELINE_PREFIX`。
+Exceptions are `SheetWriteError` (write failure, or validation failure; carries `.issues`), and
+its subclass `HintNotFoundError`. Constants: `CANONICAL_HINT_KEYS` / `DUMP_WIDTH` /
+`MODELINE_PREFIX`.
 
-読み書きは既存の `read_document` を使い、`_yaml()` に `indent(mapping=2, sequence=4, offset=2)` と
-折り返しの起きない `width` を追加する。load / dump で同じ設定を共有する。
-canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
-`json_schema() -> dict`(validation の定義から生成)は新設 module `schema.py` に置く。
+Reading and writing use the existing `read_document`, and `_yaml()` adds
+`indent(mapping=2, sequence=4, offset=2)` and a `width` that prevents wrapping. Load and dump
+share the same settings. The 12 canonical fields are in Data model, "hints/*.yaml".
+`json_schema() -> dict` (generated from the validation definitions) lives in the new module
+`schema.py`.
 
-### 5. 表示順と並び替え
+### 5. Display order and reordering
 
-表示順は Data model「hints/*.yaml」を参照。ラベルは擬似 category。
+Display order is described in Data model, "hints/*.yaml". Labels are pseudo-categories.
 
-`J` / `K` の制約:
-- 隣が同グループ（favorite 区画内、または非 favorite 区画で同 category）かつ同 sheet のときだけ swap。
-  所属 sheet の同一性は `hint.location.file` で判定する。
-- それ以外は何もしない（音や表示は出さない）。
-- 絞り込み中は何もしない(画面上の隣と YAML 上の隣がずれるため。DECISIONS 0033)。
-- CLI の `move` はグループ跨ぎ・sheet 跨ぎをエラー終了、GUI は無反応（メッセージのみ）。
+`J` / `K` constraints:
+- Swaps only when the neighbor is in the same group (within the favorite block, or the same
+  category within the non-favorite block) and the same sheet. Same sheet is decided by
+  `hint.location.file`.
+- Otherwise does nothing (no sound or display change).
+- Does nothing while filtered (the on-screen neighbor and the YAML neighbor would diverge.
+  DECISIONS 0033).
+- CLI's `move` exits with an error across a group/sheet boundary; the GUI does nothing (message
+  only).
 
-### 6. 削除と undo
+### 6. Delete and undo
 
-- `d` `d` で確定。確定前に他の key を押したら取り消し。
-- 削除した node を 1 件だけメモリに保持。`u` で元の sheet の末尾に append。sheet が消えていればエラー表示。
+- `d` `d` confirms. Pressing any other key first cancels.
+- Only 1 deleted node is held in memory. `u` appends it to the end of its original sheet. If the
+  sheet is gone, an error is shown.
 
-### 7. sheet の新規作成
+### 7. Creating a new sheet
 
-- path: `~/.config/wayhint/hints/<lang>/<slug>.yaml`(表示中の言語のディレクトリ、0024)。slug は app 名 / process 名から。sheet id 衝突時 `-2`。
-- 内容: 先頭コメント（生成日時、`desktop_app`、`parent_context`、`foreground_process.name`、採用した regex）、`editor.schema_modeline` が true なら、先頭に `# yaml-language-server: $schema=<editor.schema_path を展開した絶対 path>` を付ける、`id` `title` `priority`（既定）`match` `hints: [first_hint]`。
-- `match` の生成:
-  - `foreground_process is None` → app_id 一致
-  - `foreground_process` あり → `process.argv_regex: ["^<name>$"]`。判定材料は `parent_context` ではなく foreground process:
-    terminal は自分用の sheet を持たないのが普通で（`parent_context` が `null`）、その app_id から作った rule はその terminal で動かす全コマンドに当たってしまう（0027）
-  - `name` が汎用名（定数 `GENERIC_PROCESS_NAMES`。`matcher.py` に置く）→ `argv[1:]` の basename を候補にする（候補生成は matcher の `process_candidates` / `argv_basenames` と同じ規則）。`-` で始まる引数（オプション）は候補から除く。非汎用の候補が無ければフォームに警告
-  - app_id 一致の regex は `re.escape` した完全一致（例 `^org\.inkscape\.Inkscape$`）
-  - 警告は `match_rule_for_context` の戻り値で返し、UI / CLI がそれを表示する
-- 生成直後の FileMonitor reload で新 sheet が有効になる。
+- path: `~/.config/wayhint/hints/<lang>/<slug>.yaml` (the directory for the current display
+  language, 0024). slug is derived from the app name / process name. On sheet id collision, `-2`.
+- content: a leading comment (generation timestamp, `desktop_app`, `parent_context`,
+  `foreground_process.name`, the regex adopted); if `editor.schema_modeline` is true, a
+  `# yaml-language-server: $schema=<the absolute path from expanding editor.schema_path>` line at
+  the top; `id` `title` `priority` (default) `match` `hints: [first_hint]`.
+- Generating `match`:
+  - `foreground_process is None` → app_id match
+  - `foreground_process` present → `process.argv_regex: ["^<name>$"]`. Decided by the foreground
+    process rather than `parent_context`: a terminal usually has no sheet of its own
+    (`parent_context` is `null`), and a rule built from its app_id would match every command run
+    in that terminal (0027)
+  - if `name` is a generic name (constant `GENERIC_PROCESS_NAMES`, in `matcher.py`) → candidates
+    are the basenames of `argv[1:]` (candidate generation follows the same rule as matcher's
+    `process_candidates` / `argv_basenames`). Arguments starting with `-` (options) are excluded
+    as candidates. If there are no non-generic candidates, a warning is shown in the form
+  - the app_id-match regex is a `re.escape`d exact match (e.g. `^org\.inkscape\.Inkscape$`)
+  - warnings are returned via `match_rule_for_context`'s return value; the UI/CLI display them
+- The new sheet is picked up by the FileMonitor reload immediately after creation.
 
-### 8. 同時編集と reload
+### 8. Concurrent editing and reload
 
-- 後勝ち。mtime 比較なし。
-- tmp 名は writer ごとに分ける（`<name>.<pid>-<連番>.tmp`）。GUI と CLI、CLI 同士が同じ sheet を
-  書くため、共有すると片方の tmp を他方が read / replace / unlink して「後勝ち」ではない失敗になる。
-- 保存時に対象 id が無ければエラー表示、reload に任せる。
-- 自己書き込みの reload は抑止しない。`_after_reload` で選択を hint id で復元し、無ければ index。
-  スクロールは pixel 位置を保存せず、復元した選択 hint が見える位置まで動かすだけ(復元できなければ先頭)。スクロールバーは常時表示(overlay scrollbar は使わない)。
-- hint id は sheet 内だけで一意。GUI の編集・削除・favorite・移動・選択復元には
-  `(所属ファイル, hint id)` を使う。編集フォームも所属ファイルを保持し、対象消失時は他 sheet へ代替しない。
-- 編集操作の前に debounce 待ちの reload を先に適用する(`_flush_pending_reloads`)。自分の書き込みの
-  reload は 200ms 後なので、連打すると古い store を見て決めてしまうため。favorite の toggle は
-  さらに file の値を反転する(`toggle_favorite`)。
-- sheet の `id` はファイル名の stem と一致必須。違うファイルは hint として読み込まず Issue にする
-  (rename / backup コピーで他人の id を名乗るファイルが増えるため。DECISIONS 0020)。
-- それでも `x.yaml` と `x.yml` は衝突しうるので、重複時はファイル名順で先に読んだ 1 枚だけを使い、
-  後続は store に入れず Issue にする(両方のファイル名を含める)。曖昧なときに選び方を運任せにしない
-  (設計書 §59)。
-- gvim の古い buffer は editor 側（W11）に任せる。
+- Last write wins. No mtime comparison.
+- Temp names are separated per writer (`<name>.<pid>-<seq>.tmp`). Since GUI and CLI, or two CLI
+  invocations, may write the same sheet, sharing a temp name would let one side's read / replace /
+  unlink race the other's, breaking "last write wins."
+- If the target id is missing at save time, an error is shown and it's left to reload.
+- Reload of one's own write is not suppressed. `_after_reload` restores the selection by hint id,
+  falling back to index if not found. Scroll position is not saved by pixel; it just scrolls the
+  restored selected hint into view (to the top if it can't be restored). The scrollbar is always
+  shown (the overlay scrollbar is not used).
+- A hint id is unique only within its sheet. GUI edit/delete/favorite/move/selection-restore use
+  `(owning file, hint id)`. The edit form also holds the owning file, and does not substitute
+  another sheet if the target disappears.
+- A sheet's `id` must match its filename stem. A file whose id doesn't match is not read as hints
+  and becomes an Issue instead (so a rename or backup copy doesn't multiply files claiming
+  someone else's id. DECISIONS 0020).
+- Even so, `x.yaml` and `x.yml` can still collide, so on duplication only the one read first in
+  filename order is used, and the rest are not put in the store but become Issues (both filenames
+  included). This avoids leaving the choice to chance when ambiguous (design document §59).
+- Old gvim buffers are left to the editor (W11).
 
-### 9. category フィルタ（search 状態）
+### 9. category filter (search state)
 
-- 検索文字列の先頭トークンが `#` 始まりなら category フィルタ。残りはテキスト検索。両者は AND。
-  `#-` は category 無しの擬似 category（言語に依存しない綴り。DECISIONS 0033）。
-- `Tab` / `Shift+Tab` で巡回: 全表示 → category 初出順（擬似 category を含む）→ 全表示。`#` 入力途中なら補完。
-  巡回は欄の先頭トークン `#<category> ` を書き換える（欄の文字列が絞り込みそのもの）。
-- フィルタ状態は chip に出す。欄の文字列ごと sheet 単位で state.yaml に残る（0033、旧「表示セッション限り」）。
-- 実装: window の CAPTURE フェーズ controller で search 中の `Tab` / `Shift+Tab` を処理する（key 経路を 1 箇所に集約するため）。
+- If the first token of the search string starts with `#`, it's a category filter; the rest is a
+  text search. The two are ANDed. `#-` is the pseudo-category for "no category" (a spelling that
+  doesn't depend on language. DECISIONS 0033).
+- `Tab` / `Shift+Tab` cycles: show all → category first-seen order (pseudo-categories included) →
+  show all. If `#` input is partial, it completes. Cycling rewrites the leading `#<category> `
+  token in the box (the box's string *is* the filter).
+- Filter state is shown as a chip. The box's string is kept per sheet in state.yaml (0033,
+  formerly "for the display session only").
+- Implementation: the window's CAPTURE-phase controller handles `Tab` / `Shift+Tab` while
+  searching (to keep the key path in one place).
 
 ### 10. IPC / CLI
 
-追加コマンド（`ipc.COMMANDS` に追加）:
+Additional commands (added to `ipc.COMMANDS`):
 
-| cmd | 応答 |
+| cmd | response |
 |---|---|
-| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（`wayhint context` が「sheet が無い」理由として出す） |
-| `shown` | サブコマンドではなく `wayhint context --shown` だけが送る(`ipc.QUERIES`)。今の workspace の view の context を**解決し直さずに**、`context` と同じ項目 + `visible` `mode` + `filters`(`selection.explain_filters`: 親の tag / category とそれぞれの出所の key・ファイル・件数、include の要素ごとの絞りと件数)で返す。view が無ければ `{ok: false}`(0040) |
-| `edit-mode` | 編集モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら差し替えてから。ただしエディタ起動で保持した下書きがあれば差し替えない。0035）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
-| `search-mode` | 検索モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら `toggle` と同じく差し替えてから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
+| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`. The full argv is not included. `include` is the list of resolved mixed-in sheet ids (0026). `chain` is the list of **the nested providers' class names that were queried** (in order; currently 0 or 1 elements. A provider that answered `null` is included too — showing where to look). `error` is the reason context could not be obtained (shown by `wayhint context` as the reason a sheet is missing) |
+| `shown` | not a subcommand; only `wayhint context --shown` sends it (`ipc.QUERIES`). Returns the current workspace's view's context **without re-resolving it**, the same items as `context` + `visible` `mode` + `filters` (`selection.explain_filters`: parent tag/category and where each came from — the key, file, and count — plus per-include-element filters and counts). `{ok: false}` if there is no view (0040) |
+| `edit-mode` | enters edit mode (showing first if not already; even if already shown, re-fetches context and swaps the window if different — unless a draft kept from launching the editor exists, in which case it is not swapped. 0035). Calling again while in edit mode exits it (closing an open form first, if any). `{visible, mode, sheet, error}` |
+| `search-mode` | enters search mode (showing first if not already; even if already shown, re-fetches context, swapping the window as in `toggle` if different). Calling again while searching exits it (keeping the filter). Refused while in `edit` (`{ok: false, error}`). `{visible, mode, sheet}` (0033) |
 
-CLI（daemon を経由せず自分でファイルに書く。書き換え系は `--sheet ID` 必須、DECISIONS 0038）の
-引数一覧は README「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、
-`--write` 無しは標準出力。`wayhint format --modeline` の path は `editor.schema_path`。
+CLI (writes to files itself, not via the daemon; mutating commands require `--sheet ID`,
+DECISIONS 0038) argument list is in the README's "CLI" section. `wayhint schema`, if PATH is
+omitted, uses `editor.schema_path`; without `--write`, prints to stdout. `wayhint format
+--modeline`'s path is `editor.schema_path`.
 
-### 11. config 追加
+### 11. config additions
 
-`editor.schema_modeline` を追加する。既定値と意味は Data model「config.yaml」を参照。
+Adds `editor.schema_modeline`. Default and meaning are in Data model, "config.yaml".
 
 ### 12. i18n
 
-新規ラベルは EN（キー兼値）と JA の両方に追加。対象: フォームの欄名と kind の表示、key 割当ヘルプ、擬似 category（`inbox` / `未定義`）、エラー（validation 失敗、id 不在、YAML error 中は編集不可、sheet 不在）、削除確認、汎用 process 名の警告。
+New labels are added to both EN (key and value) and JA. Applies to: form field names and kind's
+display, the key-binding help, pseudo-categories (`inbox`; `未定義` in Japanese), errors (validation
+failure, id not found, editing disabled during YAML error, sheet missing), delete confirmation,
+the generic process name warning.
 
-`appearance.language` の変更は **daemon を再起動せずに反映する**（0024 の「1 言語 = 1 ディレクトリ」は
-sheet だけでなく UI の文言にも掛かる）。context ごとに描き直す文字列は毎回 `self._tr` を引くので
-自動的に追従するが、**widget を組み立てたときに一度だけ書き込んだ文字列**（ツールバーの 5 ボタン、
-検索欄の placeholder、フォームの欄名と `Kind`）は追従しない。この分だけを
-`HintWindow._fixed()` が `(setter, key)` として控え、`set_language()` が引き直す。
-daemon 側は `_reload_config` で `appearance.language` の変化を見て呼ぶ
-（`hints_dir` の変化では判定できない——`ja` と `auto` が同じ `hints/en/` に落ちることがある）。
+Changing `appearance.language` **takes effect without restarting the daemon** (0024's "1
+language = 1 directory" applies to UI text as well as sheets). Strings redrawn on every context
+lookup automatically follow because they call `self._tr` each time, but **strings written once
+when a widget was built** (the toolbar's 5 buttons, the search box's placeholder, the form's
+field names and `Kind`) do not. Only these are tracked by `HintWindow._fixed()` as
+`(setter, key)`, and `set_language()` re-applies them.
+On the daemon side, `_reload_config` watches for a change in `appearance.language` and calls it
+(a change in `hints_dir` can't be used to detect it — `ja` and `auto` can both resolve to the same
+`hints/en/`).
 
-### 13. テスト
+### 13. Tests
 
-純粋関数（`./scripts/check`）:
-- golden: リポジトリ内の sheet 全部（`examples/hints/<lang>/*.yaml`、`tests/fixtures/good/*.yaml`）+ 汚い fixture（key 順バラバラ、hint 直前 / 直後コメント、行末コメント、hint 間空行、quote 混在、flow style の tags と match、値なし `remark:`）で load → dump byte 一致。加えて、環境変数 `WAYHINT_GOLDEN_EXTRA_DIR` が指すディレクトリの `*.yaml` も対象にする任意テスト（未設定なら skip、CI では未設定）
-- `swap_hints`: コメント付き hint の移動でコメントが追随する
-- `delete_hint`: 直前コメントが消え、直後コメントが残る
-- `build_hint` / `update_hint`: canonical 順、null 表記、flow style tags
-- `create_sheet`: app_id 解決 / process 解決 / 汎用名の 3 ケース
-- slug 生成: 衝突、日本語 fallback、regex 適合
-- `normalize_sheet`: format 済み sheet は再 format で byte 一致、format 前後で parse 結果が等しい
-- sort: favorite 区画が category を無視すること、null category の位置
-- `json_schema`: validation で通る sheet が schema でも通る
+Pure functions (`./scripts/check`):
+- golden: every sheet in the repo (`examples/hints/<lang>/*.yaml`, `tests/fixtures/good/*.yaml`) +
+  dirty fixtures (keys in random order, comments before/after a hint, trailing comments, blank
+  lines between hints, mixed quoting, flow-style tags and match, a valueless `remark:`) — load →
+  dump byte-for-byte match. Also an opt-in test against `*.yaml` in the directory pointed to by
+  the environment variable `WAYHINT_GOLDEN_EXTRA_DIR` (skipped if unset; unset in CI)
+- `swap_hints`: moving a commented hint keeps the comment attached
+- `delete_hint`: the preceding comment is removed, the following comment stays
+- `build_hint` / `update_hint`: canonical order, null notation, flow-style tags
+- `create_sheet`: the three cases — app_id resolution / process resolution / generic name
+- slug generation: collision, Japanese fallback, regex conformance
+- `normalize_sheet`: an already-formatted sheet byte-matches after re-formatting; parse results
+  are equal before and after formatting
+- sort: the favorite block ignores category; the position of a null category
+- `json_schema`: a sheet that passes validation also passes the schema
 
-実機チェックリストは下の「実機チェックリスト」に T13–T24 として記載。
+The manual real-machine checklist is listed below as T13-T24.
 
 ## Failure modes
 
-| 状況 | 振る舞い |
+| situation | behavior |
 |---|---|
-| desktop context 不可(protocol 無し・IPC 不可) | overlay に error 表示。crash しない |
-| Herdr 不可 / pane 取得失敗 | desktop context(Herdr sheet)まで fallback |
-| foreground process 不明 | Herdr hints のみ。screen scraping で推測しない |
-| sheet YAML が invalid | last-known-good を表示し続け `⚠ YAML error`(file/line/error)を表示。修正で自動復帰 |
-| `include` が解決できない id / 自己参照 | その id だけ無視して sheet は表示する。`Issue(severity="warning")` として overlay と `wayhint validate` に出すが、validate の exit code は 0 のまま |
-| editor 不在 / 起動失敗 | GUI で error 表示 |
-| 検索終了時 focus 復帰失敗 | それでも keyboard_mode は必ず none に戻す(grab 残留禁止) |
-| 復帰先の window が一意に決まらない(app_id と title が同じ window が複数) | focus 復帰を諦めて log に残す。別 window を掴まない |
-| workspace 監視の接続が切れた | 監視だけを止め、表示中の view(モード・下書き)は単一 slot に引き継ぐ。Esc / 閉じるボタンで必ず抜けられる |
-| YAML が UTF-8 でない | 他の読み取り失敗と同じ Issue。last-known-good を保つ |
+| desktop context unavailable (no protocol / IPC unavailable) | shows an error in the overlay. does not crash |
+| Herdr unavailable / pane fetch fails | falls back to the desktop context (Herdr sheet) |
+| foreground process unknown | Herdr hints only. never guessed via screen scraping |
+| sheet YAML is invalid | keeps showing last-known-good with a `⚠ YAML error` (file/line/error). recovers automatically on fix |
+| an id in `include` cannot be resolved / self-reference | ignores just that id and shows the sheet. surfaced as `Issue(severity="warning")` in the overlay and `wayhint validate`, but validate's exit code stays 0 |
+| editor missing / launch fails | shows an error in the GUI |
+| focus restore fails at end of search | keyboard_mode is still always dropped to none (never leave a grab behind) |
+| the window to return focus to is not unique (same app_id and title on multiple windows) | gives up restoring focus and logs it. never grabs a different window |
+| the workspace-watch connection drops | only the watching stops; the view being shown (mode, draft) is carried over to a single slot. Esc / the close button always exits it |
+| YAML is not UTF-8 | treated as any other read failure Issue. keeps last-known-good |
 
 ## Testing strategy
 
-- **unit**(§66): YAML parse、schema validation、size parse、% 変換、anchor 変換、app/process
-  matcher、match priority、parent tag filter、favorite sort、search、editor argv 展開、
-  source line mapping。
-- **context tests**(§67, §68): mock desktop provider(Inkscape/Chromium/Herdr)、mock Herdr process-info
-  (bash/claude/codex/`node /path/to/codex`)。nested: Herdr+Claude → Claude sheet + tag 交差の
-  Herdr hints。favorite は影響しない。
-- **実機**(§69–§73): 自動化しない。下の手動チェックリストで確認する。
-- **contract tests**: resolver と**実物の** provider を繋ぐ。fake だけで固めていると、provider の
-  signature が resolver の呼び出しと食い違っても全部通ってしまう(resolver の `except Exception` が
-  `TypeError` を飲むため、実機では黙って答えなくなるだけになる)。nested 側は
-  `tests/test_context.py` の `RealProviderContractTest`、desktop 側は
-  `tests/test_desktop_providers.py`。
-- **adapter tests**(`tests/test_desktop_providers.py`): signature と「compositor が無いときに
-  `ContextError` になること」はヘッドレスで常に走る。compositor があるセッションでは、実際に
-  接続して snapshot / `find_output` の形と、GTK + gtk4-layer-shell の typelib が DECISIONS 0009 の
-  順で読めること(子プロセスで `_load_gui()`)まで確認する。無ければ skip する。
-- **keyboard grab**(`tests/test_window_grab.py`): `keyboard_grab` は純粋で headless に検証済みだが、
-  **widget 側がそれを適用しているか**は手動チェックリスト(T6 / T13 / T24)しか見ていなかった。
-  compositor があるときだけ、実物の `HintWindow` を建てて layer surface の `keyboard_mode` が
-  `keyboard_grab` と全状態で一致すること、hide で grab が落ちて mode は残ることを確認する。
-  **surface は map しない**(`present()` を呼ばず `get_visible` を差し替える)ので画面には何も出ない。
-- **描画**(`tests/test_window_render.py`): `HintWindow.lay_out()`(= `present_context` から
-  `set_visible` / `present` を除いた部分)を呼び、一覧が `sort_hints(visible_hints(...))` と
-  一致すること、見出しの `親 › 子` と context ラベル(app_id は接尾辞を外す)、sheet が無いときの
-  表示、layer surface の anchor / margin / size が `geometry.placement` と一致すること
-  (global 指定と sheet override の両方)、search で絞られて抜けると戻ることを確認する。
-  ここも surface は map しない。
-- **daemon → window**(`tests/test_daemon_window.py`): socket に届いた 1 行を
-  `ipc.handle_request` → `dispatch` → **実物の `HintWindow`** まで通す。`test_daemon_edit` は
-  window を fake にし、`test_window_render` は context を手で組むので、その間の継ぎ目だけが
-  誰にも見られていなかった。呼び出し元(compositor の keybind / CLI / 将来の経路)は CLI より手前で
-  同じ `{"cmd": ...}` に正規化されるので、ここが「正しいものが出たか」の決まる場所になる。
-  ここも surface は map しない(`present` / `set_visible` を差し替え、`get_visible` は
-  `set_visible` に渡った値を返すので keyboard の規則は可視性の変化を見られる)。
-- **headless GUI**(`tests/test_gui_headless.py`、入口は `./scripts/check-gui`): compositor を
-  `WLR_BACKENDS=headless` で立て、その中で `wayhintd` を動かし、実際に map された surface を
-  測る(DECISIONS 0030)。session の起動・後片付け・grim / AT-SPI / wtype の呼び出しは
-  `tools/headless.py` にあり、`tests/headless.py` は unittest 向けの opt-in と skip だけを足す薄い層
-  (デモ生成 `scripts/demo` と共有するため)。layer surface は compositor への
-  *要求*なので、anchor と margin がどう解釈されたかはプロセス内からは見えない。
-  **位置**は overlay を出した frame と出していない frame の差分の bounding box(font 非依存)、
-  **中身**は AT-SPI の accessible name で読む。ベースライン画像の全面比較は採らない(0030)。
-  入力注入(compositor の keybind → CLI → IPC)は `wtype` がある環境でだけ走る。
-  ユーザーが座っているセッションには触らない——専用の `XDG_RUNTIME_DIR` /
-  `XDG_CONFIG_HOME` / `HOME` / session bus を与える。
-- `./scripts/check` が unit/context tests を実行する唯一の入口。GTK/pywayland/PyWayfire 依存の import は
-  テストから分離し、ヘッドレスでも通るようにする(実機が要るものは skip。上の adapter tests)。
-  headless compositor を要するものは `./scripts/check-gui` に分け、`WAYHINT_GUI_TESTS=1` が
-  無ければ skip する(既定の `check` は数百 ms・依存無しのまま)。
-- daemon の GUI import は起動時まで遅延する。`tests/test_daemon_edit.py` は window と workspace の
-  境界を fake にし、実際の daemon / SheetStore / YAML 保存を通して対象ファイルと編集状態を検証する。
+- **unit** (§66): YAML parse, schema validation, size parse, % conversion, anchor conversion,
+  app/process matcher, match priority, parent tag filter, favorite sort, search, editor argv
+  expansion, source line mapping.
+- **context tests** (§67, §68): mock desktop provider (Inkscape/Chromium/Herdr), mock Herdr
+  process-info (bash/claude/codex/`node /path/to/codex`). nested: Herdr+Claude → Claude sheet +
+  tag-intersected Herdr hints. favorite is unaffected.
+- **real hardware** (§69-§73): not automated. verified with the manual checklist below.
+- **contract tests**: connects the resolver to the **real** providers. Relying only on fakes would
+  let every call pass even if a provider's signature diverged from what the resolver calls (the
+  resolver's `except Exception` swallows `TypeError`, so on real hardware it would just silently
+  stop answering). The nested side is `tests/test_context.py`'s `RealProviderContractTest`; the
+  desktop side is `tests/test_desktop_providers.py`.
+- **adapter tests** (`tests/test_desktop_providers.py`): the signature, and "becomes
+  `ContextError` when there is no compositor," always run headless. In a session with a
+  compositor, it actually connects and checks the shape of the snapshot / `find_output`, and that
+  GTK + the gtk4-layer-shell typelib load in the order from DECISIONS 0009 (via `_load_gui()` in a
+  child process). If there is none, it's skipped.
+- **keyboard grab** (`tests/test_window_grab.py`): `keyboard_grab` itself is pure and already
+  verified headless, but **whether the widget side actually applies it** used to be checked only
+  by the manual checklist (T6 / T13 / T24). When a compositor is present, a real `HintWindow` is
+  built and it's confirmed that the layer surface's `keyboard_mode` matches `keyboard_grab` in
+  every state, and that hide drops the grab while keeping the mode. **The surface is never
+  mapped** (`present()` is not called; `get_visible` is stubbed instead), so nothing appears
+  on screen.
+- **rendering** (`tests/test_window_render.py`): calls `HintWindow.lay_out()` (= `present_context`
+  minus `set_visible` / `present`), and checks that the list matches
+  `sort_hints(visible_hints(...))`, the `parent › child` heading and context label (app_id with
+  the suffix stripped), the display with no sheet, and that the layer surface's anchor / margin /
+  size match `geometry.placement` (both global setting and sheet override), and that filtering by
+  search and exiting restores it. The surface is not mapped here either.
+- **daemon → window** (`tests/test_daemon_window.py`): pushes one line arriving at the socket
+  through `ipc.handle_request` → `dispatch` → the **real `HintWindow`**. `test_daemon_edit` fakes
+  the window, and `test_window_render` builds context by hand, so only the seam between them had
+  gone unwatched. Whatever the caller is (compositor keybind / CLI / a future path), it's
+  normalized to the same `{"cmd": ...}` before reaching here, so this is where "did the right
+  thing come out" gets decided. The surface is not mapped here either (`present` / `set_visible`
+  are stubbed, and `get_visible` returns whatever was passed to `set_visible`, so the keyboard
+  rules can observe visibility changes).
+- **headless GUI** (`tests/test_gui_headless.py`, entry point `./scripts/check-gui`): brings up a
+  compositor with `WLR_BACKENDS=headless`, runs `wayhintd` inside it, and measures the actually
+  mapped surface (DECISIONS 0030). Session startup/teardown and grim / AT-SPI / wtype calls live
+  in `tools/headless.py`; `tests/headless.py` just adds unittest opt-in and skip on top (shared
+  with the demo generator `scripts/demo`). Since a layer surface is a *request* to the compositor,
+  how anchor and margin were interpreted can't be seen from inside the process. **Position** is
+  read from the bounding box of the diff between a frame with the overlay shown and one without
+  (font-independent); **content** is read via AT-SPI's accessible name. Full baseline-image
+  comparison is not used (0030). Input injection (compositor keybind → CLI → IPC) only runs where
+  `wtype` is available. The user's own session is never touched — a dedicated
+  `XDG_RUNTIME_DIR` / `XDG_CONFIG_HOME` / `HOME` / session bus is given instead.
+- `./scripts/check` is the sole entry point that runs the unit/context tests. Imports depending on
+  GTK/pywayland/PyWayfire are kept out of tests, so they run headless (skipped where real
+  hardware is needed — see adapter tests above). Anything needing a headless compositor goes to
+  `./scripts/check-gui`, skipped unless `WAYHINT_GUI_TESTS=1` is set (the default `check` stays a
+  few hundred ms with no dependencies).
+- The daemon's GUI import is deferred until startup. `tests/test_daemon_edit.py` fakes the
+  boundary between the window and the workspace, and goes through the real daemon / SheetStore /
+  YAML save to check the target file and edit state.
 
 ## Demo generation
 
-紹介動画は `./scripts/demo --showcase <name> --record` が
-`demo/showcases/<name>/02_<name>_scenario.yaml` から生成する(DECISIONS 0031、0032)。
-テストと同じ基盤の上に乗っている:
+The intro videos are generated by `./scripts/demo --showcase <name> --record` from
+`demo/showcases/<name>/02_<name>_scenario.yaml` (DECISIONS 0031, 0032). Built on the same
+foundation as the tests:
 
 ```
 tools/headless.py ──┬── tests/headless.py ── tests/test_gui_headless.py   (./scripts/check-gui)
@@ -593,173 +697,196 @@ tools/headless.py ──┬── tests/headless.py ── tests/test_gui_headle
   AT-SPI / wtype)
 ```
 
-`tools/headless.py` は headless session そのもの(専用の `XDG_RUNTIME_DIR` / `XDG_CONFIG_HOME` /
-`HOME` / session bus、compositor と `wayhintd` の起動と後片付け、grim・AT-SPI・wtype)。
-`tests/headless.py` は unittest の opt-in と skip だけを足す薄い層で、`tools/demo/` は同じ
-session に keybind 2 つ・`windowRules`・fixtures の作業コピーを足して使う。**ここを変えると
-`./scripts/check-gui` とデモの両方が動く。**
+`tools/headless.py` is the headless session itself (a dedicated `XDG_RUNTIME_DIR` /
+`XDG_CONFIG_HOME` / `HOME` / session bus, starting/tearing down the compositor and `wayhintd`,
+grim, AT-SPI, wtype). `tests/headless.py` is a thin layer adding only unittest opt-in and skip,
+and `tools/demo/` adds 2 keybinds, `windowRules`, and a working copy of the fixtures to the same
+session. **Changing this affects both `./scripts/check-gui` and the demo.**
 
-`tools/demo/` の分担は showcase(ディレクトリと役割ファイルの解決)、scenario(読み込みと検証、
-尺の計算)、session(必要なものの確認、fixtures の配置、Herdr の隔離起動と停止)、actions(action の
-実行と `wait_for` の判定)、capture(frame-stepping と contact sheet)、encode(ffmpeg と SRT)。
-尺は scenario の `hold` を frame 数に丸めたもので決まり、1 step につき 1 frame だけ撮って複製する。
-scenario の書き方は `demo/README.md`。
+`tools/demo/`'s division of labor: showcase (resolving the directory and role files), scenario
+(loading and validation, duration calculation), session (checking prerequisites, placing
+fixtures, isolated startup/stop of Herdr), actions (running an action and judging `wait_for`),
+capture (frame-stepping and the contact sheet), encode (ffmpeg and SRT). Duration is decided by
+rounding the scenario's `hold` to a number of frames, capturing 1 frame per step and duplicating
+it. How to write a scenario is in `demo/README.md`.
 
-### showcase と variant(DECISIONS 0032)
+### Showcase and variant (DECISIONS 0032)
 
-動画 1 本分を **showcase** とし、`demo/showcases/<name>/` に閉じる。中のファイルは名前の末尾の
-役割で探す(`<NN>_<showcase>_<role>.<ext>`。`storyboard` が台本、`scenario` が実行用)。中央部分が
-ディレクトリ名と違えば警告、同じ役割が 2 つあれば error。生成物は `out/<lang>/<variant>/` で、
-追跡しない。
+One video is a **showcase**, self-contained under `demo/showcases/<name>/`. Files inside are
+found by the role at the end of their name (`<NN>_<showcase>_<role>.<ext>`; `storyboard` is the
+script, `scenario` is for execution). A warning if the middle part differs from the directory
+name, an error if the same role appears twice. Output goes to `out/<lang>/<variant>/` and is not
+tracked.
 
-1 つの scenario は step を 1 回ずつ定義し、**variant**(`60s` / `3min` / `5min`)がその id を並べる。
-variant は *clean session からその列だけを実行して成立する完全な列*で、variant 間で状態を引き継が
-ない。`--dry-run` は各 variant の予定尺を `target ± tolerance` と突き合わせ、外れれば止まる。
+One scenario defines each step once, and a **variant** (`60s` / `3min` / `5min`) lists its ids in
+sequence. A variant is *a complete sequence that stands on its own when run from a clean session*;
+no state carries over between variants. `--dry-run` checks each variant's planned duration against
+`target ± tolerance` and stops if it's off.
 
-### Herdr の隔離(DECISIONS 0032)
+### Isolating Herdr (DECISIONS 0032)
 
-showcase `herdr` は**実物の Herdr** を動かす。`tools/demo/session.py` が session の
-`XDG_CONFIG_HOME` に最小の `config.toml`(オンボーディングとテーマ選択、版チェック、tab 名の入力を
-止め、shell と window title を固定)を書き、`HeadlessSession.env()` が **`HERDR_*` を落とす**
-——落とさないと session 内の herdr client が実ユーザーの server に繋がる。Herdr の server は
-daemon 化して session のプロセスグループを抜けるので、session を畳む**前**に `herdr server stop`
-を呼び、残ったら `/proc/*/environ` の `HOME` が session のものである herdr だけを kill する。
+The `herdr` showcase runs **the real Herdr**. `tools/demo/session.py` writes a minimal
+`config.toml` into the session's `XDG_CONFIG_HOME` (turning off onboarding and theme selection,
+version checks, and tab-name prompts, and fixing the shell and window title), and
+`HeadlessSession.env()` **strips `HERDR_*`** — without that, the herdr client inside the session
+would connect to the real user's server. Herdr's server daemonizes and leaves the session's
+process group, so `herdr server stop` is called **before** tearing down the session, and if any
+remain, only herdr processes whose `/proc/*/environ` `HOME` matches the session's are killed.
 
-### 言語
+### Language
 
-`hints/<lang>/` と `caption.<lang>` だけが言語ごとで、`config.yaml` は 1 つ。recorder は session 用の
-コピーに `appearance.language` を書き、repository の fixture は変えない。日本語が先で、`--validate`
-は ja の字幕だけを要求する。
+Only `hints/<lang>/` and `caption.<lang>` are per-language; `config.yaml` is single. The recorder
+writes `appearance.language` into the session's copy, leaving the repository fixture untouched.
+Japanese comes first, and `--validate` requires only the ja captions.
 
-### 実機チェックリスト(§69–§73、手動)
+### Real-hardware checklist (§69-§73, manual)
 
-`./scripts/check` の対象外。labwc と Wayfire の
-それぞれのセッションで実施し、**結果は `STATUS.md` に日付付きで記録する**。この一覧は項目の
-定義だけを持ち、合否は持たない。同じ項目でも compositor ごとに結果が変わるため、記録先を
-1 か所に寄せる。
+Out of scope for `./scripts/check`. Run in both a labwc and a Wayfire session, and **record the
+result in `STATUS.md`, dated**. This list only defines the items; it carries no pass/fail. Since
+the same item can come out differently per compositor, the record is kept in one place.
 
-- T1 hotkey で右上に表示、元アプリへの入力が続く(keyboard grab なし)
-  （位置と hotkey 経路は `./scripts/check-gui` が headless でも見る。実機で見るのは
-  「元アプリへの入力が続く」の方）
-- T2 同じ hotkey で非表示(toggle)（同上）
-- T3 別 output 上のアプリから起動 → そのアプリの output に出る（複数 output は headless では
-  作っていないので実機のまま）
-- T4 sheet の `display.output` override が効く
-- T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
-  （`./scripts/check-gui` が単一 output で見る。実機では回転・スケールのある output で確認する）
-- T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る
-- T7 エディタで編集: 選択中の hint の sheet が開き該当行に jump、無選択では表示中の sheet の先頭
-- T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
-- T9 Herdr で unknown process → Herdr hints のみ
-- T10 表示中に YAML を編集 → 閉じずに更新
-- T11 YAML を壊す → crash せず last-known-good + `⚠ YAML error`、直すと復帰
-- T12 「閉じる」で閉じたあと workspace を往復しても再表示されない
-- T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る。
-  もう一度 `wayhint edit-mode` を呼んでも同じく抜ける（フォームが開いていれば 1 回目はフォームを閉じるだけ）。
-  作業中（非表示）から `Super+Ctrl+H` → もう一度 `Super+Ctrl+H` で overlay が消え、**元アプリにそのまま入力が通る**
-  **(2026-09-24 確認済)**
-- T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
-- T15 edit 中の hotkey → hide / show、入力が残る
-- T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
-  一覧へ出る(次の hotkey を待たない)。保存すると overlay は表示されたまま `normal` に戻り、
-  元アプリへ入力できる。続けて追加するときは再度 `wayhint edit-mode` → `a`（同じ sheet に追記される）
-  **(2026-09-19 確認済)**
-- T17 `f` / `J` `K` など `edit` に留まる操作 → reload で overlay が閉じず、選択位置が保たれる。
-  選択中の hint が画面外に出ていたら見える位置までスクロールする。一覧が画面に収まらないとき
-  スクロールバーが出ている。フォーム保存の場合は `normal` に戻った一覧で同じことを確認する
-  **(2026-09-19 確認済)**
-- T17b `↑` `↓` で選択が 1 行ずつ動き、端で止まる。動かした行に `f` が効く（マウスを使わない）
-  **(2026-09-23 確認済)**
-- T18 gvim で開いたまま GUI 保存 → gvim に W11
-- T19 search で Tab / Shift+Tab → category 巡回、focus が overlay 外へ抜けない。
-  作業中（非表示）から `Super+Shift+H` → もう一度 `Super+Shift+H` で overlay が消え、**元アプリにそのまま入力が通る**
-  **(2026-09-24 確認済)**
-- T20 `#` 途中入力 + Tab → 補完
-- T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
-- T22 `d` `d` → 削除、`u` → 復帰
-- T22b `f` を続けて 2 回 → favorite が付いて外れる。`J` を続けて 2 回 → 2 つ下まで動く
-  **(2026-09-19 確認済)**
-- T23 混入 hint（親 sheet）を編集 → 親 sheet ファイルが更新される
-- T23c 混入 hint（親 sheet）を選んで `a` → フォームの見出しが親 sheet になり、保存すると
-  親 sheet ファイルに追記される。未選択で `a` を押すと active sheet が追加先になる
-- T23d 親 sheet はあり、前面プロセスの sheet が無い(または `hints: []`)状態で、親のヒントが選ばれたまま `a`
-  → 見出しが「→ 新しいシート」(空の sheet ならその名前)になり、保存すると前面プロセスの sheet に入る。
-  `Ctrl+P` で親に切り替えれば親に入る(0041)
-- T23b sheet を別名でコピー（`claude.yaml` → `claude-backup.yaml`）→ 一覧は増えず、⚠ にファイル名と
-  id の不一致が出る **(2026-09-19 確認済)**
-- T30 `appearance.language` を `ja` / `en` で切り替える（または `LANG` を変えて daemon を起動）
-  → UI の文言と一緒に `hints/ja/` と `hints/en/` が切り替わる。片方しか無い言語では `en` に
-  落ち、どちらも無ければ `hints/*.yaml` が読まれる。**overlay を出したまま config.yaml を
-  書き換えても、再起動せずにボタンと欄名まで切り替わる**（自動テストは
-  `tests/test_daemon_window.py`。実機で見るのは overlay を開いたままの書き換え）
-- T31 sheet の `include` で他 sheet の hint が一覧の末尾に出る。それを編集すると所属ファイルが
-  更新される（詳細欄の `ファイル:` が書き換え先）
-- T32 config の `include` が `include` を書いていない sheet 全部に効き、`include:` を書いた sheet では
-  置き換わる（`include: []` なら何も混ざらない）
-- T33 `match` の無い sheet は単独では表示されず、`include` 経由でだけ出る
-- T34 解決できない id を `include` に書いても sheet は表示され、overlay の ⚠ と
-  `wayhint validate` に warning が出る（validate の終了コードは 0）
-- T35 `wayhint context` の応答に `include` が含まれる
-- T24 各操作後、元アプリへ入力できる（grab 残留なし、既存項目の共通確認）
-- T25 角 / 辺の grip を drag → 追従して伸縮、離すと config.yaml が px で書き換わる。閉じて開き
-  直しても、daemon を再起動しても同じサイズ **(2026-09-18 確認済)**
-- T26 key と title が 1 行ずつのとき文字のベースラインが揃う。どちらかが折り返したら、
-  1 行のほうが行の高さの中央に来る(overlay の幅を grip で変えて title を折り返させる)
-  **(2026-09-18 確認済)**
-- T27 IME で変換中に `Tab` / `Ctrl+P` → 候補操作が効き、欄移動や親 sheet toggle に取られない。
-  確定後は従来どおり欄移動になる **(2026-09-19 確認済)**
-- T28 「エディタで編集」→ overlay は出たまま、エディタに入力できる（`edit` / `search` から押した
-  ときは `normal` に戻る）。エディタで保存すると overlay の一覧がその場で更新される。開いていた
-  下書きは次の `wayhint edit-mode` で戻る。エディタが起動できないときはモードも変わらずエラーが出る
-  **(2026-09-19 確認済)**
-- T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
-  (回転できるモニタが要るため未実施)
-- T38 keybinding → `wayhint search-mode` で overlay が出て検索欄に focus が入り、日本語 IME で入力できる
-  **(2026-09-23 確認済)**
-- T39 語を打って `Enter` → 元アプリに focus が戻る。overlay は絞り込まれたまま `normal`
-  **(2026-09-23 確認済。当時は `Enter` でコピーもした。0039 でコピーは T47 の `c` に移った)**
-- T40 `Esc` で抜けても絞り込みが残り、chip が出る。chip の `×` で全件に戻る
-  **(2026-09-23 確認済)**
-- T41 daemon を再起動しても、同じ sheet を開けば同じ絞り込み **(自動テスト済:
-  `tests/test_search_checklist.py` `T41RestartTest`)**
-- T42 state.yaml を壊す(`foo: [`)→ daemon は起動し WARN が 1 行、絞り込み無し。次に検索を抜けたとき
-  正常な内容で書き戻る **(自動テスト済: `T42BrokenStateTest`)**
-- T43 絞り込み中に `edit-mode` → `J` / `K` は無反応、`a` / `Enter` / `d` `d` / `f` は動く
-  **(自動テスト済: `T43EditWhileFilteredTest`、実物の HintWindow)**
-- T44 別 workspace で同じ sheet を開くと同じ絞り込み **(自動テスト済: `T44WorkspaceTest`)**
-- T45 `search` 中に `search-mode` をもう一度 → `normal` に戻り、元アプリに入力できる
-  **(自動テスト済: `tests/test_gui_headless.py` `SearchChecklistTest`、check-gui)**。本物の `rc.xml` の
-  keybind(`W-S-h`)経由も、別 window で開いたままの overlay から **(2026-09-23 確認済)**
-- T46 `search` 中に別経路で sheet の内容を書き換える → 欄の文字列・カーソル・focus・絞り込みが残る
-  **(自動テスト済: `T46aReloadWhileSearchingTest`)**。
-  `search` 中に「エディタで編集」→ `normal` に戻り、保存のたびに絞り込まれた一覧が更新される
-  **(自動テスト済: `SearchChecklistTest`、in-place 保存と rename 保存の両方)**。本物の gvim でも
-  **(2026-09-23 確認済)**
-- T47 検索中は一覧の下にキーの説明が出る。語を打って `↓` → `c` → 選択中の hint の command が clipboard に
-  入り、元アプリに貼れる。key だけの hint で `c` → コピーせずに元アプリへ戻る。一覧の先頭で `↑` → 検索欄
-  **(キー操作とコピー対象は自動テスト済: `SearchKeysOnTheWindowTest`、clipboard の中身と貼り付けは実機未確認)**
+- T1 shown at top-right on hotkey, input keeps going to the original app (no keyboard grab)
+  (position and the hotkey path are checked headless by `./scripts/check-gui`; on real hardware
+  check "input keeps going to the original app")
+- T2 hidden by the same hotkey (toggle) (same as above)
+- T3 launched from an app on a different output → appears on that app's output (multiple outputs
+  aren't set up headless, so this stays on real hardware)
+- T4 a sheet's `display.output` override works
+- T5 `width: 30%` / `height: 60%` are based on the target output's logical size
+  (`./scripts/check-gui` checks this on a single output; on real hardware, check with a rotated or
+  scaled output)
+- T6 input is received only while searching, and after finishing / Esc no grab remains and focus
+  returns to the previous view
+- T7 edit in editor: the selected hint's sheet opens and jumps to that line; with nothing
+  selected, the shown sheet's start
+- T8 Herdr with bash → Herdr hints; with `claude` → the Claude sheet + tagged Herdr hints
+- T9 Herdr with an unknown process → Herdr hints only
+- T10 edit the YAML while shown → updates without closing
+- T11 break the YAML → doesn't crash, shows last-known-good + `⚠ YAML error`, recovers on fix
+- T12 after closing with "Close," it doesn't reappear even after switching workspaces back and forth
+- T13 `wayhint edit-mode` → EXCLUSIVE, Esc returns to NONE and focus returns to the previous
+  view. Calling `wayhint edit-mode` again also exits (if a form is open, the first call just
+  closes the form). From working (hidden) via `Super+Ctrl+H` → `Super+Ctrl+H` again, the overlay
+  disappears and **input goes straight through to the original app**
+  **(confirmed 2026-09-24)**
+- T14 leaving the workspace during edit → NONE; returning re-applies the grab with input intact
+- T15 the hotkey during edit → hide / show, input intact
+- T16 quick add in a context with no sheet → a new sheet is created, and right after saving, that
+  hint appears in the list (without waiting for the next hotkey). After saving, the overlay stays
+  shown, back in `normal`, and input reaches the original app. To keep adding, `wayhint
+  edit-mode` → `a` again (appended to the same sheet) **(confirmed 2026-09-19)**
+- T17 actions that stay in `edit` (`f` / `J` `K` etc.) → reload doesn't close the overlay and
+  keeps the selection position. If the selected hint scrolls off screen, it scrolls back into
+  view. The scrollbar shows when the list doesn't fit. For a form save, confirm the same in the
+  list back in `normal` **(confirmed 2026-09-19)**
+- T17b `↑` `↓` move the selection one row at a time, stopping at the ends. `f` affects the row
+  moved to (no mouse) **(confirmed 2026-09-23)**
+- T18 open in gvim, then save via GUI → gvim gets W11
+- T19 `Tab` / `Shift+Tab` in search → cycles category, focus never leaves the overlay. From
+  working (hidden) via `Super+Shift+H` → `Super+Shift+H` again, the overlay disappears and
+  **input goes straight through to the original app** **(confirmed 2026-09-24)**
+- T20 partial `#` input + Tab → completes
+- T21 `wayhint edit-mode` during `⚠ YAML error` → refusal message, no grab
+- T22 `d` `d` → deletes, `u` → restores
+- T22b press `f` twice in a row → favorite is set then unset. press `J` twice in a row → moves
+  down two **(confirmed 2026-09-19)**
+- T23 edit a mixed-in hint (from a parent sheet) → the parent sheet's file is updated
+- T23c select a mixed-in hint (from a parent sheet) and press `a` → the form's heading becomes
+  the parent sheet, and saving appends to the parent sheet's file. Pressing `a` with nothing
+  selected uses the active sheet as the destination
+- T23d a parent sheet exists, and the foreground process has no sheet (or `hints: []`), and with
+  a parent hint selected, press `a` → the heading becomes "→ new sheet" (or that name if the
+  sheet is empty), and saving goes into the foreground process's sheet. `Ctrl+P` switches to
+  the parent (0041)
+- T23b copy a sheet under another name (`claude.yaml` → `claude-backup.yaml`) → the list doesn't
+  grow, and a filename/id mismatch `⚠` appears **(confirmed 2026-09-19)**
+- T30 switch `appearance.language` between `ja` / `en` (or change `LANG` and start the daemon) →
+  the UI text switches along with `hints/ja/` and `hints/en/`. A language missing one falls back
+  to `en`; if neither exists, `hints/*.yaml` is read. **Rewriting config.yaml while the overlay is
+  shown switches the buttons and field names too, without restarting** (automated test:
+  `tests/test_daemon_window.py`; on real hardware check the rewrite-while-open case)
+- T31 a sheet's `include` shows another sheet's hints at the end of the list; editing one updates
+  its owning file (the detail pane's `File:` shows the write destination)
+- T32 config's `include` applies to every sheet that doesn't write its own `include`, and is
+  replaced in a sheet that does write `include:` (`include: []` mixes in nothing)
+- T33 a sheet without `match` is never shown standalone, only via `include`
+- T34 writing an unresolvable id into `include` still shows the sheet, with a warning in the
+  overlay's `⚠` and in `wayhint validate` (validate's exit code stays 0)
+- T35 `wayhint context`'s response includes `include`
+- T24 input reaches the original app after every action (no grab left behind; shared check across
+  existing items)
+- T25 drag a corner/edge grip → follows and resizes, and on release config.yaml is rewritten in
+  px. Same size after closing and reopening, and after restarting the daemon
+  **(confirmed 2026-09-18)**
+- T26 when key and title are each one line, their baselines align. When either wraps, the
+  one-line one sits at the vertical center of the row's height (change the overlay's width via
+  the grip to make the title wrap) **(confirmed 2026-09-18)**
+- T27 `Tab` / `Ctrl+P` while composing with IME → candidate operations work and are not stolen for
+  field movement or the parent-sheet toggle. After commit, back to normal field movement
+  **(confirmed 2026-09-19)**
+- T28 "Edit in editor" → the overlay stays shown, input reaches the editor (pressed from `edit` /
+  `search`, it returns to `normal`). Saving in the editor updates the overlay's list in place. Any
+  open draft returns on the next `wayhint edit-mode`. If the editor fails to launch, mode doesn't
+  change and an error is shown **(confirmed 2026-09-19)**
+- T29 with the output rotated 90 degrees, `width: 50%` → placed based on the post-rotation logical
+  size (not done — needs a monitor that can rotate)
+- T38 keybinding → `wayhint search-mode` shows the overlay with focus in the search box, and
+  Japanese IME input works **(confirmed 2026-09-23)**
+- T39 type a word and `Enter` → focus returns to the original app. the overlay stays filtered, in
+  `normal` **(confirmed 2026-09-23. At the time, `Enter` also copied; 0039 moved copying to
+  T47's `c`)**
+- T40 `Esc` exits with the filter kept, and a chip is shown. the chip's `×` returns to the full list
+  **(confirmed 2026-09-23)**
+- T41 the same filter applies to the same sheet even after restarting the daemon **(automated:
+  `tests/test_search_checklist.py`'s `T41RestartTest`)**
+- T42 corrupt state.yaml (`foo: [`) → the daemon starts with a single WARN and no filter. Once
+  search is next exited, valid content is written back **(automated: `T42BrokenStateTest`)**
+- T43 `edit-mode` while filtered → `J` / `K` do nothing, `a` / `Enter` / `d` `d` / `f` work
+  **(automated: `T43EditWhileFilteredTest`, real `HintWindow`)**
+- T44 opening the same sheet in a different workspace shows the same filter **(automated:
+  `T44WorkspaceTest`)**
+- T45 `search-mode` again while in `search` → returns to `normal`, input reaches the original app
+  **(automated: `tests/test_gui_headless.py`'s `SearchChecklistTest`, check-gui)**. Also via the
+  real `rc.xml` keybind (`W-S-h`), and from an overlay left open in a different window
+  **(confirmed 2026-09-23)**
+- T46 rewriting a sheet's content via another route while in `search` → the box's string, cursor,
+  focus, and filter are kept **(automated: `T46aReloadWhileSearchingTest`)**. "Edit in editor"
+  while in `search` → returns to `normal`, and the filtered list updates on every save
+  **(automated: `SearchChecklistTest`, both in-place and rename-style saves)**. Also with real
+  gvim **(confirmed 2026-09-23)**
+- T47 while searching, a line of key hints is shown below the list. Type a word, `↓`, then `c` →
+  the selected hint's command goes to the clipboard and can be pasted into the original app. `c`
+  on a key-only hint → returns to the original app without copying. `↑` at the top of the list →
+  back to the search box **(the key handling and copy target are automated:
+  `SearchKeysOnTheWindowTest`; clipboard contents and pasting are not confirmed on real hardware)**
 
 ## Known limits and future work
 
-- V1 の限界は PRODUCT.md「Out of scope」のとおり。
-- **workspace をまたいだ表示**: layer surface は output に属し workspace を持たないため、overlay は
-  何もしなければ workspace 切り替えをまたいで表示され続ける。`context.workspace: current`(既定)は
-  `ext_workspace_manager_v1` で active workspace を監視し、overlay を workspace 単位で開閉する
-  (DECISIONS 0012)。
-  **Wayfire は未対応**。protocol を出すかどうかは実機が無く未確認で、確認できないものを対応とは
-  書かない。protocol が無い compositor では監視せず、従来どおり全 workspace に表示する。
-- **fractional scaling の論理サイズ**: `wl_output.scale` は整数しか持たないため、1.5 倍等の環境では
-  論理サイズが概算になる(`mode / ceil(scale)`)。正確に取るには `xdg_output` の `logical_size` を
-  bind する必要があるが、主環境(labwc)で fractional scaling を使っていないため入れない
-  (DECISIONS 0020)。使う予定が出たら `xdg_output_manager` 利用・無ければ現行計算へ fallback、
-  として別件で起こす。回転(`wl_output.geometry.transform`)と `mode` の CURRENT flag は対応済み。
-- **context 取得の同期呼び出し**: Herdr(subprocess)と Wayland(roundtrip)は GTK の main loop 上で
-  同期に走る。実測は herdr 2 往復で 2-3ms、Wayland snapshot で 0-18ms だが、応答しない相手が
-  いると描画と IPC が止まる。Herdr 側は 1 回の context 取得の上限を `ipc.CLIENT_TIMEOUT` より
-  短くしてあり(`herdr.LOOKUP_BUDGET`)、CLI が諦めたあとに遅れて処理が通ることは無い。Wayland 側の
-  roundtrip には時間制限が無い。非同期化は adapter の契約を変えるため別途判断する。
-- 拡張余地(§76、V1 には含めない): アプリ内部 mode(Vim/shell)、SSH remote、tmux pane、
-  terminal title detector、AI agent lifecycle state、context 別 styling、usage frequency、
-  recently learned、explicit executable flag 付き command 実行。
-- 実装順序は設計書 §79 の Phase 1–9。Phase 1(config loader / YAML model / validation)から
-  始め、Phase 0 として §78 の依存確認を行う。
+- V1's limits are as in PRODUCT.md's "Out of scope".
+- **Display across workspaces**: since a layer surface belongs to an output, not a workspace, the
+  overlay by default keeps showing across a workspace switch. `context.workspace: current`
+  (default) watches the active workspace with `ext_workspace_manager_v1` and opens/closes the
+  overlay per workspace (DECISIONS 0012). **Wayfire is not supported.** Whether it exposes the
+  protocol is unconfirmed for lack of real hardware, and what can't be confirmed isn't written
+  down as supported. On a compositor without the protocol, it doesn't watch, and shows on every
+  workspace as before.
+- **Logical size under fractional scaling**: since `wl_output.scale` only holds an integer, at
+  scales like 1.5x the logical size is an approximation (`mode / ceil(scale)`). Getting it exactly
+  would require binding `xdg_output`'s `logical_size`, but this isn't added since the main
+  environment (labwc) doesn't use fractional scaling (DECISIONS 0020). If a need arises, it will
+  be raised separately as: use `xdg_output_manager`, falling back to the current calculation if
+  absent. Rotation (`wl_output.geometry.transform`) and `mode`'s CURRENT flag are already handled.
+- **Synchronous context-fetch calls**: Herdr (subprocess) and Wayland (roundtrip) both run
+  synchronously on GTK's main loop. Measured at 2-3ms for 2 herdr round trips and 0-18ms for a
+  Wayland snapshot, but an unresponsive peer stalls both rendering and IPC. On the Herdr side, the
+  time cap for a single context fetch is kept shorter than `ipc.CLIENT_TIMEOUT`
+  (`herdr.LOOKUP_BUDGET`), so nothing ever completes late after the CLI has given up. The Wayland
+  side's roundtrip has no time limit. Making it async would change the adapter contract, so it's
+  judged separately.
+- Room for extension (§76, not included in V1): in-app modes (Vim/shell), SSH remote, tmux pane,
+  terminal title detector, AI agent lifecycle state, per-context styling, usage frequency,
+  recently learned, an explicit executable flag for running commands.
+- Implementation order follows the design document's §79 Phase 1-9. Starting from Phase 1 (config
+  loader / YAML model / validation), with Phase 0 as the §78 dependency check.
+</content>
+</invoke>

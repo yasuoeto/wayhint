@@ -1,173 +1,201 @@
-# SHEETS — シートの選ばれ方と、他シートのヒントの混ざり方
+# SHEETS — how sheets are chosen, and how other sheets' hints mix in
 
-ヒント画面の一覧は 1 枚のシートだけでできているとは限らない。親シート(nested)と `include` の
-2 経路で他のシートのヒントが混ざる。この文書はその規則を 1 か所にまとめる。YAML の各キーの形は
-`dev-docs/DESIGN.md`「Data model」、決めた経緯は `dev-docs/DECISIONS.md` の各 entry が正。
+[日本語](SHEETS.ja.md)
 
-用語:
+The overlay's list is not necessarily made up of a single sheet. Other sheets' hints mix in
+through two routes: the parent sheet (nested) and `include`. This document collects those rules
+in one place. The shape of each YAML key is authoritative in `dev-docs/DESIGN.md`, "Data model";
+the reasoning behind each decision is authoritative in the entries of `dev-docs/DECISIONS.md`.
 
-- **desktop シート**: フォーカス中のウィンドウの app_id に `match.wayland.app_id_regex` が当たったシート。
-- **child シート**: 端末や Herdr の中の foreground process に `match.process.*` が当たったシート。
-- **active シート**: その context で主役になるシート。child があれば child、無ければ desktop。
-- **親シート**: child が選ばれたときの desktop シート。
+Terms:
 
-## 1. active シートと親シートの決まり方
+- **desktop sheet**: the sheet matched by `match.wayland.app_id_regex` against the app_id of the
+  focused window.
+- **child sheet**: the sheet matched by `match.process.*` against the foreground process inside a
+  terminal or Herdr.
+- **active sheet**: the sheet that plays the lead role for that context. The child if there is
+  one, otherwise the desktop sheet.
+- **parent sheet**: the desktop sheet, when a child has been chosen.
+
+## 1. How the active sheet and the parent sheet are decided
 
 ```mermaid
 flowchart TD
-    A[フォーカス中のウィンドウの app_id] --> B[desktop シート = app_id_regex で当たるシート]
-    A --> C{app_id に応じる nested provider があるか<br/>Herdr / 端末の /proc}
-    C -- 無い --> D[active = desktop シート<br/>親なし]
-    C -- ある --> E[foreground process を取る]
-    E --> F{process に当たる child シートがあり<br/>desktop シートと別か}
-    F -- ある --> G[active = child シート<br/>親 = desktop シート<br/>desktop シートが無ければ親なし]
-    F -- 無い --> H[active = desktop シート<br/>そのヒントを全部出す]
+    A[app_id of the focused window] --> B[desktop sheet = the sheet matched by app_id_regex]
+    A --> C{Is there a nested provider for this app_id?<br/>Herdr / a terminal's /proc}
+    C -- no --> D[active = desktop sheet<br/>no parent]
+    C -- yes --> E[take the foreground process]
+    E --> F{Is there a child sheet matching the process,<br/>different from the desktop sheet?}
+    F -- yes --> G[active = child sheet<br/>parent = desktop sheet<br/>no parent if there is no desktop sheet]
+    F -- no --> H[active = desktop sheet<br/>show all of its hints]
 ```
 
-- 複数のシートが当たったら priority → specificity(一致した regex の数)→ ファイル名順で 1 枚に
-  決める(DECISIONS 0007)。
-- nested provider を呼ぶかどうかは **app_id だけ**で決める。desktop シートの有無は関係ない
-  (DECISIONS 0027)。そのため foot のように端末自身のシートが無くても、中の `vi` のシートは選ばれる。
-  ただしこの場合は親が無いので、親ヒントは混ざらない。
-- nested は 1 段だけ(`foot → tmux → herdr → claude` のような多段は辿らない。0027)。
-- `match` の無いシートは active にならない。`include` から読み込まれたときだけ一覧に出る。
+- When several sheets match, one is decided by priority → specificity (the number of regexes
+  matched) → filename order (DECISIONS 0007).
+- Whether the nested provider is called is decided by **app_id alone**; whether a desktop sheet
+  exists is irrelevant (DECISIONS 0027). That is why the sheet for `vi` inside foot is chosen even
+  when foot itself has no sheet — but in that case there is no parent, so no parent hints mix in.
+- Nesting goes only one level (a chain like `foot → tmux → herdr → claude` is not followed. 0027).
+- A sheet with no `match` never becomes active. It appears in the list only when loaded through
+  `include`.
 
-## 2. 一覧の組み立て
+## 2. Assembling the list
 
 ```mermaid
 flowchart LR
-    S1[active シートのヒント全部] --> J[連結]
-    S2[親シートのヒント<br/>§3 の tag で絞る] --> J
-    S3[include 先のヒント全部<br/>記述順] --> J
-    J --> U["(ファイル, id) の重複を落とす<br/>先に出たほうを残す"]
-    U --> O[並べ替え<br/>favorite 区画 → category 別]
+    S1[all of the active sheet's hints] --> J[concatenate]
+    S2[the parent sheet's hints<br/>restricted by the tags in §3] --> J
+    S3[all of the hints from included sheets<br/>in written order] --> J
+    J --> U["drop duplicate (file, id) pairs<br/>keeping whichever came first"]
+    U --> O[reorder<br/>the favorite section, then by category]
 ```
 
-1. **連結**: active → 親(絞った分)→ include(記述順)の順につなぐ。
-2. **重複の除去**: 同じヒントが 2 つの経路から来たら `(ファイル, id)` で 1 件にする(0019)。
-   同じシートが親でもあり include 先でもある場合も、ここで 1 回にまとまる。
-3. **並べ替え**(0014 D7):
-   - favorite 区画: category を無視し、連結した順(= YAML の記述順)。
-   - 非 favorite 区画: 非 favorite のヒントだけで数えた category の初出順。同じ category の中は記述順。
-     `category: null` は 1 グループとして初出の位置に入る。
-   - category の順番を決める設定は無い。変えるときは YAML の中でヒントの順番を入れ替える。
+1. **Concatenate**: connect active → parent (restricted) → include (in written order).
+2. **Remove duplicates**: if the same hint arrives by two routes, it is reduced to one by
+   `(file, id)` (0019). If the same sheet is both a parent and an included sheet, it is also
+   merged here into one occurrence.
+3. **Reorder** (0014 D7):
+   - The favorite section: ignores category, in concatenated order (= the order written in the
+     YAML).
+   - The non-favorite section: category order is the order categories first appear, counting only
+     non-favorite hints. Within the same category, written order. `category: null` forms one
+     group, placed at the position it first appears.
+   - There is no setting for deciding category order. To change it, swap the order of hints in
+     the YAML.
 
-どこから来たヒントかは一覧に出さない(無印。0026)。詳細欄には所属ファイル名が出る。
+Which route a hint came from is not shown in the list (unmarked. 0026). The detail pane shows the
+name of the file it belongs to.
 
-## 3. 親ヒントの絞り(nested)
+## 3. Restricting parent hints (nested)
 
-child が選ばれ、親シートがあるときだけ働く(0034、0039)。絞りは**タグ**と **category** の 2 本で、
-それぞれ同じ規則で「どこに書いてあるものを使うか」を決める。
+This only takes effect when a child has been chosen and there is a parent sheet (0034, 0039). The
+restriction has two independent axes, **tag** and **category**, each deciding "where to look" by
+the same rule.
 
 ```mermaid
 flowchart TD
-    A{child の inherit.parent_tags<br/>が書いてあるか} -- ある --> R1[その tag を使う]
-    A -- 無い --> B{config の nested.parent_tags<br/>が書いてあるか}
-    B -- ある --> R2[その tag を使う]
-    B -- 無い --> C{親の nested.export_tags<br/>が書いてあるか}
-    C -- ある --> R3[その tag を使う]
-    C -- 無い --> R4[tag では絞らない]
+    A{Is the child's inherit.parent_tags<br/>written?} -- yes --> R1[use that tag]
+    A -- no --> B{Is config's nested.parent_tags<br/>written?}
+    B -- yes --> R2[use that tag]
+    B -- no --> C{Is the parent's nested.export_tags<br/>written?}
+    C -- yes --> R3[use that tag]
+    C -- no --> R4[don't restrict by tag]
 ```
 
-category も同じ形で、`inherit.parent_categories` → `nested.parent_categories` → `nested.export_categories`
-の順に見る。tag と category は別々に決まる(tag は子、category は親から、ということもある)。
+Category works the same way, checked in the order `inherit.parent_categories` →
+`nested.parent_categories` → `nested.export_categories`. Tag and category are decided
+independently (it can happen that tag comes from the child while category comes from the parent).
 
-- **最初に書いてある段だけ**を使い、それより下の段は見ない。複数の段の積集合は取らない。
-- 「書いてある」はキーがあること。`null` は書いていないのと同じ。
+- **Only the first level found is used**; levels below it are never consulted. The intersection of
+  multiple levels is never taken.
+- "Written" means the key exists. `null` counts as not written.
 
-決まった tag と category で、親のヒントを次のように選ぶ。
+With the tag and category decided this way, the parent's hints are chosen as follows.
 
 ```mermaid
 flowchart TD
-    S{"tag か category の<br/>どちらかが [] か"} -- はい --> N[親のヒントは出さない]
-    S -- いいえ --> W{どちらかが<br/>書いてあるか}
-    W -- どちらも無い --> ALL[親のヒントを全部出す]
-    W -- ある --> OR[書いてある方の OR<br/>tag のどれかを持つ か<br/>category がどれかに一致する]
+    S{"Is either the tag or the category []?"} -- yes --> N[show none of the parent's hints]
+    S -- no --> W{Is either one written?}
+    W -- neither --> ALL[show all of the parent's hints]
+    W -- one is --> OR[OR of whichever is written<br/>has one of the tags, or<br/>the category matches one of them]
 ```
 
-- tag と category を両方書いたときは **OR**。どちらかに当たるヒントを出す。
-- `[]` は、もう片方に何が書いてあっても **0 件**。`config.yaml` の `nested.parent_tags: []` で、どの親の
-  ヒントも子に混ぜないようにできる(親に `export_categories` があっても破れない)。
-- category は完全一致。category を書いていないヒントは、どの category 指定にも当たらない。
+- If both tag and category are written, it is an **OR**: a hint matching either is shown.
+- `[]` always means **zero**, no matter what is written on the other side. `config.yaml`'s
+  `nested.parent_tags: []` can be used to stop any parent's hints from mixing into a child (even
+  if the parent has `export_categories`, it cannot break through this).
+- Category is an exact match. A hint with no category never matches any category restriction.
 
-各段の役目(tag・category 共通):
+The role of each level (shared between tag and category):
 
-| 段 | 書く場所 | 用途 |
+| level | where it is written | purpose |
 |---|---|---|
-| 1 | 子シートの `inherit.parent_tags` / `parent_categories` | この子だけ例外にする(全体で止めていてもこの子には渡す、など) |
-| 2 | config.yaml の `nested.parent_tags` / `parent_categories` | **全体の opt-out(`[]`)用**。どの親のヒントも子に混ぜない |
-| 3 | 親シートの `nested.export_tags` / `export_categories` | **通常はここで絞る**。何を子に渡すかを親自身が決める |
-| 4 | (どこにも書かない) | 絞らない |
+| 1 | the child sheet's `inherit.parent_tags` / `parent_categories` | Makes an exception for this one child (e.g. still pass hints to it even though everything is stopped globally) |
+| 2 | `config.yaml`'s `nested.parent_tags` / `parent_categories` | **For a global opt-out (`[]`)**. Stops any parent's hints from mixing into any child |
+| 3 | the parent sheet's `nested.export_tags` / `export_categories` | **Normally, restrict it here.** The parent itself decides what it hands to children |
+| 4 | (written nowhere) | no restriction |
 
-段 2 で絞る(空でない list を書く)ことは推奨しない。段 2 は段 3 より上にあるので、書いた時点で
-全部の親の `export_*` が無視され、「Herdr だけ別の絞り」ができなくなる。段 2 が段 3 より上にある
-のは、`[]` で全体を確実に止めるためである。
+Restricting at level 2 (writing a non-empty list) is not recommended. Because level 2 sits above
+level 3, writing it there causes every parent's `export_*` to be ignored, making it impossible to
+give Herdr its own separate restriction. Level 2 sits above level 3 so that `[]` can reliably stop
+everything.
 
-`export_*` は nested の親経路にだけ効く。同じシートが `include` で混ざるときは見ない(§4)。
+`export_*` only affects the nested parent route. It is not consulted when the same sheet is mixed
+in via `include` (§4).
 
 ```yaml
-# hints/ja/herdr.yaml(親、抜粋)— pane タグか「基本」category のヒントだけを子に渡す
+# hints/en/herdr.yaml (parent, excerpt) — pass only pane-tagged hints or the "basics" category to the child
 nested:
   export_tags: [pane]
-  export_categories: [基本]
+  export_categories: [basics]
 ```
 
 ## 4. include
 
-シートの `include:` に並べたシートのヒントを、そのシートの一覧に混ぜる(0026、0039)。要素は
-シートの id(全部混ぜる)か、`{sheet, tags, categories}`(一部だけ混ぜる)。
+The hints of the sheets listed in a sheet's `include:` are mixed into that sheet's list (0026,
+0039). An element is either a sheet id (mixes in all of it) or `{sheet, tags, categories}` (mixes
+in only part of it).
 
 ```mermaid
 flowchart TD
-    A{active シートに include が<br/>書いてあるか} -- ある --> B[シートの include を使う<br/>config の include は見ない]
-    A -- 無い --> C[config.yaml の include を使う]
-    B --> D[記述順に解決する]
+    A{Does the active sheet write<br/>its own include?} -- yes --> B[use the sheet's include<br/>config's include is not consulted]
+    A -- no --> C[use config.yaml's include]
+    B --> D[resolve in written order]
     C --> D
-    D --> F{要素に tags / categories<br/>があるか}
-    F -- 無い --> G[そのシートのヒントを全部]
-    F -- ある --> H["§3 と同じ選び方で絞る<br/>OR、[] は 0 件"]
-    G --> E[include 先の include は辿らない]
+    D --> F{Does the element have<br/>tags / categories?}
+    F -- no --> G[all of that sheet's hints]
+    F -- yes --> H["restricted the same way as §3<br/>OR, [] means zero"]
+    G --> E[the include target's own include is not followed]
     H --> E
 ```
 
 ```yaml
 include:
-  - wm                                   # 全部
-  - {sheet: git, categories: [基本]}      # 「基本」category だけ
+  - wm                                   # all of it
+  - {sheet: git, categories: [basics]}      # only the "basics" category
   - sheet: shell
-    tags: [daily]                        # daily タグか「移動」category のヒント
-    categories: [移動]
+    tags: [daily]                        # hints tagged daily or in the "movement" category
+    categories: [movement]
 ```
 
-- シート側の `include` は config の既定を**置き換える**(足し算ではない)。
-- 絞り込みは要素ごと。同じシートを 2 回、別の絞りで書いてもよい(重なったヒントは §2 で 1 件になる)。
-- 解決できない id と、シートが自分自身を指す id は warning で、その id だけ無視する(シートは表示される)。
-  config の既定は全シートに掛かるので、既定由来の自己参照は黙って外す。
-- active シートが無い context では include も混ざらない(config の既定も)。
+- A sheet's own `include` **replaces** config's default (it does not add to it).
+- Restriction is per element. The same sheet can be written twice with different restrictions
+  (overlapping hints are merged into one in §2).
+- An id that cannot be resolved, or a sheet referring to itself, is a warning; only that id is
+  ignored (the sheet is still shown). Because config's default applies to every sheet, a
+  self-reference coming from that default is silently dropped.
+- With no active sheet, nothing is mixed in through include either (nor through config's
+  default).
 
-## 5. 経路の比較
+## 5. Comparing the two routes
 
-| | 親シート(nested) | include |
+| | parent sheet (nested) | include |
 |---|---|---|
-| 何で決まるか | ウィンドウの app_id(desktop シート) | active シートの `include`、無ければ config |
-| 絞り | §3 の 4 段で決まる tag / category | 要素ごとの `tags` / `categories` |
-| 一覧の位置 | active の次 | 最後 |
-| 多段 | しない(1 段) | しない(include 先の include は辿らない) |
-| quick add の `Ctrl+P` | 追加先を親に切り替えられる | 無い |
+| decided by | the window's app_id (desktop sheet) | the active sheet's `include`, falling back to config |
+| restriction | the tag / category decided by §3's four levels | per-element `tags` / `categories` |
+| position in the list | right after active | last |
+| multiple levels | no (one level) | no (the include target's own include is not followed) |
+| quick add's `Ctrl+P` | can switch the destination to the parent | not available |
 
-## 6. どう絞られたかを確かめる
+## 6. Checking how something was restricted
 
-- `wayhint inspect <シート id> [--parent <id>]` — ファイルだけから計算する。include の要素ごとの絞りと件数、
-  `--parent` を付ければ、その親のもとでの §3 の tag / category と、それぞれがどの段から来たか。
-- `wayhint context --shown` — 表示中のヒント画面について同じことを出す(調べ直さないので、端末の中で
-  打ってもよい)。親は実際のウィンドウで決まったもの。
+- `wayhint inspect <sheet id> [--parent <id>]` — computed from the files alone. Shows each
+  include element's restriction and count; with `--parent`, also the tag / category decided under
+  §3 for that parent, and which level each came from.
+- `wayhint context --shown` — shows the same for the overlay currently displayed (it does not
+  recompute, so it can be run from inside a terminal too). The parent is whichever was decided by
+  the actual window.
 
-## 7. 混ざったヒントを編集するとき
+## 7. Editing a mixed-in hint
 
-- 編集・削除・favorite は、そのヒントの**所属ファイル**に書く(0019、0014 D9)。
-  親や include 先のヒントを直すと、そのシートのファイルが書き換わる。
-- `J` / `K` の並べ替えはファイルを跨がない(0014 D8)。隣が別シートのヒントなら動かない。
-- quick add の追加先は**選択中のヒントのシート**。未選択なら active シート(0025)。前面のアプリの
-  シートが無いか空のときは、選択に関係なく前面のアプリのシートに入る(無ければ保存時に作る。0041)。`Ctrl+P` で親
-  シートに切り替えると、§3 で tag の絞りが決まっている場合に限り、その tag を自動で付ける
-  (category の絞りに合わせた値は付けない。合わない category で足すと子の一覧には出ない。0034、0039)。
+- Editing, deleting, and favoriting write to the hint's **owning file** (0019, 0014 D9). Fixing a
+  hint from a parent or an include target rewrites that sheet's file.
+- `J` / `K` reordering never crosses a file (0014 D8). It does nothing if the neighbor is a hint
+  from a different sheet.
+- Quick add's destination is **the sheet of the selected hint**. With nothing selected, it is the
+  active sheet (0025). If the frontmost app's sheet does not exist or is empty, it goes into the
+  frontmost app's sheet regardless of selection (created on save if it doesn't exist. 0041).
+  Switching to the parent sheet with `Ctrl+P` attaches that tag automatically, but only when §3
+  has decided a tag restriction (it does not attach a value matching the category restriction;
+  adding one with a non-matching category means it will not show up in the child's list. 0034,
+  0039).

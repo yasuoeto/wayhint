@@ -1,74 +1,81 @@
-# DEVELOPMENT — 開発するときの手順と repository の構成
+# DEVELOPMENT — how to develop and how the repository is laid out
 
-使う人向けの説明は `README.md` と `docs/`。ここは wayhint 自体を直すときに要るものだけを置く。
-agent 向けの取り決めは `AGENTS.md` が正。
+[日本語](DEVELOPMENT.ja.md)
 
-## 準備と検証
+Documentation for the people who use wayhint lives in `README.md` and `docs/`. This file holds
+only what you need to work on wayhint itself. `AGENTS.md` is the source of truth for agent
+conventions.
+
+## Setup and validation
 
 ```sh
-./scripts/setup                 # .venv(system site-packages 共有)+ ruamel.yaml + pywayland(+ PyWayfire)+ dev 依存
-.venv/bin/pip install -e .      # wayhint / wayhintd を .venv/bin に置く
-./scripts/check                 # lint + 単体テスト。検証の入口はこれ 1 本
+./scripts/setup                 # .venv (shares system site-packages) + ruamel.yaml + pywayland (+ PyWayfire) + dev deps
+.venv/bin/pip install -e .      # puts wayhint / wayhintd in .venv/bin
+./scripts/check                 # lint + unit tests. This is the one entry point for validation
 ```
 
-合否は exit code で判断する(`AGENTS.md` §3)。
+Pass/fail is judged by the exit code (`AGENTS.md` §3).
 
-## GUI テスト
+## GUI tests
 
-`./scripts/check-gui` は compositor を headless backend で立て、その中で overlay を実際に
-表示させて位置と中身を測る(DECISIONS 0030)。画面には何も出ず、いま使っているセッションにも触らない。
-配置、overlay の中身、command から window までの経路を変えたときに `./scripts/check` と合わせて流す。
+`./scripts/check-gui` starts a compositor on a headless backend and, inside it, actually
+displays the overlay to measure its position and contents (DECISIONS 0030). Nothing appears on
+screen, and it does not touch the session you are currently using. Run it alongside
+`./scripts/check` whenever you change placement, the overlay's contents, or the path from a
+command to a window.
 
 ```sh
-sudo apt install grim imagemagick        # 位置の測定に使う
-sudo apt install wtype                   # 任意: hotkey 経路のテスト。無ければその 1 本だけ skip
+sudo apt install grim imagemagick        # used to measure position
+sudo apt install wtype                   # optional: for testing the hotkey path; if missing, only that one test is skipped
 ./scripts/check-gui
 ```
 
-compositor は `labwc` / `sway` / `cage` のうち PATH にあるものを使う。`at-spi2-core` は
-overlay の中身を読むのに使うが、GTK の依存として通常すでに入っている。追加の権限は要らない
-(`wtype` は compositor の virtual-keyboard protocol を使うので `/dev/uinput` に触らない)。
+The compositor uses whichever of `labwc` / `sway` / `cage` is found on PATH. `at-spi2-core` is
+used to read the overlay's contents, but it is normally already present as a GTK dependency. No
+extra privileges are needed (`wtype` uses the compositor's virtual-keyboard protocol, so it does
+not touch `/dev/uinput`).
 
-## 紹介動画
+## Introductory videos
 
-`./scripts/demo` は `demo/showcases/<name>/` の脚本を同じ headless compositor の中で再生して録画する
-(DECISIONS 0031、0032)。`--record` を付けない限り、何を撮るかと尺を表示するだけで録らない。
+`./scripts/demo` plays back the script in `demo/showcases/<name>/` inside the same headless
+compositor and records it (DECISIONS 0031, 0032). Unless you pass `--record`, it only shows what
+it would capture and the running time, without recording.
 
 ```sh
 sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mono
-./scripts/demo                                  # showcase の一覧
-./scripts/demo --showcase herdr                 # 予定の尺と step
-./scripts/demo --showcase herdr --record        # out/ja/<variant>/ に mp4 / webm / contact sheet
+./scripts/demo                                  # list of showcases
+./scripts/demo --showcase herdr                 # planned running time and steps
+./scripts/demo --showcase herdr --record        # mp4 / webm / contact sheet under out/ja/<variant>/
 ```
 
-脚本の書き方、showcase の作り方、場面の足し方は `demo/README.md`。
+How to write a script, build a showcase, and add scenes is covered in `demo/README.md`.
 
-## Python を変えたあと
+## After changing Python code
 
-`wayhint reload` が読み直すのは YAML だけなので、コードを変えたら daemon を入れ替える。手順は
-`README.md`「daemon を再起動する」。
+`wayhint reload` only re-reads YAML, so after changing code you need to replace the daemon.
+Steps are under "Restarting the daemon" in `README.md`.
 
-## ファイル構成
+## Layout of the repository
 
-| パス | 内容 |
+| Path | Contents |
 |---|---|
-| `STATUS.md` | 何が終わっていて、何が残っていて、実機がどうなっているか |
-| `src/` | 実装 |
-| `tests/` | テスト |
-| `docs/` | 使う人向けの説明(`CONFIG.md`、`HOTKEYS.md`、`SHEET-FORMAT.md`、`SHEETS.md`、`TERMINALS.md`) |
-| `dev-docs/PRODUCT.md` | 要件 |
-| `dev-docs/DESIGN.md` | 設計 |
-| `dev-docs/DECISIONS.md` | 決定の記録 |
-| `dev-docs/PHASE0.md` | Phase 0 の依存確認 |
-| `examples/` | config.yaml と sheet の雛形 |
-| `demo/` | 紹介動画。`showcases/<name>/` に台本と脚本、`fixtures/` と `bin/` は共通(`demo/README.md`) |
-| `tools/` | repository の道具。headless session(テストとデモで共有)と動画生成 |
-| `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals`、この repository 専用の agent hook |
-| `.agents/skills/` | agent 間で共有する skill |
-| `.claude/`、`.codex/` | vendor ごとの adapter 設定(手で編集しない) |
+| `STATUS.md` | What is done, what is left, what the real machine looks like |
+| `src/` | Implementation |
+| `tests/` | Tests |
+| `docs/` | Documentation for users (`CONFIG.md`, `HOTKEYS.md`, `SHEET-FORMAT.md`, `SHEETS.md`, `TERMINALS.md`) |
+| `dev-docs/PRODUCT.md` | Requirements |
+| `dev-docs/DESIGN.md` | Design |
+| `dev-docs/DECISIONS.md` | Record of decisions |
+| `dev-docs/PHASE0.md` | Phase 0 dependency check |
+| `examples/` | Templates for config.yaml and sheets |
+| `demo/` | Introductory videos. Scripts and scenarios under `showcases/<name>/`; `fixtures/` and `bin/` are shared (`demo/README.md`) |
+| `tools/` | Repository tooling. Headless session (shared between tests and demos) and video generation |
+| `scripts/` | `setup`, `check`, `check-gui`, `demo`, `setup-terminals`, and this repository's own agent hooks |
+| `.agents/skills/` | Skills shared between agents |
+| `.claude/`, `.codex/` | Vendor-specific adapter settings (do not edit by hand) |
 
-## agent 向けの取り決め
+## Agent conventions
 
-共通の指示は `AGENTS.md` にまとめてあり、`CLAUDE.md` はそこを指すだけ。vendor 固有の設定は
-`.claude/` と `.codex/` に閉じている。共通の hook は user scope に一度だけ登録してあり、この
-repository には置かない。
+Shared instructions are collected in `AGENTS.md`; `CLAUDE.md` only points to it. Vendor-specific
+settings are confined to `.claude/` and `.codex/`. Shared hooks are registered once at user scope
+and are not repeated in this repository.

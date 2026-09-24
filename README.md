@@ -1,53 +1,56 @@
 # wayhint
 
-Wayland(wlroots 系 compositor: labwc / Wayfire など)で、hotkey 一発で**いま使っているアプリの
-チートシート**を画面の決まった場所(既定: 右上)に出す。端末や Herdr の中で動いているコマンド
-(vi、Claude Code、Codex …)まで見て中身を切り替える。中身は YAML で自分で書いて育てる。
+[日本語](README.ja.md)
 
-- 出している間も keyboard フォーカスを奪わない。元のアプリで作業を続けられる
-- 検索・追加・修正・favorite・並べ替えはヒント画面の中でできる
-- YAML に書いた command は表示とコピーだけで、実行はしない
+On Wayland (wlroots-based compositors: labwc, Wayfire, etc.), one hotkey press shows a **cheat
+sheet for the app you are currently using** at a fixed spot on the screen (top-right by default).
+It looks into commands running inside a terminal or Herdr (vi, Claude Code, Codex, ...) and
+switches its contents accordingly. You write the contents yourself in YAML and grow it over time.
 
-開発する人は [`dev-docs/DEVELOPMENT.md`](dev-docs/DEVELOPMENT.md) から。
+- It does not steal keyboard focus while shown. You can keep working in the original app.
+- Search, add, edit, favorite, and reorder all happen inside the overlay.
+- A `command` written in YAML is only shown and copied, never executed.
 
-## やりたいこと → 読むところ
+If you are developing wayhint, start at [`dev-docs/DEVELOPMENT.md`](dev-docs/DEVELOPMENT.md).
 
-| やりたいこと | 読むところ |
+## What you want to do → where to read
+
+| What you want to do | Where to read |
 |---|---|
-| 入れる | [インストール](#インストール) |
-| hotkey を割り当てる、daemon を自動で起動する | [compositor の設定](#compositor-の設定) |
-| daemon を止める・再起動する | [daemon の起動と停止](#daemon-の起動と停止) |
-| 端末の中のコマンド(vi、Claude Code …)のヒントを出す | [端末の複数ウィンドウ](#端末の複数ウィンドウ)、[`docs/TERMINALS.md`](docs/TERMINALS.md) |
-| ヒントを見る・コピーする | [ヒント画面の使い方](#ヒント画面の使い方) |
-| ヒントを探す | [検索](#検索) |
-| ヒント画面の中でヒントを足す・直す・並べ替える | [編集モード](#編集モード) |
-| シートをエディタで書く | [ヒントを書く](#ヒントを書く)、[`docs/SHEET-FORMAT.md`](docs/SHEET-FORMAT.md) |
-| コマンドラインからヒントを足す・直す | [CLI でヒントを書き換える](#cli-でヒントを書き換える) |
-| 共通のヒントを混ぜる、親子のシートを組む | [どのシートが選ばれるか](#どのシートが選ばれるか)、[`docs/SHEETS.md`](docs/SHEETS.md) |
-| 位置・大きさ・言語・エディタ・見た目を変える | [設定ファイル](#設定ファイル)、[`docs/CONFIG.md`](docs/CONFIG.md) |
-| hotkey がどの状態で何をするか知る | [`docs/HOTKEYS.md`](docs/HOTKEYS.md) |
-| うまく動かない | [困ったとき](#困ったとき) |
-| 新しい版にする、やめる | [アップデート](#アップデート)、[アンインストール](#アンインストール) |
+| Install it | [Installation](#installation) |
+| Assign a hotkey, start the daemon automatically | [Compositor setup](#compositor-setup) |
+| Stop or restart the daemon | [Starting and stopping the daemon](#starting-and-stopping-the-daemon) |
+| Show hints for a command inside a terminal (vi, Claude Code, ...) | [Multiple terminal windows](#multiple-terminal-windows), [`docs/TERMINALS.md`](docs/TERMINALS.md) |
+| View and copy hints | [Using the overlay](#using-the-overlay) |
+| Search for a hint | [Search](#search) |
+| Add, fix, or reorder hints inside the overlay | [Edit mode](#edit-mode) |
+| Write a sheet in an editor | [Writing hints](#writing-hints), [`docs/SHEET-FORMAT.md`](docs/SHEET-FORMAT.md) |
+| Add or fix hints from the command line | [Rewriting hints with the CLI](#rewriting-hints-with-the-cli) |
+| Mix in shared hints, build parent/child sheets | [Which sheet gets picked](#which-sheet-gets-picked), [`docs/SHEETS.md`](docs/SHEETS.md) |
+| Change position, size, language, editor, or appearance | [Config file](#config-file), [`docs/CONFIG.md`](docs/CONFIG.md) |
+| Know what a hotkey does in each state | [`docs/HOTKEYS.md`](docs/HOTKEYS.md) |
+| It's not working | [Troubleshooting](#troubleshooting) |
+| Update to a new version, uninstall | [Update](#update), [Uninstall](#uninstall) |
 
-## 目次
+## Table of contents
 
-1. [インストール](#インストール)
-2. [compositor の設定](#compositor-の設定)
-3. [設定ファイル](#設定ファイル)
-4. [ヒント画面の使い方](#ヒント画面の使い方)
-5. [ヒントを書く](#ヒントを書く)
-6. [端末の複数ウィンドウ](#端末の複数ウィンドウ)
+1. [Installation](#installation)
+2. [Compositor setup](#compositor-setup)
+3. [Config file](#config-file)
+4. [Using the overlay](#using-the-overlay)
+5. [Writing hints](#writing-hints)
+6. [Multiple terminal windows](#multiple-terminal-windows)
 7. [CLI](#cli)
-8. [daemon の起動と停止](#daemon-の起動と停止)
-9. [アップデート](#アップデート)
-10. [アンインストール](#アンインストール)
-11. [困ったとき](#困ったとき)
+8. [Starting and stopping the daemon](#starting-and-stopping-the-daemon)
+9. [Update](#update)
+10. [Uninstall](#uninstall)
+11. [Troubleshooting](#troubleshooting)
 
-## インストール
+## Installation
 
-依存: Python 3.11+、GTK4 + PyGObject、gtk4-layer-shell(typelib 込み)、
-`wlr-foreign-toplevel-management` と `wlr-layer-shell` を出す Wayland compositor(labwc、または
-`foreign-toplevel` plugin を有効にした Wayfire)。任意で Herdr と gvim。Debian/sid の場合:
+Dependencies: Python 3.11+, GTK4 + PyGObject, gtk4-layer-shell (with its typelib), a Wayland
+compositor that exposes `wlr-foreign-toplevel-management` and `wlr-layer-shell` (labwc, or
+Wayfire with the `foreign-toplevel` plugin enabled). Optionally Herdr and gvim. On Debian/sid:
 
 ```sh
 sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
@@ -55,35 +58,37 @@ sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layer
 
 ```sh
 git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
-./scripts/setup                 # .venv を作り、Python の依存を入れる
-.venv/bin/pip install -e .      # wayhint / wayhintd を .venv/bin に置く
+./scripts/setup                 # create .venv and install Python dependencies
+.venv/bin/pip install -e .      # put wayhint / wayhintd in .venv/bin
 ```
 
-端末から `wayhint` と打てるように、PATH の通ったところへリンクを置く(この README の例は `wayhint` を
-PATH から呼ぶ前提)。compositor の設定には絶対パスを書くので、そちらはこのリンクに頼らない。
+Put a symlink somewhere on your PATH so you can type `wayhint` from a terminal (the examples in
+this README assume `wayhint` is called from PATH). The compositor config uses an absolute path,
+so it does not rely on this symlink.
 
 ```sh
 ln -s ~/work/tools/wayhint/.venv/bin/wayhint ~/work/tools/wayhint/.venv/bin/wayhintd ~/.local/bin/
 ```
 
-雛形をコピーすれば、そのまま始められる(`style.css` も入る。アプリ既定の配色で使うなら消す)。
+Copy the templates and you can start right away (`style.css` is included too; remove it if you
+want to use the app's default colors).
 
 ```sh
 cp -r examples/. ~/.config/wayhint/
 ```
 
-## compositor の設定
+## Compositor setup
 
-daemon(`wayhintd`)をセッションに 1 つ起動し、hotkey は compositor の keybind から CLI を呼ぶ。
-既定の割り当ては次の 3 つ。
+Start one instance of the daemon (`wayhintd`) per session, and have the compositor's keybinds
+call the CLI for hotkeys. The default assignment is these three:
 
-| キー | コマンド | 意味 |
+| Key | Command | Meaning |
 |---|---|---|
-| `Super+h` | `wayhint toggle` | いま見ているウィンドウのヒントを出す / しまう |
-| `Super+Shift+h` | `wayhint search-mode` | 検索に入る / 抜ける |
-| `Super+Ctrl+h` | `wayhint edit-mode` | 編集モードに入る / 抜ける |
+| `Super+h` | `wayhint toggle` | Show / hide hints for the window you are currently looking at |
+| `Super+Shift+h` | `wayhint search-mode` | Enter / leave search |
+| `Super+Ctrl+h` | `wayhint edit-mode` | Enter / leave edit mode |
 
-### labwc(`~/.config/labwc/rc.xml`)
+### labwc (`~/.config/labwc/rc.xml`)
 
 ```xml
 <keyboard>
@@ -99,17 +104,17 @@ daemon(`wayhintd`)をセッションに 1 つ起動し、hotkey は compositor �
 </keyboard>
 ```
 
-autostart は `~/.config/labwc/autostart` に 1 行足す(ファイルには実行属性を付ける)。反映は
-`labwc --reconfigure`。
+Add one line to `~/.config/labwc/autostart` for autostart (the file must be executable). Apply
+with `labwc --reconfigure`.
 
 ```sh
 /home/USER/work/tools/wayhint/.venv/bin/wayhintd &
 ```
 
-autostart が起動した helper を終了時に落とす仕組みを使っているなら、その作法に従う
-(例: `spawn wayhintd`)。systemd の user unit は用意していない。
+If your autostart setup has a mechanism to kill helper processes it started on exit, follow that
+convention (e.g. `spawn wayhintd`). No systemd user unit is provided.
 
-### Wayfire(`~/.config/wayfire.ini`)
+### Wayfire (`~/.config/wayfire.ini`)
 
 ```ini
 [command]
@@ -124,277 +129,314 @@ command_wayhint_search = /home/USER/work/tools/wayhint/.venv/bin/wayhint search-
 wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
 ```
 
-`[core] plugins` に `foreign-toplevel` を入れる。無くて `ipc` `ipc-rules` があれば Wayfire IPC に
-自動で切り替わる(`config.yaml` の `context.backend: wayland|wayfire` で固定もできる)。
+Add `foreign-toplevel` to `[core] plugins`. If it is missing but `ipc` and `ipc-rules` are
+present, wayhint switches to the Wayfire IPC automatically (you can also pin this with
+`context.backend: wayland|wayfire` in `config.yaml`).
 
-### ほかの compositor
+### Other compositors
 
-`wlr-foreign-toplevel-management` と `wlr-layer-shell` を出す compositor(sway など)なら動くはずだが、
-確かめているのは labwc と Wayfire だけ。hotkey から `wayhint toggle` などを実行し、autostart で
-`wayhintd` を起動すればよい。
+Any compositor that exposes `wlr-foreign-toplevel-management` and `wlr-layer-shell` (e.g. sway)
+should work, but only labwc and Wayfire have been verified. Run `wayhint toggle` etc. from a
+hotkey, and start `wayhintd` from autostart.
 
-### 動作確認
+### Checking it works
 
-`wayhintd -v` を端末で前景起動すると info ログが出る(選ばれた backend は `desktop backend:` の行)。
-別の端末から `wayhint ping` で応答を確かめる。IME のための環境変数は要らない(入らないときは
-[困ったとき](#困ったとき))。
+Running `wayhintd -v` in the foreground in a terminal prints info-level logs (the chosen backend
+is on the `desktop backend:` line). Confirm it responds with `wayhint ping` from another
+terminal. No environment variables are needed for IME (if it doesn't work, see
+[Troubleshooting](#troubleshooting)).
 
-## 設定ファイル
+## Config file
 
-置き場所は `$XDG_CONFIG_HOME/wayhint/`(既定 `~/.config/wayhint/`)。どれも無くても動く。
+Location: `$XDG_CONFIG_HOME/wayhint/` (default `~/.config/wayhint/`). Everything works even if
+none of these exist.
 
-| パス | 内容 |
+| Path | Contents |
 |---|---|
-| `config.yaml` | ヒント画面の位置・大きさ、エディタ、言語など。無ければ全部既定値 |
-| `style.css` | 任意。GTK CSS で見た目を上書きする。雛形 `examples/style.css` は labwc のテーマ(Syscrash)に合わせた配色 |
-| `hints/<言語>/*.yaml` | ヒントのシート。1 ファイル 1 枚([ヒントを書く](#ヒントを書く)) |
+| `config.yaml` | Overlay position and size, editor, language, etc. If missing, everything defaults |
+| `style.css` | Optional. Overrides the appearance with GTK CSS. The `examples/style.css` template matches labwc's theme (Syscrash) |
+| `hints/<language>/*.yaml` | Hint sheets. One file is one sheet ([Writing hints](#writing-hints)) |
 
-- ボタンなどの文字の言語はマシンの locale(`LC_ALL` → `LC_MESSAGES` → `LANG`)で決まる。
-  `appearance.language: en|ja` で固定できる。日英以外は英語。
-- 検索の絞り込みは設定ではなく状態なので、daemon が `~/.local/state/wayhint/state.yaml` に書く。
-  手で書くものではなく、壊れていても daemon は絞り込み無しで起動する。
-- 書いたら `wayhint validate` で確かめる(問題があれば exit 1)。保存すれば daemon が自動で読み直す。
+- The language of button labels etc. is decided by the machine's locale (`LC_ALL` →
+  `LC_MESSAGES` → `LANG`). It can be pinned with `appearance.language: en|ja`. Anything other than
+  English or Japanese falls back to English.
+- Search filtering is state, not configuration, so the daemon writes it to
+  `~/.local/state/wayhint/state.yaml`. It is not meant to be edited by hand, and the daemon
+  starts with no filter if it is broken.
+- After editing, check it with `wayhint validate` (exits 1 if there is a problem). Once saved,
+  the daemon reloads it automatically.
 
-`config.yaml` の全項目と既定値、`style.css` の扱いは [`docs/CONFIG.md`](docs/CONFIG.md) にまとめてある。
+Every `config.yaml` key and its default, and how `style.css` is read, are collected in
+[`docs/CONFIG.md`](docs/CONFIG.md).
 
-## ヒント画面の使い方
+## Using the overlay
 
-### 出す・しまう
+### Showing and hiding it
 
-`Super+h` は「**いま見ているウィンドウのヒント**」を意味する。押すと出し、同じヒントが出ているときにもう一度
-押すとしまう。別のウィンドウに移ってから押すと、しまわずにそのウィンドウのヒントに差し替わる。
+`Super+h` means "**hints for the window I am currently looking at**". Press it to show them;
+press it again while the same hints are shown to hide them. Press it after switching to a
+different window and it swaps to that window's hints instead of hiding.
 
-- 中身は**出した瞬間のウィンドウ**で決まり、別のウィンドウに移っても自動では追従しない。移った先でもう一度
-  `Super+h` を押す(マウスだけなら `wayhint refresh`)。
-- 出している間はキー入力がヒント画面に届かない。しまうのは hotkey か **閉じる** ボタン。
-  `Esc` が効くのは検索中と編集モード中だけ。
-- ヒント画面は**出した workspace にだけ**出る。別の workspace に移ると隠れ、戻ると同じ内容で出直す。
-  全 workspace に出したいときは `config.yaml` に `context: {workspace: all}`(compositor が
-  `ext-workspace-v1` を出す場合だけ効く。labwc は対応、Wayfire は未対応で常に全 workspace)。
+- The contents are decided by **the window at the moment you show it**, and do not follow
+  automatically if you switch windows. Press `Super+h` again in the new window (or
+  `wayhint refresh` if you only have the mouse).
+- Keyboard input does not reach the overlay while it is shown. Hide it with the hotkey or the
+  **Close** button. `Esc` only works while searching or in edit mode.
+- The overlay only appears **on the workspace where you showed it**. Move to another workspace
+  and it hides; come back and it reappears with the same contents. To show it on all workspaces,
+  put `context: {workspace: all}` in `config.yaml` (this only works if the compositor exposes
+  `ext-workspace-v1`; labwc supports it, Wayfire does not and is always all-workspaces).
 
-3 つの hotkey が状態ごとに何をするか、いつ消えるかは [`docs/HOTKEYS.md`](docs/HOTKEYS.md) に図で
-まとめてある。
+What the three hotkeys do in each state, and when things disappear, is diagrammed in
+[`docs/HOTKEYS.md`](docs/HOTKEYS.md).
 
-### 一覧の見方
+### Reading the list
 
-1 行が 1 ヒントで、左に `key`、中央に title と `command`、右に `category` が出る。行を選ぶと下に
-詳細が開き、`remark`、タグ、出典、覚えた日、所属ファイルが出る。
+Each row is one hint: `key` on the left, title and `command` in the middle, `category` on the
+right. Selecting a row opens details below it: `remark`, tags, source, the date learned, and the
+sheet it belongs to.
 
-並び順は、`favorite: true` のヒント(`★` 付き)が先頭に YAML に書いた順で並び、その後に残りが
-category ごとにまとまる。category の順番は最初に出てきた順、同じ category の中は書いた順。
-順番を変えたいときは YAML の中でヒントを並べ替える(編集モードの `J` / `K` でもできる)。
+The order is: hints with `favorite: true` (marked `★`) first, in the order written in YAML, then
+the rest grouped by category. Categories appear in the order they were first seen; within the
+same category, hints keep the order they were written in. To change the order, reorder the hints
+in the YAML (or use `J` / `K` in edit mode).
 
-大きさは anchor の反対側(既定の右上なら**左下**)の grip を掴んで変える。角は縦横いっしょに、
-左辺・下辺は幅だけ・高さだけ。離したときの大きさが `config.yaml` の `overlay.width` / `height` に
-px で書き戻り、次からも同じ大きさで出る。
+Resize by grabbing the grip on the opposite corner from the anchor (bottom-left for the default
+top-right anchor). Corners resize width and height together; the left and bottom edges resize
+only width or only height. The size you end up with is written back into `config.yaml`'s
+`overlay.width` / `height` in px, and used again next time.
 
-### ボタン
+### Buttons
 
-| ボタン | 動作 |
+| Button | Action |
 |---|---|
-| 検索 | 検索に入る。もう一度押す(完了)か `Esc` で抜ける。編集モード中は押せない |
-| コピー | 選択中のヒントをクリップボードへ。`copy` があればそれ、無ければ `command`。どちらも無いヒントでは押せない |
-| エディタで編集 | 選択中のヒントのシートをエディタで開き、その行へ飛ぶ(未選択なら表示中のシート)。ヒント画面は出たままなので、保存するたびに一覧が更新される。検索や編集モードはここで抜ける(keyboard をエディタに渡すため)。編集中の下書きは次に編集モードへ入ると戻る |
-| 編集 | 編集モードに入る |
-| 閉じる | ヒント画面を閉じる。編集中の下書きは捨てる |
+| Search | Enter search. Press again (Done) or `Esc` to leave. Disabled during edit mode |
+| Copy | Copies the selected hint to the clipboard: `copy` if present, else `command`. Disabled for a hint with neither |
+| Edit in editor | Opens the selected hint's sheet in the editor and jumps to its line (or the shown sheet if nothing is selected). The overlay stays shown, so the list refreshes on every save. This leaves search or edit mode (to hand the keyboard to the editor). A draft being edited is restored the next time you enter edit mode |
+| Edit | Enter edit mode |
+| Close | Closes the overlay. Discards any draft being edited |
 
-### 検索
+### Search
 
-`Super+Shift+h`(または検索ボタン)で入る。空白で区切った語を**すべて**含むヒントに絞る。大文字
-小文字は区別せず、title、`key`、`command`、`category`、タグ、`remark` が対象。
+Enter with `Super+Shift+h` (or the Search button). Filters to hints that contain **all** the
+space-separated words. Case-insensitive; matches against title, `key`, `command`, `category`,
+tags, and `remark`.
 
-- 先頭に `#名前` と書くと category で絞る。`Tab` / `Shift+Tab` で category を順に切り替える
-  (`#-` は category の無いヒント)。
-- 検索欄で `↓` を押すと一覧に移る(打つたびに先頭行が選ばれる)。一覧では次のキーが効き、ヒント画面の
-  下にも出る。抜けると keyboard は元のウィンドウに戻る。
+- Writing `#name` at the start filters by category. `Tab` / `Shift+Tab` cycle through categories
+  (`#-` is hints with no category).
+- Pressing `↓` in the search box moves to the list (the top row is selected as you type). In the
+  list, the following keys work, and are shown at the bottom of the overlay too. Leaving returns
+  the keyboard to the original window.
 
-  | キー | 動作 |
+  | Key | Action |
   |---|---|
-  | `↑` `↓` | 選択を動かす。一覧の先頭で `↑` を押すと検索欄に戻る |
-  | `c` | 選択中のヒントの `copy`(無ければ `command`)をコピーして検索を抜ける。どちらも無ければコピーせずに抜ける |
-  | `Enter` / `Esc` | コピーせずに検索を抜ける(検索欄でも同じ) |
-  | `Tab` / `Shift+Tab` | category を切り替える(検索欄) |
-- **抜けても絞り込みは残る。** 絞り込みはシートごとに保存され、閉じても daemon を再起動しても
-  同じシートを開けば戻る。絞り込み中は一覧の上に chip が出て、`×` で解除する。
-- 次に検索に入ると前の絞り込みが全選択で欄に入っている。打てば置き換え、`End` で追記。
-- 検索中に `Super+Ctrl+h` を押すと、欄の文字を絞り込みとして残したまま編集モードに移る。
+  | `↑` `↓` | Move the selection. Pressing `↑` at the top of the list returns to the search box |
+  | `c` | Copy the selected hint's `copy` (or `command` if absent) and leave search. If neither exists, leave without copying |
+  | `Enter` / `Esc` | Leave search without copying (same in the search box) |
+  | `Tab` / `Shift+Tab` | Cycle categories (search box) |
+- **The filter stays even after you leave.** It is saved per sheet, and comes back if you open
+  the same sheet again, even after closing the overlay or restarting the daemon. While filtered,
+  a chip appears above the list; clear it with `×`.
+- The next time you enter search, the previous filter is in the box, fully selected. Type to
+  replace it, or press `End` to append.
+- Pressing `Super+Ctrl+h` while searching moves to edit mode, keeping the box's text as the
+  filter.
 
-### 編集モード
+### Edit mode
 
-`Super+Ctrl+h`(または編集ボタン)で入り、同じキーか `Esc` で抜ける。
+Enter with `Super+Ctrl+h` (or the Edit button); leave with the same key or `Esc`.
 
-| キー | 動作 |
+| Key | Action |
 |---|---|
-| `↑` `↓` | 選択を動かす |
-| `a` | ヒントを追加する(追加先は選択中のヒントと同じシート。フォームの見出しに出る) |
-| `Enter` | 選択中のヒントを編集する |
-| `d` `d` | 選択中のヒントを削除する(1 回目で確認、2 回目で確定) |
-| `u` | 直前に削除した 1 件を戻す |
-| `f` | favorite を切り替える |
-| `J` / `K` | 下 / 上のヒントと入れ替える(同じグループ・同じファイルの中だけ。絞り込み中は効かない) |
-| `Esc` | フォームが開いていれば閉じる(入力は捨てる)。開いていなければ編集モードを抜ける |
+| `↑` `↓` | Move the selection |
+| `a` | Add a hint (added to the same sheet as the selected hint; shown in the form's heading) |
+| `Enter` | Edit the selected hint |
+| `d` `d` | Delete the selected hint (first press confirms, second press commits) |
+| `u` | Undo the last deletion |
+| `f` | Toggle favorite |
+| `J` / `K` | Swap with the hint below / above (only within the same group and same file; disabled while filtered) |
+| `Esc` | Closes the form if one is open (discarding input); leaves edit mode if none is open |
 
-フォームの中では `Enter` で保存、`Esc` で破棄、`Tab` / `Shift+Tab` で欄を移り、`Ctrl+P` で追加先を
-親シートに切り替える。**フォームを保存すると編集モードは終わり**、keyboard が元のアプリに戻る
-(1 件書いて作業に戻れるように)。favorite・並べ替え・削除・取り消しは編集モードのまま続けられる。
+Inside the form, `Enter` saves, `Esc` discards, `Tab` / `Shift+Tab` move between fields, and
+`Ctrl+P` switches the add destination to the parent sheet. **Saving the form ends edit mode**,
+returning the keyboard to the original app (so you can enter one hint and get back to work).
+Favoriting, reordering, deleting, and undo can all continue while staying in edit mode.
 
-表示中のシートの YAML が壊れているときは、編集モードに入れない。
+You cannot enter edit mode if the shown sheet's YAML is broken.
 
-## ヒントを書く
+## Writing hints
 
-ヒントは `~/.config/wayhint/hints/<言語>/` に YAML で書く。1 ファイルが 1 枚のシートで、
-**`id` はファイル名(拡張子を除く)と同じにする**。シートに書ける項目の全部と決まりは
-[`docs/SHEET-FORMAT.md`](docs/SHEET-FORMAT.md) にまとめてある。
+Hints are written in YAML under `~/.config/wayhint/hints/<language>/`. One file is one sheet, and
+**the `id` must match the file name (without extension)**. Every field a sheet can have, and the
+rules around it, is collected in [`docs/SHEET-FORMAT.md`](docs/SHEET-FORMAT.md).
 
 ```yaml
-# hints/ja/vi.yaml
+# hints/en/vi.yaml
 id: vi
 title: vi
 match:
   process: {argv_regex: ["^vi$", "^vim$"]}
 hints:
-  - {id: save, title: 保存, key: ":w", category: ファイル}
-  - {id: quit, title: 保存せず終了, key: ":q!", category: ファイル}
+  - {id: save, title: Save, key: ":w", category: File}
+  - {id: quit, title: Quit without saving, key: ":q!", category: File}
   - id: substitute
-    title: 全体を置換
+    title: Replace across the whole file
     command: ":%s/old/new/g"
-    remark: "g を外すと各行の最初の 1 つだけ"
+    remark: "Drop the g to replace only the first match on each line"
     favorite: true
 ```
 
-保存すると daemon が自動で読み直す(ヒント画面を閉じる必要はない)。YAML が壊れているときは直前の
-正常版を出し続け、ヒント画面の上部に `⚠ YAML error file:line: message` が出る。
+The daemon reloads it automatically on save (you don't need to close the overlay). If the YAML
+is broken, the last good version keeps being shown, and `⚠ YAML error file:line: message` appears
+at the top of the overlay.
 
-### ヒントのフィールド
+### Hint fields
 
-`id` と `title` だけが必須。
+Only `id` and `title` are required.
 
-| キー | 用途 |
+| Key | Purpose |
 |---|---|
-| `id` | シートの中で一意な名前。ヒント画面には出ない |
-| `title` | 一覧に出る説明 |
-| `kind` | 種別。`shortcut`(既定)はキー操作、`command` はコマンド、`tip` は両方ある覚え書き、`note` は文章だけの覚え書き。一覧で `key` と `command` を隠すのは `note` だけ。`kind` 自体はヒント画面には出ない |
-| `key` | 一覧の左端に出るキー操作。長いものは折り返す(YAML の改行もそのまま出る) |
-| `command` | title の下に出るコマンド。**実行はしない**。表示とコピーのみ |
-| `category` | 一覧の右端に出る見出し。同じ category は隣り合って並ぶ。書かなければ擬似 category(`inbox` / `未定義`) |
-| `tags` | 親シートとして混ざるときの絞り込み([親シートのヒント](#親シートのヒント))。検索の対象にもなる |
-| `favorite` | `true` で `★` 付きになり先頭に並ぶ。表示される件数は変わらない |
-| `copy` | コピーする文字列が表示と違うときだけ書く。省略時は `command`。`key` はコピーしない |
-| `remark` | 選択したときだけ出る補足 |
-| `source` | 出典(公式ドキュメントの URL など) |
-| `learned` | 覚えた日(ISO 形式の日付) |
+| `id` | A name unique within the sheet. Not shown in the overlay |
+| `title` | The description shown in the list |
+| `kind` | The kind of hint. `shortcut` (default) is a keystroke, `command` is a command, `tip` has both, `note` is a text-only memo. Only `note` hides `key` and `command` in the list. `kind` itself is not shown in the overlay |
+| `key` | The keystroke shown at the left of the list. Long ones wrap (line breaks in the YAML are kept as-is) |
+| `command` | The command shown below the title. **Never executed** — only shown and copied |
+| `category` | The heading shown at the right of the list. Hints with the same category sit next to each other. If omitted, falls into a pseudo-category (`inbox`; `未定義` in the Japanese UI) |
+| `tags` | Used to filter which hints mix in as a parent sheet ([Parent sheet hints](#parent-sheet-hints)). Also searched |
+| `favorite` | `true` marks it with `★` and moves it to the front. Does not change how many hints are shown |
+| `copy` | Set only when the string to copy differs from what's shown. Defaults to `command`. `key` is never copied |
+| `remark` | Extra note shown only when selected |
+| `source` | Where it came from (e.g. a URL to official documentation) |
+| `learned` | The date learned (ISO date format) |
 
-### どのシートが選ばれるか
+### Which sheet gets picked
 
-シートは `match` で選ぶ。どれも Python の正規表現で、部分一致。
+Sheets are chosen by `match`. All of these are Python regular expressions, matched as a
+substring.
 
-- `match.wayland.app_id_regex`: ウィンドウの app_id に当てる
-- `match.process.argv_regex` / `cmdline_regex`: 端末の中で動いているコマンド(foreground process)に当てる
+- `match.wayland.app_id_regex`: matched against the window's app_id
+- `match.process.argv_regex` / `cmdline_regex`: matched against the command running inside a
+  terminal (the foreground process)
 
-ウィンドウのシートとコマンドのシートが両方当たれば、ウィンドウのシートが**親**、コマンドのシートが**子**になり、
-子のヒントの後ろに親のヒントが並ぶ。端末用のシートは書かなくてよい(その場合はコマンドのシート
-だけが出る)。複数のシートが当たったときは `priority`(大きい方)→ 当たった pattern の数 →
-ファイル名順で 1 枚に決まる。`match` の無いシートは単独では出ず、`include` で混ぜるためだけに使える。
+If both a window sheet and a command sheet match, the window sheet becomes the **parent** and the
+command sheet the **child**, and the parent's hints are appended after the child's. You don't have
+to write a sheet for the terminal itself (in that case only the command sheet is shown). When
+multiple sheets match, one is picked by `priority` (higher wins), then by the number of matched
+patterns, then by file name. A sheet with no `match` never appears on its own; it can only be
+used via `include`.
 
-コマンドを答えるのは、Herdr なら Herdr 自身(**ウィンドウの app_id に `herdr` が含まれていること**)、
-foot などの端末なら wayhint が `/proc` を辿って調べる。端末のウィンドウが 2 つ以上あるときは
-[端末の複数ウィンドウ](#端末の複数ウィンドウ)の起動規約が要る。
+The command is answered by Herdr itself for Herdr (**the window's app_id must contain `herdr`**),
+and by wayhint walking `/proc` for terminals like foot. If a terminal has two or more windows,
+you need the launch convention described in
+[Multiple terminal windows](#multiple-terminal-windows).
 
-規則の全体は [`docs/SHEETS.md`](docs/SHEETS.md) に図でまとめてある。
+The full set of rules is diagrammed in [`docs/SHEETS.md`](docs/SHEETS.md).
 
-### 親シートのヒント
+### Parent sheet hints
 
-**何も書かなければ、親のヒントは全部子の一覧に並ぶ。** 絞りたいときは親のシートに
-`nested.export_tags`(タグで)か `nested.export_categories`(category で)を書く。両方書くと、
-どちらかに当たるヒントが渡る。
+**If you write nothing, all of the parent's hints are appended to the child's list.** To narrow
+this, write `nested.export_tags` (by tag) or `nested.export_categories` (by category) in the
+parent sheet. If you write both, any hint matching either is passed through.
 
 ```yaml
-# hints/ja/herdr.yaml — terminal タグの付いたヒントだけを子の一覧に渡す
+# hints/en/herdr.yaml — only hints tagged terminal are passed to the child's list
 id: herdr
 title: Herdr
 match: {wayland: {app_id_regex: [herdr]}}
 nested: {export_tags: [terminal]}
 hints:
-  - {id: new-pane, title: 新しいペイン, key: Ctrl+Shift+N, tags: [terminal]}
-  - {id: theme, title: テーマを切り替える, key: Ctrl+Shift+T}   # 子の一覧には出ない
+  - {id: new-pane, title: New pane, key: Ctrl+Shift+N, tags: [terminal]}
+  - {id: theme, title: Switch theme, key: Ctrl+Shift+T}   # not shown in the child's list
 ```
 
-- category で渡すなら `nested: {export_categories: [基本]}` のように書く(ヒントに印を付けなくてよい)。
-- 子のシートに `inherit.parent_tags` / `parent_categories` を書くと、その子だけ別の絞りにできる。
-- 親のヒントをどこにも混ぜたくないときは、`config.yaml` に `nested: {parent_tags: []}` と書く。
-- `[]` はどこに書いても、もう片方に関係なく「親のヒントを出さない」。
+- To filter by category, write `nested: {export_categories: [basics]}` (no need to mark hints).
+- A child sheet can narrow it differently for itself with `inherit.parent_tags` /
+  `parent_categories`.
+- To keep the parent's hints out entirely, write `nested: {parent_tags: []}` in `config.yaml`.
+- `[]` means "show no parent hints" wherever it is written, regardless of the other setting.
 
-### 他のシートを混ぜる(`include`)
+### Mixing in other sheets (`include`)
 
-WM の操作や IME のような共通のヒントを 1 枚にまとめ、各シートに混ぜられる。
+Shared hints, like window-manager operations or IME, can be collected into one sheet and mixed
+into others.
 
 ```yaml
-# hints/ja/wm.yaml — match が無いので単独では出ない。混ぜるためだけのシート
+# hints/en/wm.yaml — has no match, so it never appears on its own. Only used for mixing in
 id: wm
-title: ウィンドウマネージャ
+title: Window manager
 hints:
-  - {id: close-window, title: ウィンドウを閉じる, key: Super+Shift+Q}
+  - {id: close-window, title: Close window, key: Super+Shift+Q}
 ```
 
 ```yaml
-# hints/ja/claude-code.yaml(match とヒントは省略)
+# hints/en/claude-code.yaml (match and hints omitted)
 id: claude-code
 title: Claude Code
 include:
-  - wm                                # このシートの一覧の末尾に wm のヒントが並ぶ
-  - {sheet: git, categories: [基本]}   # git からは「基本」category のヒントだけ
+  - wm                                   # wm's hints are appended at the end of this sheet's list
+  - {sheet: git, categories: [basics]}    # only the "basics" category from git
 ```
 
 ```yaml
-# config.yaml — include を書いていないシート全部に効く既定
+# config.yaml — default that applies to every sheet that has no include of its own
 include: [wm]
 ```
 
-- シートの `include:` は config の既定を**置き換える**(足し算ではない)。`include: []` で何も混ぜない。
-- id だけ書くと全部混ざる。一部だけにしたいときは `{sheet, tags, categories}` の形で書く。
-  タグと category を両方書くと、どちらかに当たるヒント。`[]` は 0 件。
-- 混ぜた先の `include` は辿らない(1 段だけ)。
-- 無い id を書いてもシートは出る。ヒント画面の ⚠ と `wayhint validate` に警告が出る(exit 0)。
-- 混ざったヒントを編集・削除すると、**そのヒントのファイル**が書き換わる(詳細欄の `ファイル:`)。
+- A sheet's `include:` **replaces** config's default (it is not additive). `include: []` mixes
+  in nothing.
+- Writing just an id mixes in everything. To mix in only part of it, write it as
+  `{sheet, tags, categories}`. If you write both tags and categories, any hint matching either is
+  included. `[]` means zero.
+- `include` is not followed through the sheet you mixed in (only one level deep).
+- Writing an id that doesn't exist still shows the sheet. A warning appears in the overlay's ⚠
+  and in `wayhint validate` (exit 0).
+- Editing or deleting a mixed-in hint rewrites **that hint's own file** (see `file:` in the
+  details pane).
 
-### 言語ごとのヒント
+### Hints per language
 
-シートは言語ごとのディレクトリに置き、**表示に使う言語のディレクトリだけ**が読まれる。
+Sheets live in per-language directories, and **only the directory for the display language** is
+read.
 
 ```
 ~/.config/wayhint/hints/
-  ja/   claude-code.yaml  herdr.yaml   # 日本語環境ではこちらだけ
+  ja/   claude-code.yaml  herdr.yaml   # only this one is read in a Japanese-language setup
   en/   claude-code.yaml  herdr.yaml
 ```
 
-- 言語はボタンの文字と同じ決め方なので、ヒントと UI の言語がずれない。
-- 探す順は `hints/<言語>/` → `hints/en/` → `hints/*.yaml`。1 言語だけならフラットのままでよい。
-- 同じ id のシートを言語ごとに置ける。翻訳の同期は自動では行わない。
-- 切り替えは `appearance.language` を書き換えるだけ(再起動は要らない)。
+- The language is decided the same way as button labels, so hints and UI never end up in
+  different languages.
+- Search order: `hints/<language>/` → `hints/en/` → `hints/*.yaml`. If you only use one language,
+  a flat layout is fine.
+- Sheets with the same id can exist per language. Translations are not kept in sync
+  automatically.
+- Switching is just changing `appearance.language` (no restart needed).
 
-### エディタ
+### Editor
 
-`config.yaml` の `editor.command` は argv の list。placeholder は `{file}` `{line}` `{hint_id}`。
-shell を通らないので、引用符やパイプは書けない。
+`config.yaml`'s `editor.command` is an argv list. Placeholders are `{file}` `{line}`
+`{hint_id}`. It does not go through a shell, so quoting and pipes cannot be used.
 
 ```yaml
 editor:
   command: [code, --goto, "{file}:{line}"]
 ```
 
-`wayhint schema --write` でヒント シートの JSON Schema を書き出し(既定 `~/.config/wayhint/schema.json`)、
-シートの先頭に次の行を置くと、yaml-language-server で key の補完と検証が効く。
-`editor.schema_modeline: true` にすると、新しく作るシートと `wayhint format` がこの行を自動で付ける。
+`wayhint schema --write` writes a JSON Schema for hint sheets (default
+`~/.config/wayhint/schema.json`); putting the following line at the top of a sheet enables key
+completion and validation with yaml-language-server. With `editor.schema_modeline: true`, newly
+created sheets and `wayhint format` add this line automatically.
 
 ```yaml
 # yaml-language-server: $schema=/home/USER/.config/wayhint/schema.json
 ```
 
-## 端末の複数ウィンドウ
+## Multiple terminal windows
 
-端末のウィンドウが 2 つ以上あると、wayhint は**どのウィンドウが前面か**を知る必要がある。Wayland にも labwc にも
-「このウィンドウを描いているのはどのプロセスか」を答える手段が無いので、**ウィンドウの側が app_id で名乗る**
-規約にしている。app_id の末尾が `.p<pid>` なら、その数字を端末の PID として使う。
+If a terminal has two or more windows, wayhint needs to know **which window is in front**.
+Neither Wayland nor labwc has a way to answer "which process is drawing this window", so we use
+the convention that **the window identifies itself through its app_id**. If the app_id ends in
+`.p<pid>`, that number is used as the terminal's PID.
 
 ```sh
 #!/bin/sh
@@ -402,52 +444,57 @@ editor:
 exec /usr/bin/foot --app-id "foot.p$$" "$@"
 ```
 
-この wrapper を作り、**端末を起動する経路すべて**(compositor の keybind、bar、メニュー、`.desktop`)を
-そこへ向ける。接尾辞は wayhint が外してから照合するので、シートの `app_id_regex` は `["^foot$"]` のままでよい。
+Create this wrapper and point **every path that launches the terminal** (compositor keybind, bar,
+menu, `.desktop` file) at it. wayhint strips the suffix before matching, so a sheet's
+`app_id_regex` can stay as `["^foot$"]`.
 
-- 対応: foot / kitty / Ghostty / Alacritty(それぞれ条件あり)と Herdr(ウィンドウの app_id に `herdr` を含めて起動する。
-  例 `foot --app-id=foot-herdr`)。WezTerm はウィンドウごとに app_id を変えられないので対象外。
-- wrapper を通さないウィンドウでも、その端末のプロセスが 1 つだけなら解決する。
+- Supported: foot / kitty / Ghostty / Alacritty (each with conditions) and Herdr (launch with
+  `herdr` included in the window's app_id, e.g. `foot --app-id=foot-herdr`). WezTerm cannot vary
+  its app_id per window, so it is not supported.
+- Even for windows that don't go through the wrapper, it still resolves if that terminal has only
+  one process.
 
-設定は script でできる。**`--apply` を付けない限り何も書かない**。bar や compositor の設定は
-書き換えず、変える行を表示するだけ。
+Setup can be done with a script. **It writes nothing unless you pass `--apply`.** It never
+rewrites bar or compositor config; it only shows what would change.
 
 ```sh
-./scripts/setup-terminals           # dry run。何をするか表示するだけ
-./scripts/setup-terminals --apply   # wrapper / .desktop / launcher 設定まで直す
+./scripts/setup-terminals           # dry run: shows what it would do
+./scripts/setup-terminals --apply   # fixes wrapper / .desktop / launcher config
 ```
 
-端末ごとの条件と、効いているかの確かめ方は [`docs/TERMINALS.md`](docs/TERMINALS.md)。
+The conditions for each terminal, and how to confirm it's working, are in
+[`docs/TERMINALS.md`](docs/TERMINALS.md).
 
 ## CLI
 
-`wayhint <command>` は daemon に 1 行送るだけで、画面は持たない。
+`wayhint <command>` just sends one line to the daemon; it has no window of its own.
 
-| コマンド | 動作 |
+| Command | Action |
 |---|---|
-| `toggle` | 出す / しまう(`Super+h`) |
-| `search-mode` | 検索に入る / 抜ける(`Super+Shift+h`)。編集モード中は断る |
-| `edit-mode` | 編集モードに入る / 抜ける(`Super+Ctrl+h`) |
-| `show` | 出す |
-| `hide` | しまう。検索中・編集中は `toggle` と同じく、モードと下書きを残して隠すだけ |
-| `refresh` | 出ているなら、いまのウィンドウで中身を取り直す |
-| `reload` | `config.yaml` とヒントを読み直す |
-| `ping` | daemon の生死確認。pid とシート数を返す |
-| `validate` | YAML を検証する。daemon が無くても動く。問題があれば exit 1 |
-| `context` | いまのウィンドウでどのシートが選ばれるかを表示する。`--shown` を付けると、表示中のヒント画面の中身と、混ざったヒントをどう絞ったかを出す |
-| `inspect SHEET [--parent ID]` | シートの include と、仮定した親のヒントが、何件中何件混ざるかを出す。daemon が無くても動く |
-| `add` / `edit` / `remove` / `favorite` / `move` | ヒントを書き換える(下) |
-| `format [PATH...]` | シートを決まった順・形に整える |
-| `schema [--write PATH]` | ヒントシートの JSON Schema を出す |
+| `toggle` | Show / hide (`Super+h`) |
+| `search-mode` | Enter / leave search (`Super+Shift+h`). Refuses while in edit mode |
+| `edit-mode` | Enter / leave edit mode (`Super+Ctrl+h`) |
+| `show` | Show |
+| `hide` | Hide. While searching or editing, same as `toggle`: just hides, keeping the mode and any draft |
+| `refresh` | If shown, re-fetch contents for the current window |
+| `reload` | Reload `config.yaml` and hints |
+| `ping` | Check if the daemon is alive. Returns its pid and sheet count |
+| `validate` | Validate the YAML. Works without the daemon running. Exits 1 if there is a problem |
+| `context` | Shows which sheet would be picked for the current window. With `--shown`, shows the contents of the overlay currently shown and how mixed-in hints were filtered |
+| `inspect SHEET [--parent ID]` | Shows a sheet's includes and, given an assumed parent, how many of how many hints are mixed in. Works without the daemon running |
+| `add` / `edit` / `remove` / `favorite` / `move` | Rewrite hints (below) |
+| `format [PATH...]` | Reformats sheets into a fixed order and shape |
+| `schema [--write PATH]` | Prints the JSON Schema for hint sheets |
 
-`validate` は `--config-dir`、それ以外は `--socket` で既定の場所を変えられる。各コマンドの引数は
-`wayhint <command> --help` で出る。
+`validate` accepts `--config-dir`; every other command accepts `--socket` to change the default
+location. Each command's arguments are shown by `wayhint <command> --help`.
 
-### CLI でヒントを書き換える
+### Rewriting hints with the CLI
 
-`add` `edit` `remove` `favorite` `move` は、`--sheet` で**書き込むシートの id を必ず指定する**。daemon を
-通さず自分でシートのファイルに書くので、daemon が止まっていても使える。保存すればヒント画面にもすぐ
-反映される。
+`add`, `edit`, `remove`, `favorite`, and `move` all **require `--sheet` to specify the id of the
+sheet being written to**. They write directly to the sheet's file without going through the
+daemon, so they work even if the daemon is stopped. Once saved, the change is reflected in the
+overlay right away too.
 
 ```
 wayhint add TITLE --sheet ID [--kind K] [--key S | --command S] [--category S] [--remark S]
@@ -455,34 +502,39 @@ wayhint edit ID --sheet ID [--title S] [--kind K] [--key S | --command S] [--cat
 wayhint remove ID --sheet ID
 wayhint favorite ID --sheet ID [--off]
 wayhint move ID up|down --sheet ID
-wayhint format [--modeline] [PATH...]        # PATH を省くと使用中の hints/<言語>/*.yaml 全部
+wayhint format [--modeline] [PATH...]        # without PATH, all hints/<language>/*.yaml in use
 ```
 
-例:
+Examples:
 
 ```sh
-wayhint add "保存して終了" --key ":wq" --category ファイル --sheet vi
-wayhint add "設定を開く" --kind command --command "vim ~/.vimrc" --sheet vi
-wayhint edit save --key ":w!" --sheet vi       # ID はヒントの id(一覧には出ないのでシートを見る)
+wayhint add "Save and quit" --key ":wq" --category File --sheet vi
+wayhint add "Open config" --kind command --command "vim ~/.vimrc" --sheet vi
+wayhint edit save --key ":w!" --sheet vi       # ID is the hint's id (not shown in the list; check the sheet)
 wayhint favorite save --sheet vi
 wayhint move save up --sheet vi
 wayhint remove save --sheet vi
 ```
 
-- シートの id はファイル名(拡張子を除く)と同じ。親シートに足すときも `--sheet herdr` のように親の id を書く。
-- CLI ではシートを新しく作れない。新しいシートはエディタで書くか、編集モードの `a` で作る。
-- `add` の `id` はタイトルから自動で作られる(英数字にできないタイトル、たとえば日本語だけのものは
-  `q-<日時>`)。作られた id は `added <id> to <file>` と出力されるので、`edit` などにはそれを使う。
-  `learned` には今日の日付が入る。
-- `--kind` に合わない欄は指定できない。`shortcut`(既定)は `--key` だけ、`command` は `--command`
-  だけ、`tip` は両方、`note` はどちらも不可。
-- `move` は同じグループ(favorite どうし、または同じ category)の隣とだけ入れ替える。越える場合はエラー。
-- `tags` `copy` `source` は CLI でも編集モードのフォームでも書けない。エディタでシートに書く。
+- A sheet's id matches its file name (without extension). When adding to a parent sheet, write
+  the parent's id, e.g. `--sheet herdr`.
+- The CLI cannot create a new sheet. Write a new sheet in an editor, or create one with `a` in
+  edit mode.
+- `add`'s `id` is generated automatically from the title (for a title that can't be turned into
+  alphanumerics, e.g. one that's only Japanese, it becomes `q-<timestamp>`). The generated id is
+  printed as `added <id> to <file>`, so use that for `edit` and the like. `learned` is set to
+  today's date.
+- Fields that don't fit `--kind` cannot be specified. `shortcut` (default) only takes `--key`,
+  `command` only `--command`, `tip` takes both, `note` takes neither.
+- `move` only swaps with a neighbor in the same group (favorites together, or the same category).
+  It errors if that would cross a group boundary.
+- `tags`, `copy`, and `source` cannot be written from the CLI or the edit-mode form. Write them in
+  the sheet with an editor.
 
-### `wayhint context` の読み方
+### Reading `wayhint context`
 
-「なぜこのシートが出たのか」を確かめるためのもの。値のある項目だけを `key=value` で並べる。
-foot で vi を動かしているときはこうなる(実際は 1 行):
+This is for checking "why did this sheet appear". Only fields with a value are listed as
+`key=value`. Running vi in foot gives you this (actually on one line):
 
 ```
 $ wayhint context
@@ -490,25 +542,28 @@ active_sheet=vi desktop_app=foot.p12345 chain=['ProcAdapter'] \
   process={'name': 'vi', 'argv_basenames': ['vi', 'notes.txt']}
 ```
 
-- `chain` が空: 端末とみなされていない(コマンドを調べていない)。
-- `chain` はあるが `process` が無い: 調べたが決められなかった(規約に乗っていないウィンドウが複数ある、など)。
-  間違ったシートを出すより出さない。
-- `desktop_app` の `.p12345` はウィンドウの識別用で、シートの照合や表示には使われない。
+- `chain` empty: not recognized as a terminal (the command was not looked up).
+- `chain` present but no `process`: it was checked but couldn't be determined (e.g. multiple
+  windows not following the convention). Better to show nothing than the wrong sheet.
+- The `.p12345` in `desktop_app` is only for identifying the window; it is not used for sheet
+  matching or display.
 
-端末の中で `wayhint context` を打つと、`wayhint` 自身が前面のコマンドになってしまう。端末の中を
-確かめるときは `wayhint context --shown` を使う(下)。
+Running `wayhint context` inside a terminal makes `wayhint` itself the foreground command. To
+check what's inside a terminal, use `wayhint context --shown` (below).
 
-### 混ざるはずのヒントが出ないとき
+### When a hint that should be mixed in doesn't show up
 
-親シートや `include` から混ざるヒントは、タグや category の絞りで落ちることがある。どこで落ちたかは
-次の 2 つで確かめる。
+Hints mixed in from a parent sheet or via `include` can be dropped by a tag or category filter.
+Check where it was dropped with these two:
 
-- **シートを書いているとき**: `wayhint inspect <シートの id>`。include の要素ごとに、絞りの中身と
-  「何件中何件混ざるか」を出す。親はそのシートが動くウィンドウで決まるので、`--parent herdr` のように
-  仮定して渡すと、親のヒントの絞りも出る。
-- **実際の画面で**: 見たいウィンドウで `Super+h` を押してヒント画面を出し、別の端末から
-  `wayhint context --shown`。表示中の中身(調べ直さない)について、選ばれたシート・親・絞りと、
-  その絞りがどこ(どのファイルのどの key)から来たかを出す。
+- **While writing a sheet**: `wayhint inspect <sheet id>`. For each `include` entry, it shows the
+  filter's contents and "how many of how many are mixed in". Since the parent is determined by
+  the window the sheet runs in, pass one explicitly, e.g. `--parent herdr`, to also see the
+  parent hints' filter.
+- **On the actual screen**: press `Super+h` in the window you want to check to show the overlay,
+  then from another terminal run `wayhint context --shown`. For what's currently shown (not
+  re-checked), it shows the chosen sheet, its parent, the filters, and where each filter came
+  from (which file, which key).
 
 ```
 $ wayhint inspect claude-code --parent herdr
@@ -518,26 +573,28 @@ parent herdr: 4/12 shown
   categories: not narrowed
 include git: 3/9 shown (from claude-code.yaml)
   tags: not narrowed
-  categories: 基本
+  categories: basics
 ```
 
-`0/12` のように 0 件なら、タグや category の書き間違いを疑う。件数は重複を除く前の数。
+A count like `0/12` suggests a mistyped tag or category. The count is before deduplication.
 
-## daemon の起動と停止
+## Starting and stopping the daemon
 
-- **起動**: ふつうは compositor の autostart が、ログインと同時に起動する([compositor の設定](#compositor-の設定))。
-  手で起動するなら `~/work/tools/wayhint/.venv/bin/wayhintd &`。すでに動いていれば
-  `wayhintd already running` と出て終わる。
-- **停止**: compositor を終了すると一緒に止まる。手で止めるなら `kill "$(wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p')"`
-  (daemon は socket を片付けてから終わる)。
-- **落ちたとき**: 自動では起動し直さない。hotkey を押しても何も出ず、`wayhint ping` が
-  `wayhintd is not running` を返す。下の再起動の 1 行で起動し直す。
-- **ログ**: 前景で見たいときは `wayhintd -v` を端末で動かす。
+- **Starting**: normally the compositor's autostart launches it at login
+  ([Compositor setup](#compositor-setup)). To start it by hand:
+  `~/work/tools/wayhint/.venv/bin/wayhintd &`. If it's already running, it prints
+  `wayhintd already running` and exits.
+- **Stopping**: it stops together with the compositor when you log out. To stop it by hand:
+  `kill "$(wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p')"` (the daemon cleans up its socket
+  before exiting).
+- **If it crashes**: it does not restart itself. Pressing a hotkey shows nothing, and
+  `wayhint ping` returns `wayhintd is not running`. Use the one-liner below to restart it.
+- **Logs**: run `wayhintd -v` in a terminal in the foreground to watch them.
 
-### 再起動する
+### Restarting
 
-ヒント・`config.yaml` の変更は自動で反映されるので、再起動が要るのは wayhint を更新したときと、
-`style.css` を変えたときだけ。次の 1 行で止めて起動し直す:
+Changes to hints and `config.yaml` are picked up automatically, so a restart is only needed when
+you update wayhint or change `style.css`. Stop and start it again with this one line:
 
 ```sh
 cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p'); \
@@ -545,53 +602,60 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
   nohup .venv/bin/wayhintd -v >>"${XDG_RUNTIME_DIR:-/tmp}/wayhint.log" 2>&1 & disown
 ```
 
-- pid は `wayhint ping` から取る。`pkill -f wayhintd` は**この行を実行しているシェル自身にも当たる**
-  ので使わない。
-- daemon が動いていなければ `wayhint: wayhintd is not running …` が出るが、そのまま起動する。
-- 前の daemon が socket を片付けるのを待ってから起動する(待たないと `wayhintd already running` で終わる)。
-- ログは `$XDG_RUNTIME_DIR/wayhint.log` に追記され、ログアウトで消える。
+- The pid comes from `wayhint ping`. Don't use `pkill -f wayhintd`, since **it also matches the
+  shell running this very line**.
+- If the daemon isn't running, `wayhint: wayhintd is not running …` is printed, but it starts
+  anyway.
+- It waits for the previous daemon to clean up its socket before starting (without waiting, it
+  would exit with `wayhintd already running`).
+- Logs are appended to `$XDG_RUNTIME_DIR/wayhint.log` and disappear on logout.
 
-## アップデート
+## Update
 
 ```sh
 cd ~/work/tools/wayhint
 git pull
-./scripts/setup                 # Python の依存が変わっていれば入れ直す
+./scripts/setup                 # reinstalls Python dependencies if they changed
 .venv/bin/pip install -e .
 ```
 
-そのあと daemon を[再起動する](#再起動する)。`~/.config/wayhint/` の設定とシートには触らない。
-新しい版で設定やシートの書式が変わっていれば、`wayhint validate` が教える。
+Then [restart](#restarting) the daemon. Your `~/.config/wayhint/` config and sheets are left
+untouched. If the config or sheet format changed in the new version, `wayhint validate` will tell
+you.
 
-## アンインストール
+## Uninstall
 
-順に戻す。どれも wayhint が自動では行わない。
+Undo these in order. wayhint never does any of this automatically.
 
-1. daemon を止める([daemon の起動と停止](#daemon-の起動と停止))。
-2. compositor の設定から、hotkey の 3 行と autostart の行を消す(labwc は `labwc --reconfigure`)。
-3. 端末の設定を戻す(`./scripts/setup-terminals --apply` を使っていた場合):
-   - `~/.local/bin/<端末>-wayhint` の wrapper を消す
-   - `~/.local/share/applications/<端末>.desktop` を消す(システムの `.desktop` に戻る)
-   - 書き換えられた bar や compositor の設定は、同じディレクトリの
-     `<ファイル名>.wayhint-backup-<日時>` から戻す(または行の wrapper を元のコマンドに戻す)
-4. 設定と状態を消す: `~/.config/wayhint/`(シートも含む。残すならバックアップを取る)と
-   `~/.local/state/wayhint/`。
-5. `~/.local/bin/` に置いた `wayhint` と `wayhintd` のリンクを消し、repository(`~/work/tools/wayhint/`)を消す。
+1. Stop the daemon ([Starting and stopping the daemon](#starting-and-stopping-the-daemon)).
+2. Remove the three hotkey lines and the autostart line from the compositor's config (for labwc,
+   run `labwc --reconfigure`).
+3. Undo the terminal setup (if you used `./scripts/setup-terminals --apply`):
+   - Remove the `~/.local/bin/<terminal>-wayhint` wrapper
+   - Remove `~/.local/share/applications/<terminal>.desktop` (falls back to the system
+     `.desktop`)
+   - Restore any rewritten bar or compositor config from the
+     `<filename>.wayhint-backup-<timestamp>` in the same directory (or revert the wrapper line to
+     the original command)
+4. Remove config and state: `~/.config/wayhint/` (this includes your sheets; back them up first
+   if you want to keep them) and `~/.local/state/wayhint/`.
+5. Remove the `wayhint` and `wayhintd` links in `~/.local/bin/`, and remove the repository
+   (`~/work/tools/wayhint/`).
 
-## 困ったとき
+## Troubleshooting
 
-| 症状 | 確認すること |
+| Symptom | What to check |
 |---|---|
-| `wayhint: wayhintd is not running` | `wayhintd -v` を前景で起動してログを見る。socket は `$XDG_RUNTIME_DIR/wayhint.sock` |
-| `⚠ compositor does not provide wlr-foreign-toplevel-management` | labwc なら出ない。Wayfire は `[core] plugins` に `foreign-toplevel`、または `ipc` を入れて IPC に任せる |
-| `⚠ Wayfire IPC unavailable` | `context.backend: wayfire` 固定時のみ。`echo $WAYFIRE_SOCKET`、`[core] plugins` に `ipc` |
-| `this Wayland session has no layer-shell support` | `gir1.2-gtk4layershell-1.0` が入っているか。X11 / Xwayland では動かない |
-| ヒントが足りない / 消えた | 絞り込みが残っていないか、一覧の上の chip を見る。解除は chip の `×`。絞り込みはシートごとに保存されるので、別のシートを開くと効いていないように見える |
-| 親シートや include のヒントが混ざらない | [混ざるはずのヒントが出ないとき](#混ざるはずのヒントが出ないとき)。`wayhint inspect` か `wayhint context --shown` で、どの絞りで落ちたかを見る |
-| 「エディタで編集」でエディタが開かない | `config.yaml` の `editor.command` の先頭のコマンドが PATH にあるか。端末の中で動くエディタ(vim など)は端末ごと起動する形で書く(`[foot, -e, nvim, "+{line}", "{file}"]`)。`wayhintd -v` のログに理由が出る |
-| hotkey を押しても何も出ない | `wayhint ping` で daemon が動いているか。止まっていれば[再起動する](#再起動する) |
-| 端末の中のコマンドのシートが出ない | `wayhint context` の `chain` と `process` を見る(上の「読み方」)。ウィンドウが複数なら[端末の複数ウィンドウ](#端末の複数ウィンドウ)の規約に乗っているか |
-| Herdr の中で親シートしか出ない | `herdr pane process-info --pane <focus 中の pane id>` の `foreground_processes` と `argv_regex` を照合する |
-| Herdr でタブを切り替えてもヒントが変わらない | `herdr pane current` の `focused` と `pane_id` を確認する |
-| 検索欄や編集フォームで日本語(IME)が入らない | GTK が Wayland ネイティブの入力(text-input-v3)を選べていない。`gsettings get org.gnome.desktop.interface gtk-im-module` が空でなければ `gsettings reset org.gnome.desktop.interface gtk-im-module`。`GTK_IM_MODULE` も未設定にする。確かめるには `GTK_IM_MODULE= WAYLAND_DEBUG=1 wayhintd` の出力に `zwp_text_input_v3.enter` と `enable` が出るか |
-| 検索後にキー入力が元のアプリに戻らない | 同じ app_id のウィンドウが複数あり title も変わっていると、戻り先を決められない。`wayhintd -v` に `could not return focus` が出るか |
+| `wayhint: wayhintd is not running` | Start `wayhintd -v` in the foreground and check the logs. The socket is `$XDG_RUNTIME_DIR/wayhint.sock` |
+| `⚠ compositor does not provide wlr-foreign-toplevel-management` | Never happens on labwc. On Wayfire, add `foreign-toplevel` to `[core] plugins`, or `ipc` to hand it off to IPC |
+| `⚠ Wayfire IPC unavailable` | Only when `context.backend: wayfire` is pinned. Check `echo $WAYFIRE_SOCKET` and `ipc` in `[core] plugins` |
+| `this Wayland session has no layer-shell support` | Check whether `gir1.2-gtk4layershell-1.0` is installed. Does not work under X11 / Xwayland |
+| Hints are missing / disappeared | Check whether a filter is still active via the chip above the list. Clear it with the chip's `×`. Filters are saved per sheet, so it can look broken when you're really just looking at a different sheet |
+| Hints from a parent sheet or `include` aren't mixing in | See [When a hint that should be mixed in doesn't show up](#when-a-hint-that-should-be-mixed-in-doesnt-show-up). Use `wayhint inspect` or `wayhint context --shown` to see which filter dropped it |
+| "Edit in editor" doesn't open an editor | Check whether the first command in `config.yaml`'s `editor.command` is on PATH. For an editor that runs inside a terminal (vim, etc.), write it as launching the whole terminal (`[foot, -e, nvim, "+{line}", "{file}"]`). The reason is in `wayhintd -v`'s logs |
+| Nothing shows when a hotkey is pressed | Check whether the daemon is running with `wayhint ping`. If it's stopped, [restart it](#restarting) |
+| The sheet for a command inside a terminal doesn't show up | Check `chain` and `process` from `wayhint context` (see "Reading" above). If there are multiple windows, check whether they follow the [Multiple terminal windows](#multiple-terminal-windows) convention |
+| Only the parent sheet shows up inside Herdr | Match `foreground_processes` from `herdr pane process-info --pane <focused pane id>` against `argv_regex` |
+| Hints don't change when switching tabs in Herdr | Check `focused` and `pane_id` from `herdr pane current` |
+| Japanese (IME) input doesn't work in the search box or edit form | GTK hasn't picked native Wayland input (text-input-v3). If `gsettings get org.gnome.desktop.interface gtk-im-module` isn't empty, run `gsettings reset org.gnome.desktop.interface gtk-im-module`. Also make sure `GTK_IM_MODULE` is unset. To check, look for `zwp_text_input_v3.enter` and `enable` in the output of `GTK_IM_MODULE= WAYLAND_DEBUG=1 wayhintd` |
+| Keyboard input doesn't return to the original app after search | If there are multiple windows with the same app_id and the title also changed, wayhint can't decide where to return focus. Check for `could not return focus` in `wayhintd -v` |
