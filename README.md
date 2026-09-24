@@ -405,7 +405,7 @@ exec /usr/bin/foot --app-id "foot.p$$" "$@"
 この wrapper を作り、**端末を起動する経路すべて**(compositor の keybind、bar、メニュー、`.desktop`)を
 そこへ向ける。接尾辞は wayhint が外してから照合するので、シートの `app_id_regex` は `["^foot$"]` のままでよい。
 
-- 対応: foot / kitty / Ghostty(それぞれ条件あり)と Herdr(ウィンドウの app_id に `herdr` を含めて起動する。
+- 対応: foot / kitty / Ghostty / Alacritty(それぞれ条件あり)と Herdr(ウィンドウの app_id に `herdr` を含めて起動する。
   例 `foot --app-id=foot-herdr`)。WezTerm はウィンドウごとに app_id を変えられないので対象外。
 - wrapper を通さないウィンドウでも、その端末のプロセスが 1 つだけなら解決する。
 

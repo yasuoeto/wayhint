@@ -87,6 +87,7 @@ launcher の設定は**書き換える前にコピーを取る**。1 回の実�
 | kitty | `--class "kitty.p$$"` | `single_instance` を有効にしない(既定は無効)。**tab / split は 1 枚だけ** |
 | Ghostty | `--class="com.mitchellh.ghostty.p$$"` | `gtk-single-instance=false`(既定は有効)。**tab / split は 1 枚だけ** |
 | Herdr | ウィンドウの app_id に `herdr` を含める | 含まれていないウィンドウは Herdr 経路に乗らない(下記) |
+| Alacritty | `--class "alacritty.p$$"` | `alacritty msg create-window` / `--daemon` で開かない(tab / split は無い) |
 | WezTerm | 乗らない | ウィンドウごとに app_id を変えられない |
 
 **tab / split は 1 枚だけ**、というのは `/proc` の限界による。tab や split は 1 枚につき 1 つの
@@ -130,6 +131,21 @@ exec /usr/bin/kitty --class "kitty.p$$" "$@"
 exec /usr/bin/ghostty --gtk-single-instance=false --class="com.mitchellh.ghostty.p$$" "$@"
 ```
 
+### Alacritty
+
+`--class` が Wayland の app_id になる。tab も split も無く、普通に起動すれば 1 ウィンドウ 1 プロセスなので
+foot と同じくそのまま乗る。`alacritty msg create-window` や `--daemon` で開いたウィンドウは既存の
+プロセスに入るため、`.p<pid>` が指す PID と個々のウィンドウが対応しなくなる(2 つ目から無判定)。
+
+既定の app_id は `Alacritty`(大文字)だが、wrapper では**小文字の `alacritty`** にする。PID の照合は app_id と
+`comm`(`alacritty`)を比べるため。シートの `app_id_regex` に `^Alacritty$` と書いていたら `^alacritty$` に直す。
+
+```sh
+#!/bin/sh
+# ~/.local/bin/alacritty-wayhint
+exec /usr/bin/alacritty --class "alacritty.p$$" "$@"
+```
+
 ### Herdr
 
 Herdr は `herdr pane current` / `herdr pane process-info` でフォーカス中のペインを自分で答えるので、
@@ -144,7 +160,8 @@ app_id で adapter が選ばれるので、含まれていないウィンドウ�
 | Herdr に問い合わせるかの判定 | app_id に `herdr` が含まれるか(部分一致・大文字小文字は無視) | **不可**(config.yaml に項目は無い) |
 | 親シートの選択 | `herdr.yaml` の `match.wayland.app_id_regex: ["herdr"]` | 可(YAML) |
 
-`foot --app-id=foot-herdr ... herdr` のような起動ならこれを満たす。素の端末で `herdr` を起動すると
+`foot --app-id=foot-herdr ... herdr` のような起動ならこれを満たす(Alacritty なら
+`alacritty --class alacritty-herdr -e herdr`)。素の端末で `herdr` を起動すると
 app_id は `foot` や `kitty` のままなので満たさない。そのときは app_id 側に `herdr` を入れる。
 
 ```sh
@@ -153,7 +170,7 @@ ghostty --gtk-single-instance=false --class=com.mitchellh.ghostty-herdr -e herdr
 foot   --app-id foot-herdr herdr
 ```
 
-前提を満たさないウィンドウでは、`/proc` 経路が動く端末(foot / kitty / Ghostty)なら「**`herdr` という
+前提を満たさないウィンドウでは、`/proc` 経路が動く端末(foot / kitty / Ghostty / Alacritty)なら「**`herdr` という
 コマンドが動いている**」ところまでは分かるが、その中のどのタブを見ているかは分からない。
 その状態になると `wayhintd -v` のログに 1 行出る:
 
@@ -332,8 +349,8 @@ active_sheet=vi desktop_app=foot.p12345 chain=['ProcAdapter'] process={'name': '
 | 症状 | 原因 |
 |---|---|
 | `desktop_app` に `.p<pid>` が無い | そのウィンドウが wrapper を通っていない。別の経路から開いていないか(「起動経路を洗い出す」に戻る) |
-| `chain` が出ない | その app_id は対象外。`.p<pid>` を外した残りが `foot` `footclient` `kitty` `com.mitchellh.ghostty` のどれかと**完全一致**する必要がある(Herdr のウィンドウは別経路なので `chain=['HerdrContextProvider']` になる) |
-| `chain` は出るが `process` が無い | 端末プロセスか、その中の pty を特定できていない。(a) kitty の `single_instance` / Ghostty の `gtk-single-instance` が有効で全ウィンドウが 1 プロセスになっている (b) wrapper 無しのウィンドウが複数ある (c) **そのウィンドウが tab / split を複数持っている、または tmux や `ssh -t` で pty が増えている**(下の「対応していないもの」) |
+| `chain` が出ない | その app_id は対象外。`.p<pid>` を外した残りが `foot` `footclient` `kitty` `com.mitchellh.ghostty` `alacritty` のどれかと**完全一致**する必要がある(Herdr のウィンドウは別経路なので `chain=['HerdrContextProvider']` になる) |
+| `chain` は出るが `process` が無い | 端末プロセスか、その中の pty を特定できていない。(a) kitty の `single_instance` / Ghostty の `gtk-single-instance` が有効、または Alacritty を `msg create-window` / `--daemon` で開いていて、全ウィンドウが 1 プロセスになっている (b) wrapper 無しのウィンドウが複数ある (c) **そのウィンドウが tab / split を複数持っている、または tmux や `ssh -t` で pty が増えている**(下の「対応していないもの」) |
 | `process` に `wayhint` と出る | 端末の中で `wayhint context` を叩いている。上の 1 か 2 の方法で見る |
 | `process` は出るが `active_sheet` が出ない | 規約は効いている。そのコマンドのシートをまだ書いていないだけ(`README.md`「ヒントを書く」) |
 

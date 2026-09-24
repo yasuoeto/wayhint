@@ -85,6 +85,15 @@ class PureTest(unittest.TestCase):
             "--gtk-single-instance=false", setup_terminals.wrapper_body(GHOSTTY, "/usr/bin/ghostty")
         )
 
+    def test_alacritty_gets_a_lower_case_app_id_and_its_desktop_entry_is_rewritten(self) -> None:
+        alacritty = next(t for t in setup_terminals.TERMINALS if t.name == "alacritty")
+        body = setup_terminals.wrapper_body(alacritty, "/usr/bin/alacritty")
+        self.assertIn('exec /usr/bin/alacritty --class "alacritty.p$$" "$@"', body)
+        wrapper = Path("/home/u/.local/bin/alacritty-wayhint")
+        entry = "[Desktop Entry]\nExec=alacritty\n[Desktop Action New]\nExec=alacritty --class x\n"
+        override = setup_terminals.desktop_override(entry, alacritty, wrapper)
+        self.assertEqual(override.count(f"Exec={wrapper}\n"), 2)
+
     def test_exec_keeps_what_the_launcher_needs_and_drops_what_we_set(self) -> None:
         wrapper = Path("/home/u/.local/bin/ghostty-wayhint")
         line = setup_terminals.rewrite_exec(
@@ -142,7 +151,7 @@ class EndToEndTest(unittest.TestCase):
         self.root = Path(tmp.name)
         self.bin = self.root / "usr/bin"
         self.bin.mkdir(parents=True)
-        for name in ("foot", "kitty", "ghostty"):
+        for name in ("foot", "kitty", "ghostty", "alacritty"):
             fake = self.bin / name
             fake.write_text("#!/bin/sh\n")
             fake.chmod(fake.stat().st_mode | stat.S_IXUSR)

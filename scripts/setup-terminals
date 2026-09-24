@@ -72,6 +72,10 @@ TERMINALS = (
         "com.mitchellh.ghostty.desktop",
         ("--class", "--gtk-single-instance"),
     ),
+    # One process per window unless started through ``alacritty msg create-window`` or
+    # ``--daemon``, which the wrapper never does. The app_id is lower-case on purpose: the default
+    # ``Alacritty`` would not equal ``comm`` (``alacritty``), and the pid check compares the two.
+    Terminal("alacritty", "alacritty", "--class", (), "Alacritty.desktop", ("--class",)),
 )
 
 UNSUPPORTED = {

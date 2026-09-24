@@ -103,6 +103,8 @@ class ProcAdapterTest(unittest.TestCase):
         self.assertTrue(a.applies_to("footclient"))
         self.assertTrue(a.applies_to("foot.p12345"))  # the pid suffix does not change the terminal
         self.assertTrue(a.applies_to("kitty.p12345"))
+        self.assertTrue(a.applies_to("alacritty.p12345"))
+        self.assertFalse(a.applies_to("Alacritty"))  # the wrapper lower-cases it (TERMINALS.md)
         self.assertFalse(a.applies_to("herdr"))  # Herdr answers for itself
         self.assertFalse(a.applies_to("org.inkscape.Inkscape"))
         self.assertFalse(a.applies_to(None))
@@ -158,6 +160,17 @@ class ProcAdapterTest(unittest.TestCase):
         self.assertTrue(a.applies_to("com.mitchellh.ghostty"))
         self.assertEqual(a.foreground_process("com.mitchellh.ghostty.p100").name, "less")
         self.assertEqual(a.foreground_process("com.mitchellh.ghostty").name, "less")
+
+    def test_alacritty_found_by_its_lower_case_app_id(self) -> None:
+        """The wrapper's ``alacritty.p<pid>`` equals ``comm``; the default ``Alacritty`` doesn't."""
+        p = self.build()
+        p.add(100, "/usr/bin/alacritty", ppid=1)
+        p.add(200, "/usr/bin/bash", ppid=100, pgrp=200, tty=TTY, tpgid=300)
+        p.add(300, "/usr/bin/vi", ppid=200, pgrp=300, tty=TTY, tpgid=300)
+        p.finish()
+        a = ProcAdapter()
+        self.assertEqual(a.foreground_process("alacritty.p100").name, "vi")
+        self.assertEqual(a.foreground_process("alacritty").name, "vi")
 
     def test_two_ptys_under_one_terminal_answer_nothing_rather_than_guess(self) -> None:
         """Tabs and splits: one terminal process, one pty each, and /proc cannot say which is on

@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 PROC = Path("/proc")
 """Root of the procfs. A module variable so tests can point it at a fake tree."""
 
-TERMINAL_APP_IDS = frozenset({"foot", "footclient", "kitty", "com.mitchellh.ghostty"})
+TERMINAL_APP_IDS = frozenset({"foot", "footclient", "kitty", "com.mitchellh.ghostty", "alacritty"})
 """Terminals whose foreground process is found through ``/proc``, by app_id (pid suffix removed).
 
 Deliberately a constant and not configuration: every entry has to be a terminal emulator that
