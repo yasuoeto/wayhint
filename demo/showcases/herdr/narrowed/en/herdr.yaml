@@ -49,7 +49,7 @@ hints:
   - id: middle-paste
     title: Middle-click paste
     kind: shortcut
-    key: Shift+middle-click
+    key: Shift+Middle
     command:
     category: input
     tags:
