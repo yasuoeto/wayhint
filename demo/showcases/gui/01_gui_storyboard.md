@@ -18,22 +18,24 @@
 - 最後に `wayhint context --shown` を打った端末の stub(`wayhint-shown`。出力は本物)が開く
 - Notes の窓は画面いっぱい寄りの配置(端末は最後の 1 枚だけ)。この場面の主語はウィンドウそのもの
 - **映さない**: 実アプリ、実データ
+- `notes.yaml` は demo 専用(実機の写しではない)。画面で読まれるので先頭にコメントを置かない。GUI アプリには
+  端末の中のような前面プロセスが無く、ウィンドウの app_id だけで選ばれる(DECISIONS 0024)
 
 ## 1. 本編
 <!-- variant: main -->
 
-16:9。合計 45 秒。
+16:9。合計 47 秒。
 
-### §1 ウィンドウだけで決まる(0:00–0:45)
+### §1 ウィンドウだけで決まる(0:00–0:47)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 0–5 | Notes の窓が開く | GUI アプリでも同じ |
 | 5–13 | `Super+H` → `Notes` の sheet | アプリごとに、そのアプリのヒントが出る |
 | 13–21 | sub-header に app_id だけが出ている | 上の行に、どのアプリのヒントかが出る |
-| 21–28 | 同じ画面 | シートの match に、アプリの名前（app_id）を書くだけ |
-| 28–37 | 端末の窓が開き、`wayhint context --shown` の出力(`desktop_app=dev.wayhint.demo.Notes`、`process` も `chain` も無い) | 出ないときは wayhint context --shown で確かめる |
-| 37–45 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
+| 21–30 | vi の窓が開き、`notes.yaml` の `match:` → `wayland:` → `app_id_regex` が見えている。30 秒で閉じる | シートの match に、アプリの名前（app_id）を書くだけ |
+| 30–39 | 端末の窓が開き、`wayhint context --shown` の出力(`desktop_app=dev.wayhint.demo.Notes`、`process` も `chain` も無い) | 出ないときは wayhint context --shown で確かめる |
+| 39–47 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
 
 ## 2. 字幕の書き方メモ
 

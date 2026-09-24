@@ -1,5 +1,3 @@
-# 端末の中のプロセスではなく、窓の app_id で選ばれる sheet(DECISIONS 0024)。GUI アプリには
-# 覗き込む foreground process が無いので、ここだけは match.wayland が本筋になる。
 id: notes
 title: Notes
 match:

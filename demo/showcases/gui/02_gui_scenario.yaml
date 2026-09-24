@@ -14,6 +14,8 @@ windows:
   # The terminal `wayhint context --shown` is read in, over the lower half of Notes and clear
   # of the overlay: what it prints is about the overlay, so both have to be in view.
   - {title: shown, x: 40, y: 292, width: 620, height: 310}
+  # notes.yaml, over the lower part of Notes and clear of the overlay.
+  - {title: vi, x: 40, y: 214, width: 560, height: 380}
 
 steps:
   - id: open-notes
@@ -43,10 +45,23 @@ steps:
     hold: 8.0
 
   - id: yaml-wayland
-    pause: true
-    wait_for: {overlay: visible, label: "Notes"}
+    # The sheet itself, so `match` / `app_id_regex` is on screen while the caption talks about
+    # it. vi takes the focus; the overlay stays as it was opened.
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/notes.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "Notes"
+      timeout: 30
     caption: {ja: "シートの match に、アプリの名前（app_id）を書くだけ"}
-    hold: 7.0
+    hold: 8.0
+
+  - id: close-vi
+    # Back to Notes before the next terminal opens: closing that one returns the focus to the
+    # window under it, and the hotkey at the end has to come from Notes to hide the overlay.
+    close: {window: vi}
+    wait_for: {context: {active_sheet: notes}, overlay: visible, timeout: 20}
+    hold: 1.0
 
   - id: context-cli
     # The terminal opens over Notes and takes the focus; the overlay stays as it was opened,
@@ -76,13 +91,14 @@ steps:
 
 variants:
   main:
-    target: 45
+    target: 47
     tolerance: 5
     steps:
       - open-notes
       - notes-hints
       - sub-header
       - yaml-wayland
+      - close-vi
       - context-cli
       - close-shown
       - outro
