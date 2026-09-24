@@ -20,7 +20,7 @@ hints:
   - id: wheel-scroll
     title: Scroll like a wheel mouse
     kind: shortcut
-    key: Middle+TrackPoint↑↓
+    key: Middle + TrackPoint↑↓
     command:
     category: scroll
     tags:
