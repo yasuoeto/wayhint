@@ -231,8 +231,9 @@ class HintWindow(Gtk.Window):
             delegate.set_max_length(MAX_QUERY_LEN)  # the same limit state.yaml is read with
         self._search.connect("search-changed", lambda *_: self._on_search_changed())
         self._search.connect("stop-search", lambda *_: self.end_search())
-        # ``activate`` is Enter after the input method is done with it, as in the form.
-        self._search.connect("activate", lambda *_: self._copy_and_leave())
+        # ``activate`` is Enter after the input method is done with it, as in the form. It
+        # leaves without copying; copying is ``c`` on the list (0039).
+        self._search.connect("activate", lambda *_: self.end_search())
         self._watch_preedit(self._search)
         search_row.append(self._search)
         # One chip for the filter, in and out of search. Outside search the box is hidden and the
@@ -394,7 +395,7 @@ class HintWindow(Gtk.Window):
             setter(tr(key))
         if self._mode == "search":
             self._search_btn.set_label(tr("Done"))  # the fixed label above said "Search"
-        if self._mode == "edit":
+        if self._mode in ("edit", "search"):
             self._help.set_label(self._help_text())
         self._show_chip()
 
@@ -435,7 +436,7 @@ class HintWindow(Gtk.Window):
         self.present()
         # Coming back to a workspace re-takes the grab if the mode still wants it.
         self._sync_keyboard_mode()
-        if self._mode == "edit":
+        if self._mode in ("edit", "search"):
             self._help.set_visible(True)
             self._help.set_label(self._help_text())
 
@@ -552,8 +553,8 @@ class HintWindow(Gtk.Window):
             self._completion = None
         if mode != "edit":
             self.close_form()
-        self._help.set_visible(mode == "edit")
-        if mode == "edit":
+        self._help.set_visible(mode in ("edit", "search"))
+        if mode in ("edit", "search"):
             self._help.set_label(self._help_text())
         self._sync_keyboard_mode()  # after the widgets, before anything can steal focus
         if mode == "search":
@@ -586,6 +587,8 @@ class HintWindow(Gtk.Window):
             self.begin_search()
 
     def _help_text(self) -> str:
+        if self._mode == "search":
+            return self._tr("c copy and leave · Enter/Esc leave · ↓ list · Tab category")
         if self._form is not None:
             return self._tr(
                 "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet"
@@ -625,14 +628,43 @@ class HintWindow(Gtk.Window):
         if name in ("Tab", "ISO_Left_Tab"):
             self._cycle_filter(forward=name == "Tab")
             return True
-        action = editmode.search_action(name, ctrl=ctrl, editable=self._editable_focused())
+        action = editmode.search_action(
+            name,
+            ctrl=ctrl,
+            editable=self._editable_focused(),
+            at_top=self._selected_index() in (None, 0),
+        )
         if action == editmode.COPY_AND_LEAVE:
             self._copy_and_leave()
-            return True
-        return False
+        elif action == editmode.END_SEARCH:
+            self.end_search()
+        elif action == editmode.FOCUS_LIST:
+            self._focus_list()
+        elif action == editmode.FOCUS_SEARCH:
+            self._focus_search()
+        elif action in (editmode.SELECT_NEXT, editmode.SELECT_PREVIOUS):
+            self._move_selection(1 if action == editmode.SELECT_NEXT else -1)
+        else:
+            return False
+        return True
+
+    def _focus_list(self) -> None:
+        """``↓`` in the search box: hand the keys to the list, on the row ``c`` would copy.
+
+        The box has to lose the focus for ``c`` to stop being text. Where the focus lands does
+        not matter beyond that -- on a layer surface it may not stick to the row -- because the
+        list's keys are read here, not by the list (:meth:`_search_key`).
+        """
+        if self._rendered_query != self._current_query():
+            self._render_from_top()
+        row = self._list.get_selected_row() or self._list.get_row_at_index(0)
+        if row is not None:
+            self._list.select_row(row)
+        if not (row or self._list).grab_focus():
+            self.set_focus(None)
 
     def _on_search_changed(self) -> None:
-        """Typing starts the selection over at the top: Enter copies the first result (0033 B)."""
+        """Typing starts the selection over at the top, the row ``↓`` then ``c`` copies (0039)."""
         if self._mode == "search":
             self._render_from_top()
 
@@ -642,22 +674,17 @@ class HintWindow(Gtk.Window):
         self._render_list()
 
     def _copy_and_leave(self) -> None:
-        """Enter in the box, or ``c`` / Enter on the list: copy the selection, then leave search.
+        """``c`` on the list: copy the selection if it has anything to copy, then leave search.
 
-        Nothing to copy -- no result, or a hint with no copy / command / key -- says why and
-        stays, so the keyboard is not handed back for nothing. The box reports its changes after
-        a short delay, so a list that has not caught up with the text yet is brought up to date
-        first: Enter must copy the first result of what is in the box, not of what was.
+        A hint with neither ``copy`` nor ``command`` leaves all the same (0039): ``c`` is how
+        one gets back to the window after finding a hint, and one that only names a key has
+        been read by then, which was the point.
         """
         if self._mode != "search":
             return
-        if self._rendered_query != self._current_query():
-            self._render_from_top()
         text = editmode.copy_target(self._selected())
-        if text is None:
-            self.show_message(f"⚠ {self._tr('nothing to copy')}")
-            return
-        clipboard.copy_text(text)
+        if text is not None:
+            clipboard.copy_text(text)
         self.end_search()
 
     def _on_key_late(self, _ctrl, keyval, _keycode, state) -> bool:

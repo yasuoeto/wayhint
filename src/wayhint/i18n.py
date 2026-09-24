@@ -43,6 +43,9 @@ EN: dict[str, str] = {
     "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
         "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
     ),
+    "c copy and leave · Enter/Esc leave · ↓ list · Tab category": (
+        "c copy and leave · Enter/Esc leave · ↓ list · Tab category"
+    ),
     "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet": (
         "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet"
     ),
@@ -58,7 +61,6 @@ EN: dict[str, str] = {
     "cannot move past another group": "cannot move past another group",
     "generic process name: check the match rule": ("generic process name: check the match rule"),
     "filter: {query}": "filter: {query}",
-    "nothing to copy": "nothing to copy",
     "finish editing before searching": "finish editing before searching",
 }
 
@@ -93,6 +95,9 @@ JA: dict[str, str] = {
     "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave": (
         "a 追加 · Enter 編集 · dd 削除 · u 取消 · f お気に入り · J/K 並び替え · Esc 終了"
     ),
+    "c copy and leave · Enter/Esc leave · ↓ list · Tab category": (
+        "c コピーして戻る · Enter/Esc 戻る · ↓ 一覧へ · Tab 分類"
+    ),
     "Enter save and leave · Esc discard · Tab next field · Ctrl+P parent sheet": (
         "Enter 保存して終了 · Esc 破棄 · Tab 次の欄 · Ctrl+P 親シート"
     ),
@@ -110,7 +115,6 @@ JA: dict[str, str] = {
         "汎用的なプロセス名です。match 規則を確認してください"
     ),
     "filter: {query}": "絞り込み: {query}",
-    "nothing to copy": "コピーできる項目がありません",
     "finish editing before searching": "編集を終えてから検索してください",
 }
 

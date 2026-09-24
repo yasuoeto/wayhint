@@ -346,8 +346,9 @@ class SearchModeTest(unittest.TestCase):
     The hotkey path to the socket is ``CallerTest``'s; this is what the request does once it is
     there. In: the box takes what is typed. Out, by the same request: the keyboard is let go of
     but the list stays narrowed, a chip says so, and state.yaml has it for the next time. The
-    clipboard half (Enter copies) is left to the unit tests: reading a Wayland selection back
-    needs a client holding keyboard focus, which is the thing this test gives away.
+    clipboard half (``c`` on the list copies, 0039) is left to the unit tests: reading a Wayland
+    selection back needs a client holding keyboard focus, which is the thing this test gives
+    away.
     """
 
     OVERLAY = "{anchor: top-right, width: 400px, margin: {top: 20, right: 20}}"
@@ -395,7 +396,7 @@ class SearchModeTest(unittest.TestCase):
             state = session.home / ".local" / "state" / "wayhint" / "state.yaml"
             written = state.read_text() if state.exists() else ""
 
-            # Back in, the filter is in the box; Enter there copies the one result and leaves.
+            # Back in, the filter is in the box; Enter there leaves with it (0039).
             self.assertIn("mode=search", session.wayhint("search-mode"), session.log_tail())
             self.until(session, "search did not start", lambda: "Done" in self.showing(session))
             session.press("Return")

@@ -44,7 +44,11 @@ EXIT_EDIT = "exit-edit"
 BEGIN_SEARCH = "begin-search"
 END_SEARCH = "end-search"
 COPY_AND_LEAVE = "copy-and-leave"
-"""Copy the selected hint and leave search (0033 B). The copy itself is the window's."""
+"""``c``: copy the selected hint, if it has anything to copy, and leave search (0039). The copy
+itself is the window's."""
+FOCUS_LIST = "focus-list"
+FOCUS_SEARCH = "focus-search"
+"""``↓`` in the search box / ``↑`` on the list's first row: move between the two (0039)."""
 CLEAR_FILTER = "clear-filter"
 """The chip's ``×``: drop the filter of the sheet on screen (0033 C)."""
 FORM_SAVE = "form-save"
@@ -185,18 +189,30 @@ def capture_in_editable(action: str | None, *, preedit: bool = False) -> bool:
     return action in (FORM_NEXT, FORM_PREVIOUS, FORM_PARENT)
 
 
-def search_action(key: str, *, ctrl: bool = False, editable: bool = False) -> str | None:
-    """A key in search mode that is not the search box's (0033 B).
+def search_action(
+    key: str, *, ctrl: bool = False, editable: bool = False, at_top: bool = False
+) -> str | None:
+    """A key in search mode that the window handles itself (0039).
 
-    With the list focused, ``c`` and ``Enter`` copy the selected hint and leave, like ``Enter`` in
-    the box. In the box ``Enter`` arrives as the entry's ``activate`` instead -- after the input
-    method is done with it -- so nothing here takes it from a text field.
+    In the box only ``↓`` is taken, to reach the list: every other key is text, and ``Enter``
+    arrives as the entry's ``activate`` -- after the input method is done with it -- which
+    leaves without copying. On the list ``c`` copies and leaves, ``Enter`` only leaves, and the
+    arrows move the selection; ``↑`` on the first row (``at_top``) goes back to the box.
     """
-    if editable or ctrl:
+    if ctrl:
         return None
-    if key in ("c", "Return", "KP_Enter"):
-        return COPY_AND_LEAVE
-    return None
+    if editable:
+        return FOCUS_LIST if key in ("Down", "KP_Down") else None
+    if key in ("Up", "KP_Up"):
+        return FOCUS_SEARCH if at_top else SELECT_PREVIOUS
+    simple = {
+        "c": COPY_AND_LEAVE,
+        "Return": END_SEARCH,
+        "KP_Enter": END_SEARCH,
+        "Down": SELECT_NEXT,
+        "KP_Down": SELECT_NEXT,
+    }
+    return simple.get(key)
 
 
 def copy_target(hint: Hint | None) -> str | None:

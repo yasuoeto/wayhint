@@ -89,8 +89,12 @@ class Hint:
     learned: str | None = None
 
     def copy_text(self) -> str | None:
-        """Text placed on the clipboard: ``copy`` → ``command`` → ``key``."""
-        return self.copy or self.command or self.key
+        """Text placed on the clipboard: ``copy``, else ``command`` (DECISIONS 0039).
+
+        Not ``key``: a key is pressed, not pasted, so copying it only ever put the wrong thing
+        on the clipboard.
+        """
+        return self.copy or self.command
 
 
 @dataclass(frozen=True)

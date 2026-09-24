@@ -45,7 +45,7 @@ stateDiagram-v2
     normal --> search: Super+Shift+h / 検索ボタン(入場=表示中)
     normal --> edit: Super+Ctrl+h / 編集ボタン(入場=表示中)
 
-    search --> normal: Esc / 完了ボタン / Enter・c でコピー / 2 度目(入場=表示中)
+    search --> normal: Esc / Enter / c でコピー / 完了ボタン / 2 度目(入場=表示中)
     search --> 閉: 2 度目(入場=非表示)
     search --> edit: Super+Ctrl+h(欄の文字は絞り込みに残る)
     search --> 隠れsearch: Super+h
@@ -120,7 +120,7 @@ flowchart TD
     T -- "Super+h / wayhint hide<br/>(search / edit 中)" --> H[隠れる<br/>状態は残る]
     T -- "workspace を離れる" --> W[隠れる<br/>search は normal に戻す]
     T -- "workspace が無くなる" --> D[その workspace の状態を捨てる]
-    T -- "Esc / コピー / フォーム保存 /<br/>エディタ起動 / ウィンドウのフォーカス移動" --> K[消えない]
+    T -- "Esc / Enter / c / フォーム保存 /<br/>エディタ起動 / ウィンドウのフォーカス移動" --> K[消えない]
 ```
 
 **閉じる**(次に出すと context から取り直す):
@@ -137,8 +137,8 @@ flowchart TD
 
 **消えない**:
 
-- `Esc`、`Enter` / `c` でのコピー、フォームの保存。モードを抜けて normal の表示に戻るだけで、フォーカスは元の
-  ウィンドウへ返す(0021 / 0033)。
+- search の `Esc` / `Enter` / `c`(`c` はコピーしてから)、フォームの保存。モードを抜けて normal の表示に戻る
+  だけで、フォーカスは元のウィンドウへ返す(0021 / 0033 / 0039)。
 - 「エディタで編集」。search / edit を抜けて keyboard を放すが、ヒント画面は残る(0023)。edit の下書きは
   次の `Super+Ctrl+h` で戻る。
 - 別のウィンドウにフォーカスを移すこと。context は hotkey を押したときにだけ取る(idle polling はしない)ので、

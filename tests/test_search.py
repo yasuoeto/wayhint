@@ -84,21 +84,38 @@ class FilterTextTest(unittest.TestCase):
 
 
 class SearchKeysTest(unittest.TestCase):
-    def test_c_and_enter_on_the_list_copy_and_leave(self):
-        for key in ("c", "Return", "KP_Enter"):
-            with self.subTest(key=key):
-                self.assertEqual(em.search_action(key), em.COPY_AND_LEAVE)
+    """0039: ``c`` copies and leaves, ``Enter`` only leaves, ``↓`` / ``↑`` cross box and list."""
 
-    def test_nothing_is_taken_from_the_search_box_or_with_a_modifier(self):
+    def test_c_on_the_list_copies_and_leaves(self):
+        self.assertEqual(em.search_action("c"), em.COPY_AND_LEAVE)
+
+    def test_enter_on_the_list_only_leaves(self):
+        for key in ("Return", "KP_Enter"):
+            with self.subTest(key=key):
+                self.assertEqual(em.search_action(key), em.END_SEARCH)
+
+    def test_down_in_the_box_goes_to_the_list(self):
+        for key in ("Down", "KP_Down"):
+            with self.subTest(key=key):
+                self.assertEqual(em.search_action(key, editable=True), em.FOCUS_LIST)
+
+    def test_arrows_on_the_list_move_and_up_at_the_top_goes_back(self):
+        self.assertEqual(em.search_action("Down"), em.SELECT_NEXT)
+        self.assertEqual(em.search_action("Up"), em.SELECT_PREVIOUS)
+        self.assertEqual(em.search_action("Up", at_top=True), em.FOCUS_SEARCH)
+        self.assertEqual(em.search_action("KP_Up", at_top=True), em.FOCUS_SEARCH)
+
+    def test_nothing_else_is_taken_from_the_search_box_or_with_a_modifier(self):
         self.assertIsNone(em.search_action("c", editable=True))
         self.assertIsNone(em.search_action("Return", editable=True))  # the IME's first
+        self.assertIsNone(em.search_action("Up", editable=True))
         self.assertIsNone(em.search_action("c", ctrl=True))
         self.assertIsNone(em.search_action("x"))
 
-    def test_copy_target_is_the_copy_button_rule(self):
+    def test_copy_target_is_copy_then_command_never_key(self):
         self.assertEqual(em.copy_target(hint("a", copy="c", command="m", key="k")), "c")
         self.assertEqual(em.copy_target(hint("a", command="m", key="k")), "m")
-        self.assertEqual(em.copy_target(hint("a", key="k")), "k")
+        self.assertIsNone(em.copy_target(hint("a", key="k")))
         self.assertIsNone(em.copy_target(hint("a", kind="note")))
         self.assertIsNone(em.copy_target(None))
 

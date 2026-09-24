@@ -381,5 +381,83 @@ class EditFromSearchTest(RealWindowCase):
         self.assertIn('b: "pane"', self.state.read_text())
 
 
+class SearchKeysOnTheWindowTest(RealWindowCase):
+    """0039 on the real widgets: ``Enter`` leaves, ``↓`` reaches the list, ``c`` copies there."""
+
+    SHEET = (
+        "id: b\ntitle: B\nhints:\n"
+        "  - {id: split, title: split pane, key: 'C-b %'}\n"
+        "  - {id: compact, title: compact the pane log, kind: command, command: /compact}\n"
+        "  - {id: detach, title: detach, key: 'C-b d'}\n"
+    )
+
+    def setUp(self):
+        super().setUp()
+        (self.root / "hints" / "b.yaml").write_text(self.SHEET)
+        self.daemon.reload_all()
+        copy = mock.patch("wayhint.ui.window.clipboard.copy_text")
+        self.copied = copy.start()
+        self.addCleanup(copy.stop)
+        self.send("show")
+        self.assertEqual(self.send("search-mode")["mode"], "search")
+
+    def type(self, text):
+        self.window._search.set_text(text)
+        self.window._render_from_top()  # what the box's delayed search-changed does
+
+    def test_enter_in_the_box_leaves_without_copying_and_keeps_the_filter(self):
+        self.type("pane")
+        self.window._search.emit("activate")
+        self.assertEqual(self.window.mode, "normal")
+        self.copied.assert_not_called()
+        self.assertEqual(self.window._query, "pane")
+
+    def test_down_then_c_copies_the_selected_command_and_leaves(self):
+        self.type("pane")
+        self.assertTrue(self.key("Down"))
+        self.assertFalse(self.window._editable_focused())
+        self.assertEqual(self.selected(), "split")
+        self.assertTrue(self.key("Down"))
+        self.assertEqual(self.selected(), "compact")
+        self.assertTrue(self.key("c"))
+        self.copied.assert_called_once_with("/compact")
+        self.assertEqual(self.window.mode, "normal")
+        self.assertEqual(self.window._query, "pane")
+
+    def test_c_on_a_hint_with_only_a_key_leaves_without_copying(self):
+        self.type("detach")
+        self.key("Down")
+        self.assertTrue(self.key("c"))
+        self.copied.assert_not_called()
+        self.assertEqual(self.window.mode, "normal")
+        self.assertFalse(self.window._error.get_visible())
+
+    def test_enter_on_the_list_leaves_without_copying(self):
+        self.key("Down")
+        self.key("Down")
+        self.assertTrue(self.key("Return"))
+        self.copied.assert_not_called()
+        self.assertEqual(self.window.mode, "normal")
+
+    def test_up_on_the_first_row_goes_back_to_the_box(self):
+        self.key("Down")
+        self.assertTrue(self.key("Up"))
+        self.assertTrue(self.window._search_focused())
+        self.assertEqual(self.window.mode, "search")
+
+    def test_the_keys_are_shown_under_the_list_only_while_searching(self):
+        self.assertTrue(self.window._help.get_visible())
+        self.assertIn("c copy and leave", self.window._help.get_label())
+        self.window._search.emit("activate")
+        self.assertFalse(self.window._help.get_visible())
+
+    def test_the_copy_button_follows_the_same_rule(self):
+        self.type("")
+        self.key("Down")  # split: a key only
+        self.assertFalse(self.window._copy_btn.get_sensitive())
+        self.key("Down")  # compact: a command
+        self.assertTrue(self.window._copy_btn.get_sensitive())
+
+
 if __name__ == "__main__":
     unittest.main()

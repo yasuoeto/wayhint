@@ -96,8 +96,8 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
     token AND(§31)。入力(検索モード、keyboard を奪う間)と絞り込み(一覧の状態)を分け、
     絞り込みは検索を抜けても残し、sheet ごとに `state.yaml` へ保存する。入口は検索ボタンと
     `wayhint search-mode`(DECISIONS 0033)。
-13. **copy**: 優先 `copy` → `command` → `key`。GTK/GDK clipboard(§32)。検索欄の `Enter`、
-    一覧の `c` / `Enter` でもコピーし、検索を抜ける(0033)。
+13. **copy**: `copy` → `command`(`key` はコピーしない)。GTK/GDK clipboard(§32)。検索中は一覧の `c` で
+    コピーして検索を抜ける。`Enter` はコピーせずに抜ける(0033、0039)。
 14. **editor**: 設定済argvの placeholder `{file}` `{line}` `{hint_id}` を置換し
     `subprocess.Popen(argv, shell=False)`(§34–§38)。
 15. **reload**: Gio.FileMonitor 等の event-driven 監視 → debounce → parse → validation → UI

@@ -269,7 +269,7 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。3 つの ho
 | 状態 | keyboard_mode | 入口 | 出口 |
 |---|---|---|---|
 | `normal` | NONE | show / toggle | hide、workspace 離脱 |
-| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`・`c`(コピー)、もう一度 `search-mode`(入場時の表示状態へ戻る)、閉じるボタン、workspace 離脱 |
+| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`、一覧の `c`(コピーしてから)、もう一度 `search-mode`(入場時の表示状態へ戻る)、閉じるボタン、workspace 離脱 |
 | `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`（入場時の表示状態へ戻る）、閉じるボタン、workspace 離脱 |
 
 - `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
@@ -279,9 +279,11 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。3 つの ho
 - **絞り込みは一覧の状態、`search` はその上に入力欄と grab が乗るだけ**(DECISIONS 0033)。一覧の
   描画は 1 本で、絞り込みは `normal` の表示(favorite 区画込み)にも掛かる。`search` を抜けるどの経路も
   grab を外すだけで絞り込みは残し、`normal` では chip(`×` で解除)で絞り込み中を示す。再入時は保存済みの
-  絞り込みを欄に入れて全選択する。検索欄の `Enter`(一覧に focus があれば `c` / `Enter`)は選択中の
-  hint をコピーして `normal` に戻る。0 件やコピー対象の無い hint では理由を出して留まる。`edit` 中の
-  `search-mode` は拒否して理由を表示する。
+  絞り込みを欄に入れて全選択する。`Enter` と `Esc` はコピーせずに `normal` に戻る。検索欄の `↓` で
+  一覧へ移り(先頭行の `↑` で欄へ戻る)、一覧の `c` は選択中の hint の `copy` → `command` をコピーして
+  `normal` に戻る。コピー対象が無ければコピーせずに戻る(DECISIONS 0039)。キーはすべて window の
+  capture 段で読み、一覧の focus には頼らない(`editmode.search_action`)。search 中は一覧の下にキーの
+  説明を出す(edit と同じ `_help`)。`edit` 中の `search-mode` は拒否して理由を表示する。
 - `edit` への入場条件: active sheet が last-known-good 表示でないこと（`⚠ YAML error` 中は拒否し理由を表示）。
 - エラー行は共用。YAML error と context 取得の失敗は成り立つ間ずっと出し、操作への一回限りの答え
   (拒否の理由など)は **次のモード変更で消えて**前者に戻る(例: 編集中の `search-mode` の拒否は、編集を
@@ -703,8 +705,8 @@ daemon 化して session のプロセスグループを抜けるので、session
   (回転できるモニタが要るため未実施)
 - T38 keybinding → `wayhint search-mode` で overlay が出て検索欄に focus が入り、日本語 IME で入力できる
   **(2026-09-23 確認済)**
-- T39 語を打って `Enter` → clipboard に入り、元アプリに focus が戻る。overlay は絞り込まれたまま `normal`
-  **(2026-09-23 確認済)**
+- T39 語を打って `Enter` → 元アプリに focus が戻る。overlay は絞り込まれたまま `normal`
+  **(2026-09-23 確認済。当時は `Enter` でコピーもした。0039 でコピーは T47 の `c` に移った)**
 - T40 `Esc` で抜けても絞り込みが残り、chip が出る。chip の `×` で全件に戻る
   **(2026-09-23 確認済)**
 - T41 daemon を再起動しても、同じ sheet を開けば同じ絞り込み **(自動テスト済:
@@ -722,6 +724,9 @@ daemon 化して session のプロセスグループを抜けるので、session
   `search` 中に「エディタで編集」→ `normal` に戻り、保存のたびに絞り込まれた一覧が更新される
   **(自動テスト済: `SearchChecklistTest`、in-place 保存と rename 保存の両方)**。本物の gvim でも
   **(2026-09-23 確認済)**
+- T47 検索中は一覧の下にキーの説明が出る。語を打って `↓` → `c` → 選択中の hint の command が clipboard に
+  入り、元アプリに貼れる。key だけの hint で `c` → コピーせずに元アプリへ戻る。一覧の先頭で `↑` → 検索欄
+  **(キー操作とコピー対象は自動テスト済: `SearchKeysOnTheWindowTest`、clipboard の中身と貼り付けは実機未確認)**
 
 ## Known limits and future work
 
