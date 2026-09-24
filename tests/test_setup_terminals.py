@@ -307,3 +307,29 @@ class EndToEndTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LanguageTest(unittest.TestCase):
+    """Messages follow the locale, the way wayhint's interface does; English when unset."""
+
+    def say(self, **env: str) -> str:
+        clean = {k: v for k, v in os.environ.items() if k not in ("LC_ALL", "LC_MESSAGES", "LANG")}
+        with unittest.mock.patch.dict(os.environ, {**clean, **env}, clear=True):
+            return setup_terminals.say("  wrapper   {target}: will create", target="/x")
+
+    def test_english_without_a_locale(self) -> None:
+        self.assertEqual(self.say(), "  wrapper   /x: will create")
+
+    def test_japanese_under_a_japanese_locale(self) -> None:
+        self.assertEqual(self.say(LANG="ja_JP.UTF-8"), "  wrapper   /x: 作成します")
+
+    def test_lc_all_wins_over_lang(self) -> None:
+        self.assertEqual(self.say(LANG="ja_JP.UTF-8", LC_ALL="C"), "  wrapper   /x: will create")
+
+    def test_every_japanese_message_takes_the_same_values(self) -> None:
+        """A translation that names a placeholder the English one does not would raise."""
+        import string
+
+        for english, japanese in setup_terminals.JA.items():
+            names = {f for _, f, _, _ in string.Formatter().parse(english) if f}
+            self.assertEqual(names, {f for _, f, _, _ in string.Formatter().parse(japanese) if f})
