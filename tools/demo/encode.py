@@ -13,6 +13,7 @@ whatever happens, so the plain video is usable without re-encoding anything.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,6 +74,38 @@ def encode(
             argv += ["-vf", filters]
         argv += ["-c:v", codec, *extra, "-pix_fmt", "yuv420p", "-r", fps, str(target)]
         subprocess.run(argv, check=True, capture_output=True, timeout=3600)
+        written.append(target)
+    return written
+
+
+def caption_stills(
+    shots: list[tuple[Step, Path]],
+    out_dir: Path,
+    language: str,
+    *,
+    font_file: str,
+    height: int,
+    work_dir: Path,
+) -> list[Path]:
+    """Each step's still with its caption burnt in, as the subtitled video shows it.
+
+    The same ``drawtext`` as :func:`encode`, on the one PNG a step's frames are copies of, so
+    the result is what every frame of that step in ``.sub.mp4`` looks like -- without H.264's
+    loss, which differs between two encodes of the same picture and would make every step read
+    as changed to ``--review``. A step without a caption is copied as it is.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for step, shot in shots:
+        target = out_dir / shot.name
+        text = step.caption.get(language)
+        if not text:
+            shutil.copyfile(shot, target)
+        else:
+            burn = _drawtext([Caption(text, 1, 1)], work_dir, font_file, height)
+            argv = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(shot), "-vf", burn,
+                    "-frames:v", "1", "-update", "1", str(target)]  # fmt: skip
+            subprocess.run(argv, check=True, capture_output=True, timeout=60)
         written.append(target)
     return written
 

@@ -25,7 +25,9 @@ from pathlib import Path
 from tools import headless as headless_mod
 from tools.demo import __main__ as cli
 from tools.demo import actions as act
+from tools.demo import encode as enc
 from tools.demo import names as nm
+from tools.demo import review as rv
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
@@ -1462,6 +1464,122 @@ class StartupUnwindTest(unittest.TestCase):
             demo.__enter__()
         self.assertTrue(fake.entered)
         self.assertTrue(fake.exited, "the headless session was left running")
+
+
+class ReviewTest(unittest.TestCase):
+    """``--review``: which steps of a new take need looking at, matched by id, not number."""
+
+    def take(self, **steps: bytes) -> dict[str, Path]:
+        folder = scratch(self)
+        for number, (step, data) in enumerate(steps.items(), start=1):
+            (folder / f"{number:02d}-{step}.png").write_bytes(data)
+        (folder / "notes.txt").write_text("not a step")
+        return rv.steps_by_id(folder)
+
+    def test_steps_are_matched_by_id_when_a_step_is_inserted_above(self) -> None:
+        base = self.take(open=b"a", show=b"b")
+        new = self.take(open=b"a", added=b"n", show=b"b")
+        kinds = {c.step: c.kind for c in rv.compare(base, new, lambda a, b: None)}
+        self.assertEqual(kinds, {"open": "same", "added": "new", "show": "same"})
+
+    def test_identical_bytes_are_not_sent_to_the_differ(self) -> None:
+        calls = []
+        base, new = self.take(open=b"a", show=b"b"), self.take(open=b"a", show=b"c")
+
+        def differ(old: Path, path: Path) -> rv.Box | None:
+            calls.append(path.name)
+            return rv.Box(10, 10, 5, 5)
+
+        changes = rv.compare(base, new, differ)
+        self.assertEqual(calls, ["02-show.png"])
+        kinds = [(c.step, c.kind) for c in changes]
+        self.assertEqual(kinds, [("open", "same"), ("show", "changed")])
+
+    def test_bytes_that_differ_with_the_same_pixels_count_as_same(self) -> None:
+        base, new = self.take(show=b"b"), self.take(show=b"c")
+        self.assertEqual(rv.compare(base, new, lambda a, b: None)[0].kind, "same")
+
+    def test_a_step_the_new_take_dropped_is_reported(self) -> None:
+        base, new = self.take(open=b"a", old=b"o"), self.take(open=b"a")
+        changes = rv.compare(base, new, lambda a, b: None)
+        self.assertEqual(changes[-1].kind, "removed")
+        self.assertIn("removed  old", "\n".join(rv.report(changes)))
+
+    def test_the_bounding_box_says_nothing_changed_as_zero_by_zero(self) -> None:
+        self.assertIsNone(rv.parse_box("0x0+1280+720"))
+        self.assertEqual(rv.parse_box("1209x605+47+24\n"), rv.Box(1209, 605, 47, 24))
+        with self.assertRaises(ValueError):
+            rv.parse_box("garbage")
+
+    def test_the_crop_is_padded_and_kept_inside_the_frame(self) -> None:
+        box = rv.Box(100, 50, 10, 690).padded(32, 1280, 720)
+        self.assertEqual(box, rv.Box(142, 62, 0, 658))
+
+    def takes(self, *, stills: bool) -> tuple[unittest.mock.Mock, Path]:
+        """An adopted take under ``<show>/out`` and a new one under ``--out-dir``."""
+        show, out = scratch(self), scratch(self)
+        for root, data in ((show / "out", b"a"), (out, b"b")):
+            for kind in ("steps", "stills") if stills else ("steps",):
+                folder = root / "ja" / "main" / kind
+                folder.mkdir(parents=True)
+                (folder / f"01-show.{kind}.png").write_bytes(data)
+        return unittest.mock.Mock(root=show, name="x"), out
+
+    def run_review(self, show: unittest.mock.Mock, out: Path) -> tuple[list[str], str]:
+        seen: list[str] = []
+
+        def differ(old: Path, path: Path) -> None:
+            seen.append(path.parent.name)
+
+        args = unittest.mock.Mock(out_dir=out)
+        variant = unittest.mock.Mock()
+        variant.name = "main"
+        stderr = io.StringIO()
+        with (
+            unittest.mock.patch.object(rv, "magick_diff", differ),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(stderr),
+        ):
+            cli._review(args, show, variant, "ja")
+        return seen, stderr.getvalue()
+
+    def test_review_compares_the_captioned_stills_when_both_takes_have_them(self) -> None:
+        seen, warned = self.run_review(*self.takes(stills=True))
+        self.assertEqual(seen, [cli.STILLS])
+        self.assertEqual(warned, "")
+
+    def test_review_falls_back_to_the_bare_steps_and_says_so(self) -> None:
+        seen, warned = self.run_review(*self.takes(stills=False))
+        self.assertEqual(seen, ["steps"])
+        self.assertIn("without captions", warned)
+
+    def test_review_needs_an_out_dir_to_compare_against_out(self) -> None:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            code = cli.main(["--showcase", "common", "--review"])
+        self.assertEqual(code, 1)
+        self.assertIn("--out-dir", stderr.getvalue())
+
+
+class CaptionStillTest(unittest.TestCase):
+    """``stills/``: each step with its caption, drawn the way the subtitled video draws it."""
+
+    def test_a_captioned_step_goes_through_drawtext_and_a_bare_one_is_copied(self) -> None:
+        folder = scratch(self)
+        shots = []
+        for name, caption in (("01-a.png", {"ja": "字幕"}), ("02-b.png", {})):
+            (folder / name).write_bytes(name.encode())
+            shots.append((unittest.mock.Mock(caption=caption), folder / name))
+        with unittest.mock.patch.object(enc.subprocess, "run") as run:
+            written = enc.caption_stills(
+                shots, folder / "stills", "ja", font_file="/f.ttf", height=720, work_dir=folder
+            )
+        self.assertEqual([p.name for p in written], ["01-a.png", "02-b.png"])
+        argv = run.call_args.args[0]
+        self.assertEqual(run.call_count, 1)
+        self.assertIn("drawtext=", argv[argv.index("-vf") + 1])
+        self.assertEqual(argv[-1], str(folder / "stills" / "01-a.png"))
+        self.assertEqual((folder / "stills" / "02-b.png").read_bytes(), b"02-b.png")
 
 
 if __name__ == "__main__":

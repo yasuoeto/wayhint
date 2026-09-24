@@ -11,7 +11,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from tools.demo import actions, capture, encode, names
+from tools.demo import actions, capture, encode, names, review
 from tools.demo import scenario as scn
 from tools.demo import session as sess
 from tools.demo import showcase as shc
@@ -28,6 +28,8 @@ OUT_MARKER = ".wayhint-demo-out"
 Only ``--out-dir`` needs it. A showcase's own ``out/`` is named by the repository and holds
 nothing else; a path off the command line is somebody's directory, and a recording *deletes*
 ``<root>/<language>/<variant>`` before it starts."""
+STILLS = "stills"
+"""``steps/`` with the captions burnt in: what ``--review`` compares when both takes have it."""
 INJECT_ACTIONS = ("key", "type")
 """Actions that go in through the virtual keyboard, and so need ``wtype``."""
 
@@ -46,12 +48,21 @@ def main(argv: list[str] | None = None) -> int:
         only = _steps_named(args.only)
         chosen = [v.select(only, getattr(args, "from")) for v in variants]
         whole = not only and not getattr(args, "from")
-        if not args.record:
+        if args.review and args.out_dir is None:
+            raise sess.DemoError(
+                "--review compares --out-dir with the adopted take in out/; "
+                "record the new take with --out-dir <path> and name it here too"
+            )
+        if not args.record and not args.review:
             return _print_plan(show, script, chosen, args, whole=whole)
-        _check_lengths(script, chosen, whole=whole)
+        if args.record:
+            _check_lengths(script, chosen, whole=whole)
         for language in _languages(args.lang):
             for variant in chosen:
-                _record(args, show, script, variant, language)
+                if args.record:
+                    _record(args, show, script, variant, language)
+                if args.review:
+                    _review(args, show, variant, language)
         return 0
     except (ScenarioError, shc.ShowcaseError, sess.DemoError, names.BadName) as e:
         print(f"demo: {e}", file=sys.stderr)
@@ -80,6 +91,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--only", help="record these steps only, comma separated")
     p.add_argument("--from", help="start at this step")
     p.add_argument("--keep", action="store_true", help="keep the captured frames")
+    p.add_argument(
+        "--review",
+        action="store_true",
+        help="compare the take in --out-dir with the adopted one in out/ and crop what changed "
+        "into <out-dir>/<lang>/<variant>/review/ (after recording, with --record)",
+    )
     p.add_argument(
         "--out-dir",
         type=Path,
@@ -338,6 +355,33 @@ def _record(
             shutil.rmtree(out)
 
 
+def _review(args: argparse.Namespace, show: shc.Showcase, variant: Variant, language: str) -> None:
+    """The steps of the new take that differ from the adopted one, cropped to the change."""
+    base = show.root / shc.OUT / language / variant.name
+    new = args.out_dir.expanduser() / language / variant.name
+    for label, folder in (("adopted take", base), ("new take", new)):
+        if not (folder / "steps").is_dir():
+            raise sess.DemoError(f"no {label} to compare: {folder / 'steps'} does not exist")
+    # The captioned stills when both takes have them; a take recorded before they existed has
+    # only the bare ones, and comparing a captioned still with a bare one marks every step.
+    kind = STILLS if all((folder / STILLS).is_dir() for folder in (base, new)) else "steps"
+    if kind == "steps":
+        print(
+            f"demo: warning: comparing {show.name} {variant.name} without captions "
+            f"(no {STILLS}/ in both takes; re-record the adopted one to include them)",
+            file=sys.stderr,
+        )
+    changes = review.compare(
+        review.steps_by_id(base / kind), review.steps_by_id(new / kind), review.magick_diff
+    )
+    written = review.write(changes, new / review.REVIEW_DIR)
+    print(f"demo: {show.name} {variant.name} in {language}, against {base}:")
+    print("\n".join(review.report(changes)))
+    where = new / review.REVIEW_DIR
+    print(f"demo: {len(written)} image(s) to look at in {where}" if written else
+          "demo: nothing changed; nothing to look at")  # fmt: skip
+
+
 def _run_step(run: actions.Run, recorder: capture.Recorder, step: Step, number: int, fps: int):
     if step.precondition is not None:
         ok, seen = actions.satisfied(run, step.precondition)
@@ -375,6 +419,14 @@ def _finish(
         square=variant.square,
     )
     encode.write_srt(out / f"{stem}.srt", captions, script.output.fps)
+    encode.caption_stills(
+        recorder.shots,
+        out / STILLS,
+        language,
+        font_file=font,
+        height=script.output.height,
+        work_dir=out / "captions" / "stills",
+    )
     sheet = capture.contact_sheet(recorder, out / "contact-sheet.png", font)
     if not args.keep:
         shutil.rmtree(recorder.frames_dir)
