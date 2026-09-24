@@ -1,7 +1,7 @@
 """Phase 7b: the hint-editing CLI, the new IPC commands, and the display order (0014 D7).
 
 Headless: every test works on a tmp config directory, and points ``XDG_RUNTIME_DIR`` at an empty
-one so that ``--sheet``-less commands find no daemon instead of talking to the real one.
+one so that nothing can talk to the real daemon.
 """
 
 import contextlib
@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from wayhint import ipc
-from wayhint.cli import CommandError, _no_sheet_message, main, neighbour
+from wayhint.cli import CommandError, main, neighbour
 from wayhint.daemon import Daemon
 from wayhint.models import Hint, ProcessInfo, ResolvedContext, SourceLocation
 from wayhint.selection import same_group, sort_hints
@@ -238,10 +238,31 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertTrue(target.exists())
 
-    def test_without_sheet_and_without_daemon(self) -> None:
-        code, _out, err = self.run_cli("edit", "alpha", "--title", "x")
-        self.assertEqual(code, 1)
-        self.assertIn("--sheet", err)
+    def test_every_editing_command_needs_sheet(self) -> None:
+        # Guessing the sheet from the focused window picks the terminal the command was typed
+        # in (DECISIONS 0038), so there is no guess: without --sheet nothing is read or written.
+        text = self.sheet.read_text()
+        for argv in (
+            ("add", "x"),
+            ("edit", "alpha", "--title", "x"),
+            ("remove", "alpha"),
+            ("favorite", "alpha"),
+            ("move", "alpha", "down"),
+        ):
+            with self.subTest(argv=argv):
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as raised:
+                    main(list(argv))
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn("--sheet", err.getvalue())
+        self.assertEqual(self.sheet.read_text(), text)
+        self.assertEqual(sorted(p.name for p in self.sheet.parent.iterdir()), ["demo.yaml"])
+
+    def test_parent_option_is_gone(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            main(["add", "x", "--parent", "--sheet", "demo"])
+        self.assertIn("--parent", err.getvalue())
 
     def test_unknown_sheet(self) -> None:
         code, _out, err = self.run_cli("remove", "alpha", "--sheet", "nope")
@@ -307,9 +328,3 @@ class IpcCommandTest(unittest.TestCase):
                 "error": "desktop context unavailable",
             },
         )
-
-    def test_no_sheet_message_carries_the_reason(self) -> None:
-        message = _no_sheet_message({"error": "desktop context unavailable"})
-        self.assertIn("desktop context unavailable", message)
-        self.assertIn("--sheet", message)
-        self.assertNotIn("(", _no_sheet_message({}), "no reason, no parenthesis")
