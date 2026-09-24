@@ -141,13 +141,21 @@ steps:
     wait_for: {overlay: visible, label: "Claude Code", hints: 15}
     hold: 2.0
 
+  - id: search-intro
+    # search's own opening: the same key as claude-again, with the caption that says what this
+    # video is about (the variant starts on its own, without overview's §1).
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    caption: {ja: "ヒントを探して、そのまま使う"}
+    hold: 4.0
+
   - id: keep-typing
     type: "write tests"
     precondition: {overlay: visible}
     wait_for:
       overlay: visible
       unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
-    caption: {ja: "通常表示中はキーボードを奪わない"}
+    caption: {ja: "ヒント画面を出したまま、そのまま入力できる"}
     hold: 8.0
 
   - id: erase-line
@@ -182,7 +190,7 @@ steps:
   - id: copy-and-leave
     key: c
     wait_for: {button: search, hints: 1}
-    caption: {ja: "c で選択中のヒントのコマンドをコピーして戻る"}
+    caption: {ja: "c で選択中のヒントのコマンドをコピーして元のウィンドウに戻る"}
     hold: 4.5
 
   - id: paste
@@ -194,12 +202,35 @@ steps:
     caption: {ja: "絞り込みは残り、入力は元のウィンドウへ"}
     hold: 5.5
 
+  # Another sheet, and back: the filter belongs to the Claude Code sheet, not to the overlay.
+  - id: other-tab
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: other-sheet
+    key: super+h
+    wait_for: {overlay: visible, label: "Herdr", hints: 8}
+    caption: {ja: "別のシートには、絞り込みは掛からない"}
+    hold: 5.0
+
+  - id: back-tab
+    herdr: [tab, focus, "w1:t1"]
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: back-filtered
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 1}
+    caption: {ja: "戻ると、絞り込みはそのまま"}
+    hold: 5.0
+
   - id: clear-filter
     press: {button: clear-filter}
     precondition: {overlay: visible, hints: 1}
     wait_for: {overlay: visible, hints: 15}
-    caption: {ja: "絞り込みはシートごとに残る。解除は ×"}
-    hold: 5.5
+    caption: {ja: "絞り込みはシートごとに残る。解除は × か、検索ボックスを空にする"}
+    hold: 6.0
 
   # --- §5 主役3: その場で育てる -------------------------------------------------------------------
   - id: edit-mode
@@ -334,12 +365,12 @@ variants:
       - close
       - stack
   search:
-    target: 50
+    target: 64
     tolerance: 6
     steps:
       - boot-herdr
       - boot-claude
-      - claude-again
+      - search-intro
       - keep-typing
       - erase-line
       - open-search
@@ -347,6 +378,10 @@ variants:
       - to-list
       - copy-and-leave
       - paste
+      - other-tab
+      - other-sheet
+      - back-tab
+      - back-filtered
       - clear-filter
       - close
   edit:
