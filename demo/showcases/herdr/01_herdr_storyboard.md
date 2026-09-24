@@ -57,12 +57,12 @@
 | 74–78 | vi の窓を閉じ、Claude Code のタブへ戻る | (字幕なし) |
 | 78–86 | `Super+H` → `Herdr › Claude Code` が 12 件。Herdr の分は PgUp/PgDn と貼り付けの 3 件 | Herdr のヒントは scroll と input だけになる |
 | 86–95 | 端末の窓が開き、`wayhint context --shown` の出力(`parent herdr: 3/6 shown`、`categories: scroll, input -- nested.export_categories (herdr.yaml)`) | wayhint context --shown で、どこで絞ったかが分かる |
-| 95–103 | 端末の窓を閉じ、`Super+H` で閉じる | 見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ |
+| 95–103 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
 
 ## 2. 字幕の書き方メモ
 
 規約は `demo/README.md`「字幕の書き方」が正。この showcase が守るのはその 8 番——締めの 1 枚は
-見つけ方 3 本で同じ文言:「見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ」。
+見つけ方 3 本で同じ文言:「Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる」。
 主役 3 場面の見出し字幕（7 番）に触れるときも、`common` と同じ文言を使う。
 
 ## 3. 撮影後のチェック

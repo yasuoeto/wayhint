@@ -320,13 +320,18 @@ argv・shell 無しで呼び、**本物の出力**を `$ wayhint context --shown
 focus があるまま `Super+H` を押すと別のウィンドウの hotkey として一覧が差し替わるので、閉じる前に
 `close: {window: shown}` で元のウィンドウへ戻す。
 
+`bin/setup-dry-run` も同じ作りで、`./scripts/setup-terminals` を**引数無し**(dry run。何も書かない)で
+session の使い捨て `$HOME` に対して実行し、本物の出力を出す。画面では `$HOME` を `~` にする(session の
+home は録画ごとに名前が変わる runtime ディレクトリで、人が自分のパスを読む形でもない)。dry run は
+やることが残っていれば exit 1 なので、1 までは成功として扱い、2 以上なら rename せずに止める。
+
 `bin/foot-wayhint` は README「Terminal の複数窓」の wrapper(app_id に自分の pid を入れる)、
 `bin/foot-herdr` は Herdr 用(app_id に `herdr` を含める。`docs/TERMINALS.md` の前提)。どちらも
 `fixtures/foot.ini` を読む。
 
 **どちらの wrapper も引数を素通ししない。** 受け取るのは `--app-id=` と `--title=` だけで、
 `foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` `less`
-`wayhint-shown` のいずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
+`wayhint-shown` `setup-dry-run` のいずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
 shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
 `foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
 wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。
@@ -380,7 +385,7 @@ wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先�
    - 通常表示中はキーボードを奪わない
    - 忘れていた操作を見つけたら、その場で書く
 8. 見つけ方 3 本(`herdr` / `terminal` / `gui`)の締めは同じ 1 枚:
-   見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ
+   Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる
 9. 台本の表の秒と字幕は脚本と同期する。**同期を保つのは人**——字幕を変えるときは台本と
    `02_*_scenario.yaml` の `caption` を同じ commit で直す。ずれたまま commit すれば
    `--validate` と `./scripts/check` が落ちる(「台本と脚本のずれを見る」)が、落ちたものを

@@ -14,6 +14,9 @@ session: {herdr: false}
 windows:
   - {title: less, x: 36, y: 56, width: 560, height: 380}
   - {title: vi, x: 112, y: 240, width: 560, height: 380}
+  # The terminal `./scripts/setup-terminals` is read in. Wide, because no overlay is on screen
+  # while it is up and its longest line (the Ghostty .desktop) is about 80 columns.
+  - {title: setup, x: 36, y: 56, width: 1200, height: 360}
   # The terminal `wayhint context --shown` is read in, over the other two and clear of the
   # overlay: what it prints is about the overlay, so both have to be in view.
   - {title: shown, x: 40, y: 292, width: 620, height: 310}
@@ -27,7 +30,7 @@ steps:
       context: {active_sheet: less, process_name: less}
       overlay: hidden
       timeout: 30
-    caption: {ja: "multiplexer を使っていない端末でも"}
+    caption: {ja: "herdr などの multiplexer を使っていない端末でも"}
     hold: 5.0
 
   - id: supported
@@ -36,6 +39,29 @@ steps:
     caption: {ja: "foot / kitty / Ghostty に対応"}
     hold: 6.0
 
+  # --- the one step of setup, before it is used ------------------------------------------------
+  - id: open-setup
+    # The real dry run in the session's throwaway home: it writes nothing (docs/TERMINALS.md).
+    spawn: {window: setup, argv: [foot-wayhint, -e, setup-dry-run]}
+    wait_for:
+      context: {process_name: setup-dry-run}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "端末で使うには、前準備が 1 つ要る"}
+    hold: 6.0
+
+  - id: setup-oneshot
+    pause: true
+    wait_for: {context: {process_name: setup-dry-run}}
+    caption: {ja: "準備は scripts/setup-terminals 一発。既定は確認だけ"}
+    hold: 7.0
+
+  - id: close-setup
+    close: {window: setup}
+    wait_for: {context: {active_sheet: less, process_name: less}, timeout: 20}
+    hold: 1.0
+
+  # --- in use -----------------------------------------------------------------------------------
   - id: less-hints
     key: super+h
     wait_for:
@@ -43,20 +69,8 @@ steps:
       overlay: visible
       label: "Less"
       hints: 6
-    caption: {ja: "/proc を辿り、tty の前面にいるプロセスを取る"}
+    caption: {ja: "端末の中で動いているプロセスのヒントが出る"}
     hold: 8.0
-
-  - id: how-pid
-    pause: true
-    wait_for: {overlay: visible, label: "Less"}
-    caption: {ja: "端末は foot.p<pid> の app_id で起動している"}
-    hold: 7.0
-
-  - id: how-setup
-    pause: true
-    wait_for: {overlay: visible, label: "Less"}
-    caption: {ja: "配線は scripts/setup-terminals。既定は dry run"}
-    hold: 7.0
 
   - id: open-vi
     # The new window takes the focus, which is what the next two steps are about. Nothing
@@ -72,7 +86,7 @@ steps:
   - id: how-two-windows
     pause: true
     wait_for: {overlay: visible, label: "Less"}
-    caption: {ja: "ウィンドウが 2 枚でも、pid で取り違えない"}
+    caption: {ja: "ウィンドウが 2 枚でも、それぞれの中身を取り違えない"}
     hold: 7.0
 
   - id: vi-hints
@@ -85,12 +99,7 @@ steps:
     caption: {ja: "別のウィンドウで押し直せば、その中のプロセス"}
     hold: 8.0
 
-  - id: no-terminal-sheet
-    pause: true
-    wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "端末そのもののシートは要らない"}
-    hold: 7.0
-
+  # --- the terminal's own hints -----------------------------------------------------------------
   - id: write-foot
     # A sheet for the terminal itself, `^foot$` as it is written for a window whose app_id is
     # `foot.p<pid>`. Only in the session's copy: `demo/fixtures/` has no foot sheet, so the
@@ -107,14 +116,14 @@ steps:
     wait_for: {context: {active_sheet: less, process_name: less}, timeout: 20}
     hold: 1.0
 
-  - id: foot-regex
-    # The same vi window again, now on the file just written, so `^foot$` is what is on screen
-    # while the caption says it.
+  - id: foot-sheet
+    # The same vi window again, now on the file just written, so the terminal's own hints are
+    # what is on screen while the caption talks about them.
     spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/foot.yaml"]}
     wait_for:
       context: {active_sheet: vi, process_name: vi}
       timeout: 30
-    caption: {ja: "端末のシートを書くなら ^foot$ のまま"}
+    caption: {ja: "端末自体のヒント（コピー・貼り付け）も書ける"}
     hold: 8.0
 
   - id: foot-mixed
@@ -125,9 +134,10 @@ steps:
       overlay: visible
       label: "スクロールバックを検索"
       hints: 8
-    caption: {ja: "foot.p<pid> のウィンドウにも当たり、ヒントが混ざる"}
+    caption: {ja: "中のプロセスのヒントと一緒に出る"}
     hold: 8.0
 
+  # --- when it does not work ------------------------------------------------------------------
   - id: context-cli
     # The terminal opens over the other two and takes the focus; the overlay stays as it was
     # opened, and `--shown` reports that one (docs/SHEETS.md §6).
@@ -137,7 +147,7 @@ steps:
       overlay: visible
       label: "スクロールバックを検索"
       timeout: 30
-    caption: {ja: "chain に ProcAdapter があれば、端末の中を見ている"}
+    caption: {ja: "出ないときは wayhint context --shown で確かめる"}
     hold: 9.0
 
   - id: close-shown
@@ -150,26 +160,26 @@ steps:
   - id: outro
     key: super+h
     wait_for: {overlay: hidden}
-    caption: {ja: "見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ"}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
     hold: 7.0
 
 variants:
   main:
-    target: 92
+    target: 85
     tolerance: 9
     steps:
       - intro
       - supported
+      - open-setup
+      - setup-oneshot
+      - close-setup
       - less-hints
-      - how-pid
-      - how-setup
       - open-vi
       - how-two-windows
       - vi-hints
-      - no-terminal-sheet
       - write-foot
       - close-vi
-      - foot-regex
+      - foot-sheet
       - foot-mixed
       - context-cli
       - close-shown

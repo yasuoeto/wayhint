@@ -180,7 +180,7 @@ steps:
   - id: outro
     key: super+h
     wait_for: {overlay: hidden}
-    caption: {ja: "見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ"}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
     hold: 7.0
 
 variants:

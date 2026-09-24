@@ -33,12 +33,12 @@
 | 13–21 | sub-header に app_id だけが出ている | 覗き込むプロセスが無いので、sub-header は app_id |
 | 21–28 | 同じ画面 | match.wayland に app_id を書くだけ |
 | 28–37 | 端末の窓が開き、`wayhint context --shown` の出力(`desktop_app=dev.wayhint.demo.Notes`、`process` も `chain` も無い) | wayhint context --shown の desktop_app と突き合わせる |
-| 37–45 | 端末の窓を閉じ、`Super+H` で閉じる | 見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ |
+| 37–45 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
 
 ## 2. 字幕の書き方メモ
 
 規約は `demo/README.md`「字幕の書き方」が正。この showcase が守るのはその 8 番——締めの 1 枚は
-見つけ方 3 本で同じ文言:「見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ」。
+見つけ方 3 本で同じ文言:「Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる」。
 主役 3 場面の見出し字幕（7 番）に触れるときも、`common` と同じ文言を使う。
 
 ## 3. 撮影後のチェック

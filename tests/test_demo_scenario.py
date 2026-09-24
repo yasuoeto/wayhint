@@ -821,6 +821,32 @@ class ShownTerminalTest(unittest.TestCase):
         self.assertIn("wayhint-shown", text.split("STUBS='", 1)[1].split("'", 1)[0].split())
 
 
+class SetupDryRunTest(unittest.TestCase):
+    """``demo/bin/setup-dry-run`` shows the real dry run with the session's home as ``~``."""
+
+    def stub(self):
+        loader = importlib.machinery.SourceFileLoader("demo_setup", str(BIN / "setup-dry-run"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_the_home_prefix_is_written_as_a_tilde(self) -> None:
+        line = "  wrapper   /run/user/1000/wh-demo1/home/.local/bin/foot-wayhint: 作成します"
+        self.assertEqual(
+            self.stub().tilde(line, "/run/user/1000/wh-demo1/home/"),
+            "  wrapper   ~/.local/bin/foot-wayhint: 作成します",
+        )
+
+    def test_a_longer_name_that_starts_like_home_is_left_alone(self) -> None:
+        line = "/run/user/1000/wh-demo1/home2/x"
+        self.assertEqual(self.stub().tilde(line, "/run/user/1000/wh-demo1/home"), line)
+
+    def test_the_terminal_wrapper_lets_it_start(self) -> None:
+        text = (BIN / "foot-wayhint").read_text()
+        self.assertIn("setup-dry-run", text.split("STUBS='", 1)[1].split("'", 1)[0].split())
+
+
 class NarrowedSheetTest(unittest.TestCase):
     """The narrowed herdr.yaml of the herdr showcase stays the fixture plus two lines."""
 

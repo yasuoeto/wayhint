@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""A terminal in which ``./scripts/setup-terminals`` has just been typed, for the scenes that say
+a terminal needs one step of setup and that the step is this one command.
+
+The output is the real one: this runs the repository's own ``scripts/setup-terminals`` with no
+arguments -- its dry run, which writes nothing (docs/TERMINALS.md) -- with a fixed argv and no
+shell, in the session's throwaway ``$HOME``. Two things are changed on the way to the screen:
+the prompt line in front of it is drawn here (the session has no shell, DECISIONS 0032), and
+``$HOME`` is written as ``~``, the way a person reads their own paths. The session's home is a
+runtime directory whose name differs between recordings.
+
+A dry run exits 1 while something is left to do, which in a fresh home is always. Anything
+else above 1 is a failure: it is put on screen and the rename below is skipped.
+
+``comm`` is renamed only *after* the output is written, as in ``wayhint-shown``: the scenario
+waits for this name, so a step that sees it knows the text is already on screen.
+"""
+
+import ctypes
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "setup-terminals"
+SHOWN = "./scripts/setup-terminals"
+
+PROMPT = "\033[38;5;150m"
+COMMAND = "\033[38;5;252m"
+TEXT = "\033[38;5;188m"
+OFF = "\033[0m"
+
+
+def rename() -> None:
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
+    except OSError:
+        pass
+
+
+def tilde(text: str, home: str) -> str:
+    """``$HOME`` as ``~``, only where it is a whole path prefix."""
+    if not home or home == "/":
+        return text
+    return text.replace(home.rstrip("/") + "/", "~/")
+
+
+def main() -> int:
+    done = subprocess.run(
+        [str(SCRIPT)], capture_output=True, text=True, timeout=20, check=False
+    )
+    home = os.environ.get("HOME", "")
+    out = [f"{PROMPT}${OFF} {COMMAND}{SHOWN}{OFF}"]
+    out += [f"{TEXT}{tilde(line, home)}{OFF}" for line in done.stdout.splitlines()]
+    if done.returncode not in (0, 1):
+        sys.stdout.write("\n".join([*out, done.stderr]) + "\n")
+        sys.stdout.flush()
+        sys.stderr.write(f"setup-dry-run: exit {done.returncode}: {done.stderr}\n")
+        sys.stdin.read()
+        return 1
+    out.append(f"{PROMPT}${OFF} ")
+    sys.stdout.write("\n".join(out))
+    sys.stdout.flush()
+    rename()
+    try:
+        sys.stdin.read()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
