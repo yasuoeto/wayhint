@@ -1476,6 +1476,25 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   またいで同じ step を使う。4 本と見つけ方の 3 本を 1 本にまとめる動画は `demo/showcases/all/` で作る予定で、
   まだ無い。
 
+## 0043 — 通しの紹介動画は showcase `all` に 60 / 180 / 300 秒の 3 variant で置き、場面は元の showcase から写す
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Context**: common の 4 本と見つけ方の 3 本(herdr / terminal / gui)で場面と字幕を見直し終えたので、
+  それらをまとめた通しの動画(SNS・README 用の 60 秒、紹介の 180 秒、ひととおりの 300 秒)が要る。
+  0042 で `demo/showcases/all/` に作ると決めていた。脚本の step は showcase をまたいで共有できず、
+  hold は 1 つの step に 1 つしか書けない。
+- **Decision**: showcase `all` に `60s` / `180s` / `300s` の 3 variant を置く。どれも clean session から
+  撮る完全な 1 本で、長い版から切り出さない(0032)。場面と字幕は元の showcase から写し、尺が違う場面は
+  `m-`(180 秒)/ `q-`(60 秒)の別 step にする。1 本の中では状態を章をまたいで引き継ぎ(足したヒントは
+  後の章でも一覧に残る)、絞った設定は章の終わりで fixture に戻す。60 秒版は正方形も出す。
+- **Alternatives**: 7 本の出力を後から ffmpeg でつなぐ(本ごとに Herdr の起動から始まり、つなぎ目で
+  同じ冒頭が繰り返される); step を showcase 間で共有する仕組みを recorder に足す(脚本が 1 ファイルで
+  読めなくなり、元の showcase を直すと all が黙って変わる)。
+- **Consequences**: 字幕は元の showcase と all の 2 か所にある。直すときは両方を直す(台本に明記)。
+  300 秒版は Herdr・端末・GUI の窓を 1 つの session で開いては閉じるので、窓の配置は all の脚本で 1 つに
+  まとめてある(`vi` は herdr 側の位置)。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

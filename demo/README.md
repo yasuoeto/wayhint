@@ -36,6 +36,14 @@ demo/
       out/<lang>/<variant>/       生成物。追跡しない
 ```
 
+いまある showcase:
+
+| showcase | variant | 中身 |
+|---|---|---|
+| `herdr` / `terminal` / `gui` | `main` | 見つけ方 3 本。Herdr の中・端末の中・GUI アプリ |
+| `common` | `overview` / `search` / `edit` / `sheets` | 共通の動作を中身で 4 本に分けたもの(DECISIONS 0042) |
+| `all` | `60s` / `180s` / `300s` | 上の 7 本の場面を写してまとめた通しの動画(DECISIONS 0043)。**字幕は元の showcase と 2 か所にある**ので、直すときは両方 |
+
 ファイル名は `<NN>_<showcase>_<role>.<ext>`。番号は人が工程順に並べるためのもので、ツールは
 見ない。役割は `storyboard`(`.md`)と `scenario`(`.yaml`)。中央部分がディレクトリ名と違えば
 **警告**(名前を直しそこねたコピーでも録画は通す)、同じ役割のファイルが 2 つあれば **error**

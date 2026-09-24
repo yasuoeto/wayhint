@@ -1,0 +1,920 @@
+# The all showcase, as a script: common's four videos and the three ways of finding what is
+# running (herdr / terminal / gui) in one recording, at three lengths. 01_all_storyboard.md says
+# what each length argues; this file says what the recorder does (DECISIONS 0032, 0043).
+#
+# The scenes are copied from the other four showcases, with the captions they settled on. A step
+# cannot be shared between showcases, and a hold belongs to one step, so a scene that runs for a
+# different time in the shorter cuts is a step of its own: `m-` for 180s, `q-` for 60s.
+#
+# State carries from chapter to chapter inside one recording: the hint added in the edit chapter
+# makes Claude Code's list 16 long for everything after it, and the Herdr chapter puts herdr.yaml
+# back the way the fixtures have it before it ends.
+
+output: {width: 1280, height: 720, fps: 30}
+fonts: {ui: "Noto Sans CJK JP", mono: "Noto Sans Mono"}
+session: {herdr: true}
+
+# Every window ends above the caption band (demo/README「字幕帯」): nothing may reach past y=634.
+windows:
+  - {title: Herdr, x: 32, y: 48, width: 620, height: 566}
+  - {title: vi, x: 104, y: 214, width: 560, height: 380}
+  - {title: less, x: 36, y: 56, width: 560, height: 380}
+  - {title: Notes, app_id: "dev.wayhint.demo.Notes", x: 28, y: 40, width: 630, height: 562}
+  - {title: shown, x: 40, y: 292, width: 620, height: 310}
+  - {title: launch, x: 36, y: 214, width: 1200, height: 200}
+  - {title: setup, x: 36, y: 56, width: 1200, height: 480}
+
+steps:
+  # =============================================================================================
+  # A 課題
+  # =============================================================================================
+  - id: open-herdr
+    spawn: {window: Herdr, argv: [foot-herdr]}
+    wait_for:
+      toplevel: "^foot-herdr$"
+      context: {active_sheet: herdr}
+      overlay: hidden
+      timeout: 40
+    caption: {ja: "Herdr の中で Claude Code を動かしている"}
+    hold: 3.0
+
+  - id: start-claude
+    herdr: [pane, run, "w1:p1", claude]
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "操作を忘れるたびに、Web で検索する"}
+    hold: 5.0
+
+  - id: nothing-remains
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "調べたことが、どこにも残らない"}
+    hold: 5.0
+
+  - id: wrong-hints
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "欲しいのは、いま動いているもののヒント"}
+    hold: 5.0
+
+  - id: q-open-herdr
+    spawn: {window: Herdr, argv: [foot-herdr]}
+    wait_for:
+      toplevel: "^foot-herdr$"
+      context: {active_sheet: herdr}
+      overlay: hidden
+      timeout: 40
+    hold: 1.0
+
+  - id: q-start-claude
+    herdr: [pane, run, "w1:p1", claude]
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "操作を忘れるたびに、Web で検索する"}
+    hold: 4.0
+
+  # =============================================================================================
+  # B いつも同じ場所
+  # =============================================================================================
+  - id: show-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    caption: {ja: "hotkey 一発で、フォーカス中のウィンドウのヒント。位置は設定可能"}
+    hold: 6.0
+
+  - id: list-layout
+    cli: refresh
+    wait_for: {overlay: visible, label: "Claude Code"}
+    caption: {ja: "左にキー、中央に説明（あればコマンド）、右に分類"}
+    hold: 4.0
+
+  - id: q-show-hints
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    caption: {ja: "hotkey 一発で、フォーカス中のウィンドウのヒント"}
+    hold: 5.0
+
+  # =============================================================================================
+  # C 主役 1: 一番前のプロセス
+  # =============================================================================================
+  - id: whose-hints
+    cli: refresh
+    wait_for:
+      overlay: visible
+      label: "Claude Code"
+      unchecked: "画面は前の step のまま。次の場面への言い渡しだけが進む"
+    caption: {ja: "見ているのはウィンドウではなく、一番前のプロセス"}
+    hold: 5.0
+
+  - id: new-tab
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: start-codex
+    herdr: [pane, run, "w1:p2", codex]
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      label: "Claude Code"
+      timeout: 30
+    caption: {ja: "ヒント画面は、押し直すまで前のタブのまま"}
+    hold: 5.0
+
+  - id: m-start-codex
+    herdr: [pane, run, "w1:p2", codex]
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      timeout: 30
+    hold: 2.0
+
+  - id: q-start-codex
+    herdr: [pane, run, "w1:p2", codex]
+    wait_for:
+      context: {active_sheet: codex, process_name: codex}
+      overlay: visible
+      timeout: 30
+    hold: 1.0
+
+  - id: switch-pane
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex", hints: 9}
+    caption: {ja: "別のタブで押し直せば、閉じずに差し替わる"}
+    hold: 7.0
+
+  - id: q-switch-pane
+    # 60s has no room for the lead-in caption, so the switch itself carries the headline.
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex", hints: 9}
+    caption: {ja: "見ているのはウィンドウではなく、一番前のプロセス"}
+    hold: 6.0
+
+  - id: parent-hints
+    cli: refresh
+    wait_for: {overlay: visible, label: "Codex"}
+    caption: {ja: "親子関係にあるプロセスのヒントを同時に表示する、親である Herdr の操作も並ぶ"}
+    hold: 7.0
+
+  # =============================================================================================
+  # D 主役 2: 出したまま入力できる、検索してコピー
+  # =============================================================================================
+  # The Claude Code tab: its sheet is the one with commands to copy (codex.yaml and herdr.yaml
+  # hold keys only, and a key is not copied -- DECISIONS 0039).
+  - id: back-to-claude
+    herdr: [tab, focus, "w1:t1"]
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: claude-again
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    hold: 2.0
+
+  - id: keep-typing
+    type: "write tests"
+    precondition: {overlay: visible}
+    wait_for:
+      overlay: visible
+      unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
+    caption: {ja: "ヒント画面を出したまま、そのまま入力できる"}
+    hold: 7.0
+
+  - id: q-keep-typing
+    type: "write tests"
+    precondition: {overlay: visible}
+    wait_for:
+      overlay: visible
+      unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
+    caption: {ja: "ヒント画面を出したまま、そのまま入力できる"}
+    hold: 5.0
+
+  - id: erase-line
+    key: ctrl+u
+    wait_for:
+      overlay: visible
+      unchecked: "端末の行が消えるだけで overlay は変わらない。証拠は frame にしかない"
+    hold: 1.0
+
+  - id: open-search
+    key: super+shift+h
+    precondition: {overlay: visible}
+    wait_for: {button: done}
+    caption: {ja: "検索は Super+Shift+H"}
+    hold: 2.5
+
+  - id: q-open-search
+    key: super+shift+h
+    precondition: {overlay: visible}
+    wait_for: {button: done}
+    hold: 1.0
+
+  - id: type-search
+    # A category, so that three rows are left and ↓ has somewhere to go.
+    type: "session"
+    wait_for: {overlay: visible, hints: 3, text: "session"}
+    caption: {ja: "キーボードの入力先を切り替えるのは、検索を始めたときだけ"}
+    hold: 6.0
+
+  - id: q-type-search
+    type: "session"
+    wait_for: {overlay: visible, hints: 3, text: "session"}
+    caption: {ja: "検索は Super+Shift+H"}
+    hold: 3.0
+
+  - id: to-list
+    key: down
+    wait_for:
+      overlay: visible
+      hints: 3
+      label: "c copy and leave · Enter/Esc leave · ↓ list · Tab category"
+    caption: {ja: "↓ で一覧へ。使えるキーは下に出る"}
+    hold: 4.0
+
+  - id: q-to-list
+    key: down
+    wait_for:
+      overlay: visible
+      hints: 3
+      label: "c copy and leave · Enter/Esc leave · ↓ list · Tab category"
+    hold: 1.0
+
+  - id: move-down
+    key: down
+    wait_for: {overlay: visible, hints: 3, label: "Keeps the summary, drops raw tool output."}
+    caption: {ja: "一覧では ↑↓ でヒントを選ぶ"}
+    hold: 3.5
+
+  - id: q-move-down
+    key: down
+    wait_for: {overlay: visible, hints: 3, label: "Keeps the summary, drops raw tool output."}
+    hold: 1.5
+
+  - id: copy-and-leave
+    key: c
+    wait_for: {button: search, hints: 3}
+    caption: {ja: "c で選択中のヒントのコマンドをコピーして元のウィンドウに戻る"}
+    hold: 4.5
+
+  - id: q-copy-and-leave
+    key: c
+    wait_for: {button: search, hints: 3}
+    caption: {ja: "c でコピーして、元のウィンドウに戻る"}
+    hold: 3.0
+
+  - id: paste
+    key: ctrl+shift+v
+    wait_for:
+      overlay: visible
+      hints: 3
+      unchecked: "端末に /compact が貼られたかは frame にしか出ない"
+    caption: {ja: "絞り込みは残り、入力は元のウィンドウへ"}
+    hold: 5.0
+
+  - id: q-paste
+    key: ctrl+shift+v
+    wait_for:
+      overlay: visible
+      hints: 3
+      unchecked: "端末に /compact が貼られたかは frame にしか出ない"
+    hold: 2.5
+
+  - id: other-tab
+    herdr: [tab, focus, "w1:t2"]
+    wait_for: {context: {active_sheet: codex}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: other-sheet
+    key: super+h
+    wait_for: {overlay: visible, label: "Codex", hints: 9}
+    caption: {ja: "別のシートには、絞り込みは掛からない"}
+    hold: 5.0
+
+  - id: back-tab
+    herdr: [tab, focus, "w1:t1"]
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: back-filtered
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 3}
+    caption: {ja: "戻ると、絞り込みはそのまま"}
+    hold: 5.0
+
+  - id: clear-filter
+    press: {button: clear-filter}
+    precondition: {overlay: visible, hints: 3}
+    wait_for: {overlay: visible, hints: 15}
+    caption: {ja: "絞り込みはシートごとに残る。解除は × か、検索ボックスを空にする"}
+    hold: 6.0
+
+  - id: q-clear-filter
+    # 60s does not talk about the filter being kept; it is cleared so the edit scene starts
+    # from the whole list.
+    press: {button: clear-filter}
+    precondition: {overlay: visible, hints: 3}
+    wait_for: {overlay: visible, hints: 15}
+    hold: 1.0
+
+  # =============================================================================================
+  # E 主役 3: その場で書く、壊しても戻る
+  # =============================================================================================
+  - id: edit-mode
+    key: super+ctrl+h
+    precondition: {overlay: visible}
+    wait_for:
+      overlay: visible
+      label: "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
+    caption: {ja: "忘れていた操作を見つけたら、その場で書く"}
+    hold: 5.0
+
+  - id: q-edit-mode
+    key: super+ctrl+h
+    precondition: {overlay: visible}
+    wait_for:
+      overlay: visible
+      label: "a add · Enter edit · dd delete · u undo · f favorite · J/K move · Esc leave"
+    caption: {ja: "忘れていた操作を見つけたら、その場で書く"}
+    hold: 4.0
+
+  - id: open-form
+    key: a
+    wait_for: {overlay: visible, label: "Title"}
+    caption: {ja: "追加先は、いま選んでいるヒントと同じシート"}
+    hold: 4.0
+
+  - id: q-open-form
+    key: a
+    wait_for: {overlay: visible, label: "Title"}
+    hold: 1.0
+
+  - id: type-title
+    type: "権限モードを切り替える"
+    wait_for: {overlay: visible, label: "Title", text: "権限モードを切り替える"}
+    hold: 3.5
+
+  - id: q-type-title
+    type: "権限モードを切り替える"
+    wait_for: {overlay: visible, label: "Title", text: "権限モードを切り替える"}
+    hold: 2.0
+
+  - id: next-field
+    key: tab
+    wait_for: {overlay: visible, label: "Key"}
+    hold: 0.6
+
+  - id: type-key
+    type: "Shift+Tab"
+    wait_for: {overlay: visible, label: "Key", text: "Shift+Tab"}
+    hold: 3.5
+
+  - id: q-type-key
+    type: "Shift+Tab"
+    wait_for: {overlay: visible, label: "Key", text: "Shift+Tab"}
+    hold: 2.0
+
+  - id: save-hint
+    key: enter
+    wait_for: {overlay: visible, no_label: "Title", hints: 16}
+    caption: {ja: "Enter で保存すると編集モードは終わる"}
+    hold: 6.0
+
+  - id: q-save-hint
+    key: enter
+    wait_for: {overlay: visible, no_label: "Title", hints: 16}
+    caption: {ja: "Enter で保存すると、すぐ一覧に並ぶ"}
+    hold: 4.0
+
+  - id: break-yaml
+    # herdr.yaml with the `]` of line 5 gone -- common's broken/ file. Not claude-code.yaml: the
+    # hint just added lives there, and putting the fixture back would drop it.
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      source: "showcases/common/broken/{lang}/herdr.yaml"
+    precondition: {overlay: visible}
+    wait_for: {overlay: visible, label: "YAML error"}
+    hold: 0
+
+  - id: open-broken
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/herdr.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "YAML error"
+      timeout: 30
+    caption: {ja: "手で編集して壊しても、最後に読めた内容が残る"}
+    hold: 6.0
+
+  - id: close-broken
+    close: {window: vi}
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: fix-yaml
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      source: "fixtures/hints/{lang}/herdr.yaml"
+    wait_for: {overlay: visible, no_label: "YAML error", hints: 16}
+    caption: {ja: "直せばそのまま復帰する。再起動は要らない"}
+    hold: 6.0
+
+  - id: edit-close
+    key: super+h
+    precondition: {overlay: visible}
+    wait_for: {overlay: hidden}
+    caption: {ja: "忘れた瞬間、いつも同じ場所に、必要な情報がある"}
+    hold: 6.0
+
+  # =============================================================================================
+  # F 見つけ方: Herdr の中
+  # =============================================================================================
+  - id: h-precondition
+    spawn: {window: launch, argv: [foot-wayhint, -e, herdr-launch]}
+    wait_for:
+      context: {process_name: herdr-launch}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "前準備: Herdr は、名前に herdr を付けた端末で開く"}
+    hold: 8.0
+
+  - id: h-close-launch
+    close: {window: launch}
+    wait_for: {context: {active_sheet: claude-code}, overlay: hidden, timeout: 20}
+    hold: 1.0
+
+  - id: h-claude-hints
+    key: super+h
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: visible
+      label: "Claude Code"
+      hints: 16
+    caption: {ja: "Herdr にフォーカス中のタブを聞き、動いているプロセスを取る"}
+    hold: 6.0
+
+  - id: h-close-hints
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
+
+  - id: h-narrow-yaml
+    # herdr's narrowed/ file: the fixture plus `nested.export_categories: [scroll, input]`.
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      source: "showcases/herdr/narrowed/{lang}/herdr.yaml"
+    wait_for:
+      unchecked: "the reload shows only in the list of h-narrowed-hints, which checks it"
+    hold: 0
+
+  - id: h-open-yaml
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/herdr.yaml"]}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: hidden, timeout: 30}
+    caption: {ja: "表示内容を絞り込みたい場合は、設定を書く"}
+    hold: 6.0
+
+  - id: h-close-yaml
+    close: {window: vi}
+    wait_for: {context: {active_sheet: claude-code}, overlay: hidden, timeout: 20}
+    hold: 1.0
+
+  - id: h-narrowed-hints
+    # 16 before: 8 of Claude Code (7 + the one added), 6 of Herdr, 2 of wm. scroll and input
+    # leave 3 of Herdr's.
+    key: super+h
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: visible
+      label: "Claude Code"
+      no_label: "Cycle theme"
+      hints: 13
+    caption: {ja: "Herdr のヒントは scroll と input だけになる"}
+    hold: 6.0
+
+  - id: h-context-cli
+    spawn: {window: shown, argv: [foot-wayhint, -e, wayhint-shown]}
+    wait_for:
+      context: {process_name: wayhint-shown}
+      overlay: visible
+      label: "Claude Code"
+      timeout: 30
+    caption: {ja: "wayhint context --shown で、どこで絞ったかが分かる"}
+    hold: 7.0
+
+  - id: h-close-shown
+    # Back to Herdr, so that the hotkey below hides the overlay instead of replacing it.
+    close: {window: shown}
+    wait_for: {overlay: visible, context: {active_sheet: claude-code}, timeout: 20}
+    hold: 1.0
+
+  - id: h-restore-yaml
+    # The fixture again, so the chapters after this one see all six of Herdr's hints.
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      source: "fixtures/hints/{lang}/herdr.yaml"
+    wait_for: {overlay: visible, label: "Cycle theme", hints: 16}
+    hold: 0
+
+  - id: h-hide
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
+
+  # =============================================================================================
+  # G 見つけ方: 端末の中
+  # =============================================================================================
+  - id: t-intro
+    spawn: {window: less, argv: [foot-wayhint, -e, less, "hints/{lang}/wm.yaml"]}
+    wait_for:
+      context: {active_sheet: less, process_name: less}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "herdr などの multiplexer を使っていない端末でも"}
+    hold: 5.0
+
+  - id: t-supported
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "foot / kitty / Ghostty / Alacritty に対応"}
+    hold: 5.0
+
+  - id: t-open-setup
+    spawn: {window: setup, argv: [foot-wayhint, -e, setup-dry-run]}
+    wait_for:
+      context: {process_name: setup-dry-run}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "端末で使うには、前準備が 1 つ要る"}
+    hold: 5.0
+
+  - id: t-setup-oneshot
+    pause: true
+    wait_for: {context: {process_name: setup-dry-run}}
+    caption: {ja: "準備は scripts/setup-terminals 一発。既定は確認だけ"}
+    hold: 6.0
+
+  - id: t-close-setup
+    close: {window: setup}
+    wait_for: {context: {active_sheet: less, process_name: less}, timeout: 20}
+    hold: 1.0
+
+  - id: t-less-hints
+    key: super+h
+    wait_for:
+      context: {active_sheet: less, process_name: less}
+      overlay: visible
+      label: "Less"
+      hints: 6
+    caption: {ja: "端末の中で動いているプロセスのヒントが出る"}
+    hold: 6.0
+
+  - id: t-open-vi
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/less.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      timeout: 30
+    hold: 2.0
+
+  - id: t-two-windows
+    pause: true
+    wait_for: {overlay: visible, label: "Less"}
+    caption: {ja: "ウィンドウが 2 枚でも、それぞれの中身を取り違えない"}
+    hold: 6.0
+
+  - id: t-vi-hints
+    key: super+h
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "Vi"
+      hints: 5
+    caption: {ja: "別のウィンドウで押し直せば、その一番前のプロセスのヒント"}
+    hold: 6.0
+
+  - id: t-hide-less
+    # From the less window, whose overlay it is (180s stops at the Less list).
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
+
+  - id: t-hide-vi
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
+
+  - id: t-close-vi
+    close: {window: vi}
+    wait_for: {context: {active_sheet: less, process_name: less}, timeout: 20}
+    hold: 1.0
+
+  - id: t-close-less
+    close: {window: less}
+    wait_for: {context: {active_sheet: claude-code}, overlay: hidden, timeout: 20}
+    hold: 1.0
+
+  # =============================================================================================
+  # H 見つけ方: GUI アプリ
+  # =============================================================================================
+  - id: g-open
+    spawn: {window: Notes, argv: [notes]}
+    wait_for:
+      toplevel: "^dev\\.wayhint\\.demo\\.Notes$"
+      context: {active_sheet: notes}
+      overlay: hidden
+      timeout: 30
+    caption: {ja: "GUI アプリでも同じ"}
+    hold: 4.0
+
+  - id: g-hints
+    key: super+h
+    wait_for: {context: {active_sheet: notes}, overlay: visible, label: "Notes", hints: 9}
+    caption: {ja: "アプリごとに、そのアプリのヒントが出る"}
+    hold: 6.0
+
+  - id: g-yaml
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/notes.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "Notes"
+      timeout: 30
+    caption: {ja: "シートの match に、アプリの名前（app_id）を書くだけ"}
+    hold: 6.0
+
+  - id: g-close-vi
+    close: {window: vi}
+    wait_for: {context: {active_sheet: notes}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: g-hide
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
+
+  - id: g-close-notes
+    close: {window: Notes}
+    wait_for: {context: {active_sheet: claude-code}, overlay: hidden, timeout: 20}
+    hold: 1.0
+
+  # =============================================================================================
+  # I シートの書き方
+  # =============================================================================================
+  - id: m-s-open-yaml
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/claude-code.yaml"]}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: hidden, timeout: 30}
+    caption: {ja: "シートは 1 アプリ 1 YAML。match でどこに出すかが決まる"}
+    hold: 8.0
+
+  - id: s-close-yaml
+    close: {window: vi}
+    wait_for: {context: {active_sheet: claude-code}, overlay: hidden, timeout: 20}
+    hold: 1.0
+
+  - id: s-hints
+    # What the file just shown does: the Claude Code sheet, chosen by its match.
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 16}
+    caption: {ja: "match に当たったシートのヒントが出る"}
+    hold: 6.0
+
+  - id: s-config
+    # config.yaml, with `include: [wm]` and `language: ja` within vi's 14 lines. Opened with the
+    # overlay up, so the UI's language is on screen next to it.
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "config.yaml"]}
+    wait_for: {context: {active_sheet: vi, process_name: vi}, overlay: visible, timeout: 30}
+    caption: {ja: "共通のヒントは config.yaml の include で全シートに混ぜる"}
+    hold: 6.0
+
+  - id: s-lang
+    pause: true
+    wait_for: {context: {active_sheet: vi}, overlay: visible}
+    caption: {ja: "ヒントは言語ごと。UI と同じ言語が出る"}
+    hold: 6.0
+
+  - id: s-close-config
+    close: {window: vi}
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: s-idle-tab
+    # Nothing running in it: Herdr's 6 and wm's 2, short enough for the end of the list to show.
+    herdr: [tab, create, --focus]
+    wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
+    hold: 1.0
+
+  - id: s-wm
+    key: super+h
+    wait_for: {overlay: visible, label: "次の窓へ", hints: 8}
+    caption: {ja: "共通のヒントは、どのシートでも末尾に並ぶ"}
+    hold: 6.0
+
+  - id: s-hide
+    key: super+h
+    wait_for: {overlay: hidden}
+    hold: 1.0
+
+  # =============================================================================================
+  # J 締め
+  # =============================================================================================
+  - id: outro
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
+    hold: 6.0
+
+  - id: q-outro
+    key: super+h
+    precondition: {overlay: visible}
+    wait_for: {overlay: hidden}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
+    hold: 6.0
+
+  - id: no-scrape
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "やらないこと: コマンドの実行・AI 生成・画面の読み取り"}
+    hold: 6.0
+
+  - id: stack
+    pause: true
+    wait_for: {overlay: hidden}
+    caption: {ja: "Wayland (labwc) / GTK4 / ヒントは YAML"}
+    hold: 5.0
+
+variants:
+  300s:
+    target: 300
+    tolerance: 15
+    steps:
+      # A
+      - open-herdr
+      - start-claude
+      - nothing-remains
+      - wrong-hints
+      # B
+      - show-hints
+      - list-layout
+      # C
+      - whose-hints
+      - new-tab
+      - start-codex
+      - switch-pane
+      - parent-hints
+      # D
+      - back-to-claude
+      - claude-again
+      - keep-typing
+      - erase-line
+      - open-search
+      - type-search
+      - to-list
+      - move-down
+      - copy-and-leave
+      - paste
+      - other-tab
+      - other-sheet
+      - back-tab
+      - back-filtered
+      - clear-filter
+      # E
+      - edit-mode
+      - open-form
+      - type-title
+      - next-field
+      - type-key
+      - save-hint
+      - break-yaml
+      - open-broken
+      - close-broken
+      - fix-yaml
+      - edit-close
+      # F
+      - h-precondition
+      - h-close-launch
+      - h-claude-hints
+      - h-close-hints
+      - h-narrow-yaml
+      - h-open-yaml
+      - h-close-yaml
+      - h-narrowed-hints
+      - h-context-cli
+      - h-close-shown
+      - h-restore-yaml
+      - h-hide
+      # G
+      - t-intro
+      - t-supported
+      - t-open-setup
+      - t-setup-oneshot
+      - t-close-setup
+      - t-less-hints
+      - t-open-vi
+      - t-two-windows
+      - t-vi-hints
+      - t-hide-vi
+      - t-close-vi
+      - t-close-less
+      # H
+      - g-open
+      - g-hints
+      - g-yaml
+      - g-close-vi
+      - g-hide
+      - g-close-notes
+      # I
+      - m-s-open-yaml
+      - s-close-yaml
+      - s-hints
+      - s-config
+      - s-lang
+      - s-close-config
+      - s-idle-tab
+      - s-wm
+      - s-hide
+      # J
+      - outro
+      - no-scrape
+      - stack
+  180s:
+    target: 180
+    tolerance: 12
+    steps:
+      - open-herdr
+      - start-claude
+      - nothing-remains
+      - show-hints
+      - list-layout
+      - whose-hints
+      - new-tab
+      - m-start-codex
+      - switch-pane
+      - back-to-claude
+      - claude-again
+      - keep-typing
+      - erase-line
+      - open-search
+      - type-search
+      - to-list
+      - move-down
+      - copy-and-leave
+      - paste
+      - clear-filter
+      - edit-mode
+      - open-form
+      - type-title
+      - next-field
+      - type-key
+      - save-hint
+      - edit-close
+      - h-precondition
+      - h-close-launch
+      - h-claude-hints
+      - h-close-hints
+      - t-intro
+      - t-open-setup
+      - t-setup-oneshot
+      - t-close-setup
+      - t-less-hints
+      - t-hide-less
+      - t-close-less
+      - g-open
+      - g-hints
+      - g-hide
+      - g-close-notes
+      - m-s-open-yaml
+      - s-close-yaml
+      - outro
+      - stack
+  60s:
+    target: 60
+    tolerance: 5
+    square: true
+    steps:
+      - q-open-herdr
+      - q-start-claude
+      - q-show-hints
+      - new-tab
+      - q-start-codex
+      - q-switch-pane
+      - back-to-claude
+      - claude-again
+      - q-keep-typing
+      - erase-line
+      - q-open-search
+      - q-type-search
+      - q-to-list
+      - q-move-down
+      - q-copy-and-leave
+      - q-paste
+      - q-clear-filter
+      - q-edit-mode
+      - q-open-form
+      - q-type-title
+      - next-field
+      - q-type-key
+      - q-save-hint
+      - q-outro
