@@ -248,6 +248,12 @@ daemon が読むのはそのコピー。**編集モードの場面と YAML error
 `wayhint validate --config-dir demo/fixtures` が通る状態に保つこと。font は fixtures の側で固定して
 ある(`style.css` と `foot.ini` が Noto を名指しする。このマシンの既定 sans-serif は VL ゴシック)。
 
+1 本の showcase の途中でだけ使う sheet は `fixtures/` に置かず、その showcase の下に置いて `write` の
+`source` で作業コピーへ入れる(`fixtures/` に置くと、他の showcase の一覧の件数まで変わる)。いまは
+`showcases/herdr/narrowed/ja/herdr.yaml`(fixture の `herdr.yaml` に `nested.export_categories` の 2 行を
+足したもの。`tests/test_demo_scenario.py` がずれを見る)と `showcases/terminal/foot/ja/foot.yaml`
+(`^foot$` の端末シート)の 2 枚。
+
 `bin/notes` は**GUI アプリの stub**(GTK4)。端末の中のプロセスではなく窓の `app_id`
 (`dev.wayhint.demo.Notes`)で sheet が決まる側を見せるためのもので、`spawn` の許可 list では
 端末 wrapper と別枠の `GUI_STUBS` に入っている(引数は取らない)。中身は label だけ——entry も
@@ -270,13 +276,22 @@ fixtures のコピーの中だけで、場所は `WAYHINT_DEMO_CONFIG` で渡す
 **stub の中から別のプロセスを起動しないこと**——`sleep` のような子を作ると、そちらが foreground
 process として答えられてしまう。
 
+`bin/wayhint-shown` だけは子を 1 つ起動する: リポジトリの `.venv/bin/wayhint context --shown` を固定の
+argv・shell 無しで呼び、**本物の出力**を `$ wayhint context --shown` の行の下に出す(字幕が
+`wayhint context` を語る場面に、その出力を映すため)。子が終わって出力を書き終えてから `comm` を
+`wayhint-shown` に変えるので、脚本は `wait_for: {context: {process_name: wayhint-shown}}` で
+「出力が画面にある」ことを待てる。`--shown` は調べ直さないので、端末の窓に focus が移っても
+ヒント画面を開いたときの中身を答える。行は 620 px の窓に合わせて空白で折り返す。この窓に
+focus があるまま `Super+H` を押すと別のウィンドウの hotkey として一覧が差し替わるので、閉じる前に
+`close: {window: shown}` で元のウィンドウへ戻す。
+
 `bin/foot-wayhint` は README「Terminal の複数窓」の wrapper(app_id に自分の pid を入れる)、
 `bin/foot-herdr` は Herdr 用(app_id に `herdr` を含める。`docs/TERMINALS.md` の前提)。どちらも
 `fixtures/foot.ini` を読む。
 
 **どちらの wrapper も引数を素通ししない。** 受け取るのは `--app-id=` と `--title=` だけで、
-`foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` `less` の
-いずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
+`foot-wayhint` はさらに `-e <stub>` を要求する(stub は隣にある `claude` `codex` `vi` `less`
+`wayhint-shown` のいずれかで、symlink は拒否)。stub に渡せる引数は **`WAYHINT_DEMO_CONFIG` の中のファイル 1 つ**だけ。`"$@"` をそのまま foot に渡すと、scenario 側から `--override=shell=…` で pane に
 shell を入れられる——scenario は data であって code ではない(DECISIONS 0032 の脅威モデル)。
 `foot-herdr` が起動する Herdr の絶対パスは環境変数 `WAYHINT_DEMO_HERDR_BIN` で渡す。未設定なら
 wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先頭の `demo/bin` を見に行く)。

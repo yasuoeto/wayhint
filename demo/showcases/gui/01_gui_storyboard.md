@@ -15,15 +15,16 @@
 
 - 映すアプリ: demo の GTK4 stub `notes`(`dev.wayhint.demo.Notes`)。**実アプリは使わない**——
   出力が毎回変わるうえ、ロゴや文言を借りることになる
-- ウィンドウは端末を置かない画面いっぱい寄りの配置。この場面の主語はウィンドウそのもの
+- 最後に `wayhint context --shown` を打った端末の stub(`wayhint-shown`。出力は本物)が開く
+- Notes の窓は画面いっぱい寄りの配置(端末は最後の 1 枚だけ)。この場面の主語はウィンドウそのもの
 - **映さない**: 実アプリ、実データ
 
 ## 1. 本編
 <!-- variant: main -->
 
-16:9。合計 42 秒。
+16:9。合計 45 秒。
 
-### §1 ウィンドウだけで決まる(0:00–0:42)
+### §1 ウィンドウだけで決まる(0:00–0:45)
 
 | 秒 | 画面 | 字幕 |
 |---|---|---|
@@ -31,8 +32,8 @@
 | 5–13 | `Super+H` → `Notes` の sheet | ウィンドウの app_id だけで選ぶ。プロセスは探さない |
 | 13–21 | sub-header に app_id だけが出ている | 覗き込むプロセスが無いので、sub-header は app_id |
 | 21–28 | 同じ画面 | match.wayland に app_id を書くだけ |
-| 28–35 | 同じ画面 | wayhint context の desktop_app と突き合わせる |
-| 35–42 | `Super+H` で閉じる | 見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ |
+| 28–37 | 端末の窓が開き、`wayhint context --shown` の出力(`desktop_app=dev.wayhint.demo.Notes`、`process` も `chain` も無い) | wayhint context --shown の desktop_app と突き合わせる |
+| 37–45 | 端末の窓を閉じ、`Super+H` で閉じる | 見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ |
 
 ## 2. 字幕の書き方メモ
 
@@ -43,6 +44,7 @@
 ## 3. 撮影後のチェック
 
 - [ ] sub-header にプロセス名が出ていない(app_id だけ)
+- [ ] `--shown` の出力の `desktop_app` が sub-header の app_id と同じで、`chain` が出ていない
 - [ ] 一覧の末尾に wm の hint が付いている
 - [ ] session に herdr / foot-herdr のプロセスが 1 つも無い
 - [ ] 字幕帯(`demo/README.md`「字幕帯」の表の値)にウィンドウと overlay がかかっていない

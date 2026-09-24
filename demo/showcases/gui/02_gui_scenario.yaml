@@ -11,6 +11,9 @@ session: {herdr: false}
 
 windows:
   - {title: Notes, app_id: "dev.wayhint.demo.Notes", x: 28, y: 40, width: 630, height: 562}
+  # The terminal `wayhint context --shown` is read in, over the lower half of Notes and clear
+  # of the overlay: what it prints is about the overlay, so both have to be in view.
+  - {title: shown, x: 40, y: 292, width: 620, height: 310}
 
 steps:
   - id: open-notes
@@ -46,10 +49,24 @@ steps:
     hold: 7.0
 
   - id: context-cli
-    pause: true
-    wait_for: {overlay: visible, label: "Notes"}
-    caption: {ja: "wayhint context の desktop_app と突き合わせる"}
-    hold: 7.0
+    # The terminal opens over Notes and takes the focus; the overlay stays as it was opened,
+    # and `--shown` reports that one (docs/SHEETS.md §6). A plain `context` typed here would
+    # answer for the terminal instead.
+    spawn: {window: shown, argv: [foot-wayhint, -e, wayhint-shown]}
+    wait_for:
+      context: {process_name: wayhint-shown}
+      overlay: visible
+      label: "Notes"
+      timeout: 30
+    caption: {ja: "wayhint context --shown の desktop_app と突き合わせる"}
+    hold: 9.0
+
+  - id: close-shown
+    # Back to the window the overlay was opened for, so that the hotkey below hides it. Pressed
+    # from the terminal, it would count as another window's and replace the list instead.
+    close: {window: shown}
+    wait_for: {overlay: visible, context: {active_sheet: notes}, timeout: 20}
+    hold: 1.0
 
   - id: outro
     key: super+h
@@ -59,7 +76,7 @@ steps:
 
 variants:
   main:
-    target: 42
+    target: 45
     tolerance: 5
     steps:
       - open-notes
@@ -67,4 +84,5 @@ variants:
       - sub-header
       - yaml-wayland
       - context-cli
+      - close-shown
       - outro

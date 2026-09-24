@@ -14,6 +14,9 @@ session: {herdr: true}
 windows:
   - {title: Herdr, x: 32, y: 48, width: 620, height: 566}
   - {title: vi, x: 104, y: 214, width: 560, height: 380}
+  # The terminal `wayhint context --shown` is read in. Low on the screen and over the Herdr
+  # window, not the overlay: what it prints is about the overlay, so both have to be in view.
+  - {title: shown, x: 40, y: 292, width: 620, height: 310}
 
 steps:
   - id: intro
@@ -65,15 +68,19 @@ steps:
   - id: new-tab-codex
     herdr: [tab, create, --focus]
     wait_for: {context: {active_sheet: herdr}, overlay: visible, timeout: 20}
-    hold: 2.0
+    hold: 1.0
 
   - id: start-codex
+    # Codex is running and the overlay still says Claude Code. Said out loud, because without it
+    # the next caption reads as if the overlay were late.
     herdr: [pane, run, "w1:p2", codex]
     wait_for:
       context: {active_sheet: codex, process_name: codex}
       overlay: visible
+      label: "Claude Code"
       timeout: 30
-    hold: 3.0
+    caption: {ja: "ヒント画面は、押し直すまで前のペインのまま"}
+    hold: 5.0
 
   - id: codex-hints
     key: super+h
@@ -105,6 +112,17 @@ steps:
     wait_for: {overlay: hidden}
     hold: 2.0
 
+  - id: narrow-yaml
+    # herdr.yaml with `nested.export_categories` added under `match` (narrowed/ is the fixture
+    # plus those two lines; tests/test_demo_scenario.py keeps it that way). Written before vi
+    # opens it, so the file on screen is the one that narrows the next list.
+    write:
+      file: "hints/{lang}/herdr.yaml"
+      source: "showcases/herdr/narrowed/{lang}/herdr.yaml"
+    wait_for:
+      unchecked: "the reload shows only in the list of narrowed-hints, which checks it"
+    hold: 0
+
   - id: open-yaml
     # A window of its own rather than a pane: a file argument cannot go through
     # `herdr pane run` (the allow list takes a pane id and a command, and nothing else).
@@ -115,7 +133,7 @@ steps:
   - id: yaml-export
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "絞るなら、親のシートに nested.export_tags を書く"}
+    caption: {ja: "絞るなら Herdr のシートに nested を書く。tag か category で"}
     hold: 8.0
 
   - id: close-yaml
@@ -123,22 +141,52 @@ steps:
     wait_for: {context: {active_sheet: herdr}, overlay: hidden, timeout: 20}
     hold: 2.0
 
-  - id: context-cli
-    pause: true
-    wait_for: {overlay: hidden}
-    caption: {ja: "wayhint context の chain と process で切り分ける"}
+  - id: back-to-claude
+    herdr: [tab, focus, "w1:t1"]
+    wait_for: {context: {active_sheet: claude-code, process_name: claude}, overlay: hidden}
+    hold: 2.0
+
+  - id: narrowed-hints
+    # 15 before: 7 of Claude Code, 6 of Herdr, 2 of wm. scroll and input leave 3 of Herdr's.
+    key: super+h
+    wait_for:
+      context: {active_sheet: claude-code, process_name: claude}
+      overlay: visible
+      label: "Claude Code"
+      no_label: "Cycle theme"
+      hints: 12
+    caption: {ja: "Herdr のヒントは scroll と input だけになる"}
     hold: 8.0
 
+  - id: context-cli
+    # The terminal opens over Herdr and takes the focus; the overlay stays as it was opened, and
+    # `--shown` reports that one (docs/SHEETS.md §6).
+    spawn: {window: shown, argv: [foot-wayhint, -e, wayhint-shown]}
+    wait_for:
+      context: {process_name: wayhint-shown}
+      overlay: visible
+      label: "Claude Code"
+      timeout: 30
+    caption: {ja: "wayhint context --shown で、どこで絞ったかが分かる"}
+    hold: 9.0
+
+  - id: close-shown
+    # Back to the window the overlay was opened for, so that the hotkey below hides it. Pressed
+    # from the terminal, it would count as another window's and replace the list instead.
+    close: {window: shown}
+    wait_for: {overlay: visible, context: {active_sheet: claude-code}, timeout: 20}
+    hold: 1.0
+
   - id: outro
-    pause: true
+    key: super+h
     wait_for: {overlay: hidden}
     caption: {ja: "見つけ方は 3 通り。書き方は 1 つ、match に名前を書くだけ"}
     hold: 7.0
 
 variants:
   main:
-    target: 90
-    tolerance: 9
+    target: 103
+    tolerance: 10
     steps:
       - intro
       - start-claude
@@ -152,8 +200,12 @@ variants:
       - new-tab-idle
       - idle-hints
       - close-hints
+      - narrow-yaml
       - open-yaml
       - yaml-export
       - close-yaml
+      - back-to-claude
+      - narrowed-hints
       - context-cli
+      - close-shown
       - outro

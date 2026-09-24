@@ -787,6 +787,50 @@ class SheetViewerTest(unittest.TestCase):
         self.assertIn('"" 0L, 0B', screen[-1])
 
 
+class ShownTerminalTest(unittest.TestCase):
+    """``demo/bin/wayhint-shown`` puts the real ``context --shown`` output in a 620 px window."""
+
+    def stub(self):
+        loader = importlib.machinery.SourceFileLoader("demo_shown", str(BIN / "wayhint-shown"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_a_long_line_is_wrapped_at_spaces_and_keeps_every_word(self) -> None:
+        stub = self.stub()
+        line = (
+            "active_sheet=claude-code parent_context=herdr desktop_app=foot-herdr "
+            "process={'name': 'claude', 'argv_basenames': ['python3', 'claude']} chain=['X']"
+        )
+        parts = stub.wrap(line)
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(len(part) <= stub.COLUMNS for part in parts))
+        self.assertEqual(" ".join(part.strip() for part in parts), line)
+
+    def test_a_continued_line_keeps_its_own_indent(self) -> None:
+        stub = self.stub()
+        parts = stub.wrap("  categories: scroll, input -- nested.export_categories (herdr.yaml)")
+        self.assertTrue(parts[0].startswith("  categories"))
+        self.assertTrue(all(part.startswith("    ") for part in parts[1:]))
+
+    def test_the_terminal_wrapper_lets_it_start(self) -> None:
+        text = (BIN / "foot-wayhint").read_text()
+        self.assertIn("wayhint-shown", text.split("STUBS='", 1)[1].split("'", 1)[0].split())
+
+
+class NarrowedSheetTest(unittest.TestCase):
+    """The narrowed herdr.yaml of the herdr showcase stays the fixture plus two lines."""
+
+    def test_the_narrowed_sheet_is_the_fixture_with_nested_added(self) -> None:
+        demo = BIN.parent
+        fixture = (demo / "fixtures" / "hints" / "ja" / "herdr.yaml").read_text().splitlines()
+        narrowed = (demo / "showcases" / "herdr" / "narrowed" / "ja" / "herdr.yaml").read_text()
+        added = ["nested:", "  export_categories: [scroll, input]"]
+        at = fixture.index("hints:")
+        self.assertEqual(narrowed.splitlines(), fixture[:at] + added + fixture[at:])
+
+
 class PagerTest(SheetViewerTest):
     """``demo/bin/less``: the same reading, shown the way a pager shows it.
 

@@ -14,6 +14,9 @@ session: {herdr: false}
 windows:
   - {title: less, x: 36, y: 56, width: 560, height: 380}
   - {title: vi, x: 112, y: 240, width: 560, height: 380}
+  # The terminal `wayhint context --shown` is read in, over the other two and clear of the
+  # overlay: what it prints is about the overlay, so both have to be in view.
+  - {title: shown, x: 40, y: 292, width: 620, height: 310}
 
 steps:
   - id: intro
@@ -88,17 +91,61 @@ steps:
     caption: {ja: "端末そのもののシートは要らない"}
     hold: 7.0
 
+  - id: write-foot
+    # A sheet for the terminal itself, `^foot$` as it is written for a window whose app_id is
+    # `foot.p<pid>`. Only in the session's copy: `demo/fixtures/` has no foot sheet, so the
+    # scenes before this one are not changed by it.
+    write:
+      file: "hints/{lang}/foot.yaml"
+      source: "showcases/terminal/foot/{lang}/foot.yaml"
+    wait_for:
+      unchecked: "the new sheet shows only in the list of foot-mixed, which checks it"
+    hold: 0
+
+  - id: close-vi
+    close: {window: vi}
+    wait_for: {context: {active_sheet: less, process_name: less}, timeout: 20}
+    hold: 1.0
+
   - id: foot-regex
-    pause: true
-    wait_for: {overlay: visible, label: "Vi"}
+    # The same vi window again, now on the file just written, so `^foot$` is what is on screen
+    # while the caption says it.
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/foot.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      timeout: 30
     caption: {ja: "端末のシートを書くなら ^foot$ のまま"}
     hold: 8.0
 
-  - id: context-cli
-    pause: true
-    wait_for: {overlay: visible, label: "Vi"}
-    caption: {ja: "wayhint context の chain が空なら端末と見ていない"}
+  - id: foot-mixed
+    # vi.yaml's 3, Foot's 3 and wm's 2: the terminal's sheet is the parent of the process's.
+    key: super+h
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "スクロールバックを検索"
+      hints: 8
+    caption: {ja: "foot.p<pid> のウィンドウにも当たり、ヒントが混ざる"}
     hold: 8.0
+
+  - id: context-cli
+    # The terminal opens over the other two and takes the focus; the overlay stays as it was
+    # opened, and `--shown` reports that one (docs/SHEETS.md §6).
+    spawn: {window: shown, argv: [foot-wayhint, -e, wayhint-shown]}
+    wait_for:
+      context: {process_name: wayhint-shown}
+      overlay: visible
+      label: "スクロールバックを検索"
+      timeout: 30
+    caption: {ja: "chain に ProcAdapter があれば、端末の中を見ている"}
+    hold: 9.0
+
+  - id: close-shown
+    # Back to the window the overlay was opened for, so that the hotkey below hides it. Pressed
+    # from the terminal, it would count as another window's and replace the list instead.
+    close: {window: shown}
+    wait_for: {overlay: visible, context: {active_sheet: vi}, timeout: 20}
+    hold: 1.0
 
   - id: outro
     key: super+h
@@ -108,7 +155,7 @@ steps:
 
 variants:
   main:
-    target: 81
+    target: 92
     tolerance: 9
     steps:
       - intro
@@ -120,6 +167,10 @@ variants:
       - how-two-windows
       - vi-hints
       - no-terminal-sheet
+      - write-foot
+      - close-vi
       - foot-regex
+      - foot-mixed
       - context-cli
+      - close-shown
       - outro

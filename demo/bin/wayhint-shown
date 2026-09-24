@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""A terminal in which ``wayhint context --shown`` has just been typed, for the scenes whose
+caption says what that command tells you. Earlier those captions named the command and the
+screen showed nothing of it.
+
+The output is the real one: this runs the repository's own ``wayhint`` with a fixed argv, no
+shell, and puts what it printed on screen. Only the prompt line in front of it is drawn here --
+the session has no shell (DECISIONS 0032), so nobody types it. ``--shown`` rather than a plain
+``context`` because it does not resolve again (docs/SHEETS.md §6): typed in a terminal, a plain
+``context`` would answer for this window instead of the one the overlay was opened for.
+
+Lines are wrapped at spaces to the window the scenarios place (620 px), so that where a long
+``key=value`` line breaks does not depend on how foot reflows it.
+
+``comm`` is renamed only *after* the output is written. The scenario waits for this process by
+that name, so a step that sees it knows the text is already on screen. Before that, ``comm`` is
+``python3``, which no scenario waits for. Nothing is left running under it afterwards: wayhint
+takes the deepest process in the terminal's foreground group (see ``claude``).
+"""
+
+import ctypes
+import os
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
+WAYHINT = Path(__file__).resolve().parent.parent.parent / ".venv" / "bin" / "wayhint"
+ARGV = ["context", "--shown"]
+COLUMNS = 60
+"""How many columns fit in the window the scenarios place (620 px at the demo's font)."""
+
+PROMPT = "\033[38;5;150m"
+COMMAND = "\033[38;5;252m"
+TEXT = "\033[38;5;188m"
+OFF = "\033[0m"
+
+
+def rename() -> None:
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
+    except OSError:
+        pass
+
+
+def wrap(line: str) -> list[str]:
+    """One output line as screen lines, continued under its own indent plus two."""
+    indent = line[: len(line) - len(line.lstrip(" "))]
+    return textwrap.wrap(
+        line,
+        COLUMNS,
+        initial_indent="",
+        subsequent_indent=indent + "  ",
+        break_long_words=True,
+        break_on_hyphens=False,
+    ) or [""]
+
+
+def main() -> int:
+    done = subprocess.run(
+        [str(WAYHINT), *ARGV], capture_output=True, text=True, timeout=10, check=False
+    )
+    out = [f"{PROMPT}${OFF} {COMMAND}wayhint {' '.join(ARGV)}{OFF}"]
+    for line in done.stdout.splitlines():
+        out += [f"{TEXT}{part}{OFF}" for part in wrap(line)]
+    if done.returncode != 0:
+        # On screen and in the log, and without the rename: the step waiting for this name
+        # times out, and the recording stops instead of filming an error.
+        sys.stdout.write("\n".join([*out, done.stderr]) + "\n")
+        sys.stdout.flush()
+        sys.stderr.write(f"wayhint-shown: exit {done.returncode}: {done.stderr}\n")
+        sys.stdin.read()
+        return 1
+    out.append(f"{PROMPT}${OFF} ")
+    sys.stdout.write("\n".join(out))
+    sys.stdout.flush()
+    rename()
+    try:
+        sys.stdin.read()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
