@@ -33,19 +33,19 @@ steps:
       overlay: visible
       label: "Notes"
       hints: 9
-    caption: {ja: "ウィンドウの app_id だけで選ぶ。プロセスは探さない"}
+    caption: {ja: "アプリごとに、そのアプリのヒントが出る"}
     hold: 8.0
 
   - id: sub-header
     pause: true
     wait_for: {overlay: visible, label: "Notes", no_label: "python3"}
-    caption: {ja: "覗き込むプロセスが無いので、sub-header は app_id"}
+    caption: {ja: "上の行に、どのアプリのヒントかが出る"}
     hold: 8.0
 
   - id: yaml-wayland
     pause: true
     wait_for: {overlay: visible, label: "Notes"}
-    caption: {ja: "match.wayland に app_id を書くだけ"}
+    caption: {ja: "シートの match に、アプリの名前（app_id）を書くだけ"}
     hold: 7.0
 
   - id: context-cli
@@ -58,7 +58,7 @@ steps:
       overlay: visible
       label: "Notes"
       timeout: 30
-    caption: {ja: "wayhint context --shown の desktop_app と突き合わせる"}
+    caption: {ja: "出ないときは wayhint context --shown で確かめる"}
     hold: 9.0
 
   - id: close-shown

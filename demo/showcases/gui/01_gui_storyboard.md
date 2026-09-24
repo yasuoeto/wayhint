@@ -29,10 +29,10 @@
 | 秒 | 画面 | 字幕 |
 |---|---|---|
 | 0–5 | Notes の窓が開く | GUI アプリでも同じ |
-| 5–13 | `Super+H` → `Notes` の sheet | ウィンドウの app_id だけで選ぶ。プロセスは探さない |
-| 13–21 | sub-header に app_id だけが出ている | 覗き込むプロセスが無いので、sub-header は app_id |
-| 21–28 | 同じ画面 | match.wayland に app_id を書くだけ |
-| 28–37 | 端末の窓が開き、`wayhint context --shown` の出力(`desktop_app=dev.wayhint.demo.Notes`、`process` も `chain` も無い) | wayhint context --shown の desktop_app と突き合わせる |
+| 5–13 | `Super+H` → `Notes` の sheet | アプリごとに、そのアプリのヒントが出る |
+| 13–21 | sub-header に app_id だけが出ている | 上の行に、どのアプリのヒントかが出る |
+| 21–28 | 同じ画面 | シートの match に、アプリの名前（app_id）を書くだけ |
+| 28–37 | 端末の窓が開き、`wayhint context --shown` の出力(`desktop_app=dev.wayhint.demo.Notes`、`process` も `chain` も無い) | 出ないときは wayhint context --shown で確かめる |
 | 37–45 | 端末の窓を閉じ、`Super+H` で閉じる | Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる |
 
 ## 2. 字幕の書き方メモ
