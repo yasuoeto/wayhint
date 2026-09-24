@@ -175,23 +175,33 @@ steps:
     hold: 2.5
 
   - id: type-search
-    type: "圧縮"
-    wait_for: {overlay: visible, hints: 1, text: "圧縮"}
+    # A category, so that more than one row is left and ↓ has somewhere to go: model, compact
+    # and clear are the session hints of claude-code.yaml.
+    type: "session"
+    wait_for: {overlay: visible, hints: 3, text: "session"}
     caption: {ja: "キーボードの入力先を切り替えるのは、検索を始めたときだけ"}
     hold: 7.0
 
   - id: to-list
+    # Lands on the first row, model: its remark is what the detail pane shows.
     key: down
     wait_for:
       overlay: visible
-      hints: 1
+      hints: 3
       label: "c copy and leave · Enter/Esc leave · ↓ list · Tab category"
     caption: {ja: "↓ で一覧へ。使えるキーは下に出る"}
     hold: 4.5
 
+  - id: move-down
+    # One row down, to compact. Its remark in the detail pane is the proof the selection moved.
+    key: down
+    wait_for: {overlay: visible, hints: 3, label: "Keeps the summary, drops raw tool output."}
+    caption: {ja: "一覧では ↑↓ でヒントを選ぶ"}
+    hold: 3.5
+
   - id: copy-and-leave
     key: c
-    wait_for: {button: search, hints: 1}
+    wait_for: {button: search, hints: 3}
     caption: {ja: "c で選択中のヒントのコマンドをコピーして元のウィンドウに戻る"}
     hold: 4.5
 
@@ -199,7 +209,7 @@ steps:
     key: ctrl+shift+v
     wait_for:
       overlay: visible
-      hints: 1
+      hints: 3
       unchecked: "端末に /compact が貼られたかは frame にしか出ない"
     caption: {ja: "絞り込みは残り、入力は元のウィンドウへ"}
     hold: 5.5
@@ -223,13 +233,13 @@ steps:
 
   - id: back-filtered
     key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 1}
+    wait_for: {overlay: visible, label: "Claude Code", hints: 3}
     caption: {ja: "戻ると、絞り込みはそのまま"}
     hold: 5.0
 
   - id: clear-filter
     press: {button: clear-filter}
-    precondition: {overlay: visible, hints: 1}
+    precondition: {overlay: visible, hints: 3}
     wait_for: {overlay: visible, hints: 15}
     caption: {ja: "絞り込みはシートごとに残る。解除は × か、検索ボックスを空にする"}
     hold: 6.0
@@ -384,7 +394,7 @@ variants:
       - close
       - stack
   search:
-    target: 64
+    target: 68
     tolerance: 6
     steps:
       - boot-herdr
@@ -395,6 +405,7 @@ variants:
       - open-search
       - type-search
       - to-list
+      - move-down
       - copy-and-leave
       - paste
       - other-tab
