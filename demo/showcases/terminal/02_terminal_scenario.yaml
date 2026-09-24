@@ -96,7 +96,7 @@ steps:
       overlay: visible
       label: "Vi"
       hints: 5
-    caption: {ja: "別のウィンドウで押し直せば、その中のプロセス"}
+    caption: {ja: "別のウィンドウで押し直せば、その一番前のプロセスのヒント"}
     hold: 8.0
 
   # --- the terminal's own hints -----------------------------------------------------------------
@@ -134,7 +134,7 @@ steps:
       overlay: visible
       label: "スクロールバックを検索"
       hints: 8
-    caption: {ja: "中のプロセスのヒントと一緒に出る"}
+    caption: {ja: "一番前のプロセスのヒントと一緒に出る"}
     hold: 8.0
 
   # --- when it does not work ------------------------------------------------------------------
