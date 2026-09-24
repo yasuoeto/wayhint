@@ -339,7 +339,7 @@ def build_parser() -> argparse.ArgumentParser:
     help_ = {
         "toggle": "show the overlay, or hide it if it is visible",
         "show": "resolve the context and show the overlay",
-        "hide": "hide the overlay",
+        "hide": "hide the overlay (in search / edit the mode is kept, as with toggle)",
         "refresh": "re-resolve the context if the overlay is visible",
         "reload": "re-read config.yaml and hints/*.yaml",
         "ping": "check that wayhintd is running",

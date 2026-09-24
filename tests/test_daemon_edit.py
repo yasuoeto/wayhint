@@ -272,9 +272,28 @@ class DaemonEditTest(unittest.TestCase):
         self.daemon.on_edit_action(em.EXIT_EDIT, None)
         self.assertEqual((self.view.mode, self.window.mode), ("normal", "normal"))
 
-    def test_hide_after_losing_the_workspace_watch_closes_the_overlay(self):
+    def test_close_after_losing_the_workspace_watch_closes_the_overlay(self):
         self.lose_the_watch()
-        self.daemon.hide()
+        self.daemon.close()
+        self.assertFalse(self.window.visible)
+        self.assertEqual(self.daemon._open, {})
+
+    def test_hide_during_edit_keeps_the_draft_like_the_toggle_hotkey(self):
+        # ``wayhint hide`` is the toggle hotkey's hide, not the Close button (0037).
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.assertEqual(self.daemon.dispatch("hide"), {"visible": False, "mode": "edit"})
+        self.assertFalse(self.window.visible)
+        self.assertIs(self.daemon._current_view(), self.view)
+        self.assertEqual(self.view.mode, "edit")
+        self.daemon.enter_edit_mode()  # the mode hotkey brings it back as it was
+        self.assertTrue(self.window.visible)
+        self.assertEqual(self.window.form.value("title"), "unsaved")
+
+    def test_the_close_button_drops_the_draft(self):
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        self.daemon.close()
         self.assertFalse(self.window.visible)
         self.assertEqual(self.daemon._open, {})
 

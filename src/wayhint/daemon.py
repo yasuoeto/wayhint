@@ -153,7 +153,7 @@ class Daemon:
         self.window = HintWindow(
             app,
             on_edit=self.edit,
-            on_close=self.hide,
+            on_close=self.close,
             on_action=self.on_edit_action,
             on_resize=self.resize,
             refocus=self._refocus,
@@ -295,10 +295,32 @@ class Daemon:
         return self._open_here(ctx)
 
     def hide(self) -> dict:
+        """``wayhint hide``: what the toggle hotkey does when it puts the overlay away.
+
+        In search or edit that is "hide, keep the mode" (0014 D4, 0037): the next ``toggle`` or
+        mode hotkey brings the box or the draft back as it was. Otherwise it closes.
+        """
+        assert self.window is not None
+        view = self._current_view()
+        if view is not None and view.mode in ("edit", "search"):
+            return self._hide_keeping_mode(view.mode)
+        return self.close()
+
+    def _hide_keeping_mode(self, mode: str) -> dict:
+        assert self.window is not None
+        if self.window.is_shown():
+            log.info("hiding during %s, keeping the mode", mode)
+            self._sync_shown()
+            self.window.hide_overlay()
+        return {"visible": False, "mode": mode}
+
+    def close(self) -> dict:
+        """The Close button: forget what is open here. A search is left, its filter kept; an
+        edit draft is dropped."""
         assert self.window is not None
         view = self._open.get(self._workspace_key())
         if view is not None and view.mode == "search":
-            self._leave_search(view, refocus=False)  # hiding ends a search; the filter stays
+            self._leave_search(view, refocus=False)  # closing ends a search; the filter stays
         self._open.pop(self._workspace_key(), None)
         self._shown_key = None
         self.window.hide_overlay()
@@ -318,10 +340,7 @@ class Daemon:
             # keyboard but keeps the box, and showing puts it back as it was.
             mode = shown.mode
             if self.window.is_shown():
-                log.info("hotkey during %s: hiding, keeping the mode", mode)
-                self._sync_shown()
-                self.window.hide_overlay()
-                return {"visible": False, "mode": mode}
+                return self._hide_keeping_mode(mode)
             log.info("hotkey during %s: showing it again", mode)
             self._present(key, shown)
             return {"visible": True, "sheet": shown.context.active_sheet, "mode": mode}
@@ -336,7 +355,7 @@ class Daemon:
                 log.info("hotkey on a hidden view: showing what was open again")
                 self._present(key, shown)
                 return {"visible": True, "sheet": shown.context.active_sheet}
-            return self.hide()
+            return self.close()
         if action == "replace":
             log.info(
                 "hotkey from another window: replacing %s with %s",
@@ -439,7 +458,7 @@ class Daemon:
             hidden = view.mode_entered_hidden
             self._exit_edit_mode(view)
             if hidden:  # entered from a hidden overlay: back to hidden (0014 D4 amend)
-                self.hide()
+                self.close()
                 return {"visible": False, "mode": "normal", "sheet": view.context.active_sheet}
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
         if view is not None and view.mode == "search" and self.window.is_shown():
@@ -493,7 +512,7 @@ class Daemon:
             hidden = view.mode_entered_hidden
             self._leave_search(view)
             if hidden:  # entered from a hidden overlay: back to hidden (0014 D4 amend)
-                self.hide()
+                self.close()
                 return {"visible": False, "mode": "normal", "sheet": view.context.active_sheet}
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
         hidden = view is None or not self.window.is_shown()

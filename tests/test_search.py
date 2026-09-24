@@ -236,10 +236,20 @@ class DaemonSearchTest(DaemonCase):
         self.daemon.show()
         self.assertEqual(self.daemon._open["B"].filter_query, "pane")
 
-    def test_hide_is_a_way_out_that_keeps_the_filter(self):
+    def test_close_is_a_way_out_that_keeps_the_filter(self):
         self.search("pane")
-        self.daemon.hide()
+        self.daemon.close()
         self.assertEqual(load_state(self.state), ({"b": "pane"}, []))
+
+    def test_hide_during_search_keeps_the_box_like_the_toggle_hotkey(self):
+        # ``wayhint hide`` is the toggle hotkey's hide: the keyboard goes, the search stays (0037).
+        self.search("pane")
+        self.assertEqual(self.daemon.dispatch("hide"), {"visible": False, "mode": "search"})
+        self.assertFalse(self.window.visible)
+        self.assertEqual((self.view.mode, self.window.text), ("search", "pane"))
+        self.daemon.toggle()
+        self.assertTrue(self.window.visible)
+        self.assertEqual((self.view.mode, self.window.mode), ("search", "search"))
 
     def test_replacing_the_view_keeps_the_filter_of_the_one_it_replaces(self):
         # Replaced by ``show`` from another window. The toggle hotkey used to replace it too, but
