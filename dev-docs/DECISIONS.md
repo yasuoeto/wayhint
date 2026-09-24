@@ -26,7 +26,7 @@ obvious does not need one.
   (daemon は `wayhintd`、socket は `$XDG_RUNTIME_DIR/wayhint.sock`)にする。
 - **Alternatives**: 設計書どおり `context-hint` で新ディレクトリを作る。名前の一貫性を取るために
   ディレクトリを増やす価値が無かった。
-- **Consequences**: 設計書を参照するときは名称を読み替える。docs/PRODUCT.md 冒頭に読み替え規則
+- **Consequences**: 設計書を参照するときは名称を読み替える。dev-docs/PRODUCT.md 冒頭に読み替え規則
   を明記した。
 
 ## 0003 — YAML loader は ruamel.yaml
@@ -70,7 +70,7 @@ obvious does not need one.
 - **Status**: accepted
 - **Context**: 設計書 §21/§43 は項目名までで、型・既定値・エラー条件・一意性の範囲は決めていない。
   validate CLI(PRODUCT 要件 16)を実装するには確定が必要だった。
-- **Decision**: `docs/DESIGN.md` Data model のとおり。要点: (a) size は int=px / `Npx` / `N%`
+- **Decision**: `dev-docs/DESIGN.md` Data model のとおり。要点: (a) size は int=px / `Npx` / `N%`
   (0–100)の 3 形のみ。(b) margin は int か 4 辺 mapping。(c) hint id の一意性は **sheet 内**、
   sheet id は全体で一意(editor jump は file+line で行うため hint id の全体一意性は不要)。
   (d) 未知 key は warning ではなく error(typo をすぐ気付かせる)。(e) `editor.command` は
@@ -791,7 +791,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: terminal 用 sheet を書いていなくても、その中のコマンドの sheet が選ばれる
   ようになった。親が無いので parent tag の混入は起きず、その sheet の hint だけが出る。
   **wrapper を通さずに起動した端末の窓は、その端末の process が 1 つのときしか解決しない**
-  (README「Terminal の複数窓」)。`ProcAdapter` は show / refresh のたびに `/proc` を 1 度走査する
+  (README「端末の複数ウィンドウ」)。`ProcAdapter` は show / refresh のたびに `/proc` を 1 度走査する
   (polling は無い)。
   `/proc` が見えない環境(コンテナ、hidepid)では常に無判定になり、従来どおり何も変わらない。
   `chain` が増えたぶん IPC `context` の応答が伸びる(4096 byte 制限には余裕がある)。
@@ -956,7 +956,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   fixtures の作業コピーは **固定パス**(`/tmp/wayhint-demo-<uid>-<lang>`)に置く——YAML error の
   場面では overlay がそのパスを表示するので、`mkdtemp` の名前だと毎回 frame が変わる。
 - **Phase A(調査)で本文から変えた点**: `spawn` の argv に `{pid}` を埋める案は成立しない
-  (pid は exec 後にしか決まらない)ので、README「Terminal の複数窓」と同じ wrapper
+  (pid は exec 後にしか決まらない)ので、README「端末の複数ウィンドウ」と同じ wrapper
   (`demo/bin/foot-wayhint`)を通す。AT-SPI の Action は**使えた**ので `cli:` への格下げは無し。
   ただし `do_action` は処理の完了を待たないので、`press` の後は必ず状態を `wait_for` してから
   次へ進む。検索欄とフォームの中身は AT-SPI から読めないため、効果(行数・label)で確かめる。
@@ -1265,7 +1265,7 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   foreground がどの sheet にも当たらないとき(親 hint を全部出す)とも、`include`(tag で絞らず全部、
   0026)とも既定が逆。加えて、何を渡すかの語彙を親ではなく子と global が持っており、Herdr の hint を
   どれだけ子に見せるかを Herdr の sheet 自身が決められないという責務のねじれがあった。
-  `docs/PRODUCT.md` の「既定 `nested-common`」も実装(`()`)と食い違っていた。
+  `dev-docs/PRODUCT.md` の「既定 `nested-common`」も実装(`()`)と食い違っていた。
 - **Decision**:
   **D1. 解決順は 1 本の置き換え規則(intersection はしない)。**
   1. 子 sheet の `inherit.parent_tags`(明示)
@@ -1319,6 +1319,57 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   ことに気づけても、もう一度 hotkey を押し直す手間は残るので採らない。
 - **Consequences**: 表示中の `edit-mode` のたびに context 解決が 1 回増える(`toggle` / `search-mode` と
   同じ量)。下書きを持つ view では従来どおり別 window から押しても差し替わらない。
+
+## 0036 — config の `nested.parent_tags` は全体の opt-out 用と位置づける(解決順は 0034 のまま)
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Context**: 0034 で絞りの基本が親 sheet の `nested.export_tags` に移り、global `nested.parent_tags`
+  は互換のために残しただけで、用途が書かれていなかった。tag の約束を 1 か所で決める使い方は、親が
+  端末や multiplexer くらいしか無いので `export_tags` と手間が変わらない。しかも global は親の段より
+  上にあるので、書いた時点で全部の親の `export_tags` を無視させてしまう。
+- **Decision**: global は **`[]` で全体を止める(どの親の hint も子に混ぜない)用途**と位置づける。
+  tag で絞るのは親の `export_tags` で行う。解決順(子 → global → 親 → 全部)は変えない。
+  規則の説明は `docs/SHEETS.md` にまとめる。
+- **Alternatives**: **解決順を「子 → 親 → global」にする**——global が「親が何も書かないときの既定」
+  になって意味は素直になるが、`export_tags` を書いた親には global の `[]` が効かず、opt-out にならない。
+  **非推奨・削除**——消すと既存の config.yaml が未知キーで error になり、opt-out の 1 行が無くなる。
+- **Consequences**: コードは変えない。global に非空の list を書くことは禁止しないが推奨しない
+  (`docs/SHEETS.md` §3)。全体で止めたうえで特定の子にだけ渡すときは、子の `inherit.parent_tags` を書く。
+
+## 0037 — `wayhint hide` は `toggle` の hide と同じにし、閉じるのは Close ボタンだけにする
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Amends**: 0014 D4 / 0033(`Close` ボタンと `wayhint hide` は閉じる、hide は search の出口)。
+- **Context**: search / edit 中に `Super+h` で隠すとモードと下書きが残るが、`wayhint hide` は Close ボタンと
+  同じく閉じて、edit の下書きを捨てていた。CLI から「しまう」操作が hotkey と違う結果になっていた。
+- **Decision**: `wayhint hide` は `toggle` が画面から外すときと同じ動きにする——search / edit 中は keyboard を
+  放して隠すだけで、モード・検索欄・下書きを残す(次の `toggle` かモード用 hotkey で戻る)。すでに隠れて
+  いれば何もしない。normal では閉じる。Close ボタンと close-request は従来どおり閉じ、edit の下書きは
+  捨てる(daemon の `close`)。
+- **Alternatives**: `hide` を閉じるままにする——CLI と hotkey で結果が違う理由が無い。Close ボタンも下書きを
+  残す——明示的に閉じる手段が 1 つは要る(ユーザー判断)。
+- **Consequences**: search 中の `wayhint hide` は search の出口ではなくなり、その時点では state.yaml を書かない
+  (絞り込みは抜けたとき、または workspace を離れたときに保存される)。
+
+## 0038 — CLI のヒント書き換えは `--sheet` 必須にし、`--parent` を廃止する
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Amends**: 0014 D11(「CLI は `context` の結果で sheet を決め」)、0034 D2(`wayhint add --parent` の tag 付与)。
+- **Context**: `--sheet` を省いた `add` などは daemon に `context` を聞いてシートを決めていた。ところが端末で打つと、
+  フォーカス中の端末の前面プロセスは `wayhint` 自身になる。`add` は `^wayhint$` のシートを新しく作り、Herdr の中では
+  Herdr のシートに書いていた(2026-09-24 に `match_rule_for_context` で再現)。いったん「前面プロセスが自分なら止める」
+  ガード(IPC `context` に pid を足す)で直したが、ユーザー判断でシートは常に指定する形にした。
+- **Decision**: `add` `edit` `remove` `favorite` `move` の `--sheet` を必須にする(無ければ argparse が exit 2)。CLI は
+  daemon に何も聞かない。`add --parent` は廃止し、親シートには `--sheet <親の id>` で書く。CLI からシートを新しく作る
+  経路も無くなる(作るのは編集モードの quick add とエディタ)。IPC `context` は変えない(pid は足さない)。
+- **Alternatives**: **前面プロセスが自分なら止めるガード**——keybind から実行したときだけ推測が効くという条件付きの機能を
+  残すことになり、IPC に pid も要る。**`add` だけ必須**——ほかのコマンドに同じ推測の穴が残る。**`--parent` を残し、親は子
+  シートの設定から決める**——親は context(ウィンドウの app_id)で決まるもので、シート同士の固定の関係ではない。
+- **Consequences**: CLI は daemon が止まっていても使える。keybind から「いま見ているシートに 1 件足す」使い方はできない
+  (編集モードの quick add を使う)。親に書くヒントに `export_tags` のタグを付けたいときは、エディタか YAML で付ける。
 
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot

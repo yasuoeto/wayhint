@@ -1,4 +1,4 @@
-"""Phase 7a: writing sheets back. See docs/DESIGN.md "編集モード (Phase 7)" §4 and §13.
+"""Phase 7a: writing sheets back. See dev-docs/DESIGN.md "編集モード (Phase 7)" §4 and §13.
 
 Everything here is headless: a tmp directory and an injected clock, no GTK and no compositor.
 """
@@ -511,7 +511,7 @@ class SlugTest(unittest.TestCase):
 
 
 class SchemaTest(unittest.TestCase):
-    """One direction only: what validation accepts, the schema accepts (docs/DESIGN.md §13)."""
+    """One direction only: what validation accepts, the schema accepts (dev-docs/DESIGN.md §13)."""
 
     def plain(self, value):
         if isinstance(value, dict):

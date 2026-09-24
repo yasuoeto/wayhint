@@ -3,7 +3,7 @@
 The GTK side (``ui/window.py``) is a thin shell over this module: it turns a key press into an
 action name here, and it asks here whether the layer surface should hold the keyboard. Keeping
 that here is what makes the parts that are easy to get wrong -- "is the grab released?", "what
-does ``d`` mean right now?" -- testable headless (docs/DESIGN.md 編集モード §1, §2, §9).
+does ``d`` mean right now?" -- testable headless (dev-docs/DESIGN.md 編集モード §1, §2, §9).
 
 Pure module: dataclasses and functions over plain values. No GTK, no compositor, no I/O.
 """

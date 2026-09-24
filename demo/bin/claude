@@ -3,7 +3,7 @@
 
 The real thing is not run: a demo has to come out the same every time, and a coding agent does
 not. What matters for wayhint is only that the terminal's foreground process is called
-``claude``, which is what picks ``claude-code.yaml`` (README「どの sheet が選ばれるか」). Two
+``claude``, which is what picks ``claude-code.yaml`` (README「どのシートが選ばれるか」). Two
 things make that work and both are easy to break:
 
 * the **file name** is the whole trick -- ``/proc`` (and Herdr) report ``argv[0]``, and for a

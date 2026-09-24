@@ -2,7 +2,7 @@
 
 The GTK shell (``ui/window.py``) is not tested here; what is tested is everything it defers to:
 the grab rule, what a key means, the category filter, and where the selection lands after a
-reload (docs/DESIGN.md 編集モード §1, §2, §5, §8, §9).
+reload (dev-docs/DESIGN.md 編集モード §1, §2, §5, §8, §9).
 """
 
 import unittest

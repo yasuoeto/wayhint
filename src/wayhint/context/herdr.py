@@ -1,6 +1,6 @@
 """Herdr adapter: focused pane → foreground process. The only module that runs ``herdr``.
 
-Herdr 0.8.2 output (recorded in ``docs/PHASE0.md``)::
+Herdr 0.8.2 output (recorded in ``dev-docs/PHASE0.md``)::
 
     herdr pane current
       {"result": {"pane": {"pane_id": "wG:p1", "focused": true, ...}}}

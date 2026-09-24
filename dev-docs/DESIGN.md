@@ -129,12 +129,14 @@ filters:
 
 ### config.yaml(実装: `config.py`)
 
+使う人向けの全項目の説明は `docs/CONFIG.md`。項目を足す・変えるときは両方を直す。
+
 ```yaml
 overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, right: 24}, output: null}
 appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
 editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"], schema_modeline: false,
              schema_path: ~/.config/wayhint/schema.json}
-nested:     {parent_tags: null}   # null = 書いていない。親 sheet の export_tags か、全部
+nested:     {parent_tags: null}   # null = 書いていない。[] で全体の opt-out(docs/SHEETS.md §3)
 context:    {live_update: false, backend: auto, workspace: current}  # backend: auto|wayland|wayfire
                                                                      # workspace: current|all
 search:     {max_results: 50}
@@ -152,6 +154,8 @@ include:    []          # 既定で全 sheet に混ぜる sheet id(DECISIONS 002
   既定出力先。
 
 ### hints/<lang>/*.yaml(実装: `yaml_store.py`)
+
+使う人向けの全項目の説明は `docs/SHEET-FORMAT.md`。schema を変えるときは両方を直す。
 
 置き場所は言語ごとに 1 ディレクトリ(DECISIONS 0024)。`hints/<lang>/` → `hints/en/` →
 `hints/*.yaml`(フラット、単一言語や移行前の配置)の順に**最初に見つかった 1 つだけ**を読む。
@@ -177,16 +181,17 @@ hints:
      copy, remark, source, learned}
 ```
 
-- **`include`**(DECISIONS 0026): ここに並べた sheet の hint を、この sheet の一覧に混ぜる。tag では
-  絞らず全部入る。書かなければ config の `include` が既定として使われ、書けば**置き換える**
-  (`inherit.parent_tags` と `nested.parent_tags` の関係と同じ)。include 先の include は辿らない。
-  解決できない id と自分自身の id は warning で、その id だけ無視する(sheet は表示される。
-  ただし config 既定由来の自己参照は黙って外す)。
-- **親 hint の絞り**(DECISIONS 0034): 子 sheet が選ばれたとき、親 sheet(ウィンドウの app_id で
-  決まる)の hint を後ろに並べる。絞りは 4 段の置き換えで、最初に書いてあった段だけを使う——
-  子の `inherit.parent_tags` → config の `nested.parent_tags` → 親の `nested.export_tags` →
-  どれも無ければ全部。`[]` はどの段でも 0 件。`export_tags` は nested の親経路にだけ効き、
-  `include` で混ざるときは見ない。foreground が無 sheet のときは従来どおり親の hint を全部出す。
+- **他 sheet の hint の混ざり方**(親 sheet と `include`)は `docs/SHEETS.md` にまとめた。同文書の各節の
+  実装: §1 active / 親 sheet の決定は `context/resolver.py` の `ContextResolver.resolve`、§2 一覧の組み立ては
+  `selection.visible_hints` → `selection.sort_hints`、§3 親 hint の絞りは `selection.effective_parent_tags`、
+  §4 include は `yaml_store.resolve_includes`、§6 の所属ファイルは `hint.location.file`。要点だけ:
+  - **`include`**(DECISIONS 0026): 並べた sheet の hint を tag で絞らず全部混ぜる。sheet 側の
+    `include` は config の `include` を**置き換える**。include 先の include は辿らない。解決できない
+    id と自己参照は warning で、その id だけ無視する。
+  - **親 hint の絞り**(DECISIONS 0034): 子の `inherit.parent_tags` → config の `nested.parent_tags`
+    → 親の `nested.export_tags` → 全部、の 4 段で最初に書いてあった段だけを使う。`[]` は 0 件。
+    config の `nested.parent_tags` は全体の opt-out(`[]`)用で、tag で絞るのは親の `export_tags`
+    で行う(DECISIONS 0036)。
 - **`match` は省略可**。`match` の無い sheet はどの context でも active にならず、`include` からだけ
   一覧に出る(共通 hint 用)。`match` があっても include 対象にはできる。
 - 一覧の連結順は active → 親 sheet(tag 一致分) → include(記述順)で、その後 D7 のソートを掛ける。
@@ -221,8 +226,8 @@ hints:
   loop に載せ、読めるようになったら `flush → read → dispatch` で socket を空にする
   (`dispatch` だけでは socket を読まず fd が readable のままになり、watch が回り続ける)。
   polling は無い。daemon は workspace key → `ResolvedContext` の dict を持ち、切り替え時に
-  その workspace の分だけ出し直す。overlay の「閉じる」と close-request は daemon の `hide` を
-  呼び、その workspace の entry を落とす。`HintWindow.hide_overlay` は surface を隠すだけで、
+  その workspace の分だけ出し直す。overlay の「閉じる」と close-request は daemon の `close` を
+  呼び、その workspace の entry を落とす(`wayhint hide` は `toggle` の hide と同じ。DECISIONS 0037)。`HintWindow.hide_overlay` は surface を隠すだけで、
   workspace 切り替えで隠すときに使う。
 - **Herdr**: `herdr pane current`, `herdr pane process-info --pane <id>`。出力形式は実機で確認
   し、adapter 内部で吸収する。**前提**: adapter が選ばれるのは app_id が `app_id_pattern`
@@ -254,15 +259,18 @@ hints:
 
 ## 編集モード（Phase 7）
 
-DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
+DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。3 つの hotkey の状態別の挙動と overlay が
+消えるタイミングは、図付きで `docs/HOTKEYS.md` にまとめてある。実装は `daemon.py` の `toggle` /
+`enter_search_mode` / `enter_edit_mode` / `hide` / `close`、「入ったときに画面が出ていたか」は
+`WorkspaceView.mode_entered_hidden`。
 
 ### 1. 状態と keyboard_mode
 
 | 状態 | keyboard_mode | 入口 | 出口 |
 |---|---|---|---|
 | `normal` | NONE | show / toggle | hide、workspace 離脱 |
-| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`・`c`(コピー)、もう一度 `search-mode`(入場時の表示状態へ戻る)、hide、workspace 離脱 |
-| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`（入場時の表示状態へ戻る）、hide、workspace 離脱 |
+| `search` | EXCLUSIVE | 検索ボタン、IPC `search-mode` | Esc、`Enter`・`c`(コピー)、もう一度 `search-mode`(入場時の表示状態へ戻る)、閉じるボタン、workspace 離脱 |
+| `edit` | EXCLUSIVE | IPC `edit-mode`（compositor keybinding）、toolbar ボタン | Esc、もう一度 `edit-mode`（入場時の表示状態へ戻る）、閉じるボタン、workspace 離脱 |
 
 - `keyboard_mode` を直接設定する箇所は `_sync_keyboard_mode()` 1 つに集約し、状態変更のたびに呼ぶ。
   hide / workspace 離脱では状態を保ったまま `NONE` に落とし、show / 復帰で状態に応じて張り直す。
@@ -279,8 +287,8 @@ DECISIONS 0014 の仕様本文。判断の根拠は 0014 を参照。
   (拒否の理由など)は **次のモード変更で消えて**前者に戻る(例: 編集中の `search-mode` の拒否は、編集を
   抜けると消える)。
 - `edit` と `search` 中の hotkey（`toggle`）は hide / show（0013 の例外。search は 2026-09-23 から）。
-  モードは保ったまま grab だけ外し、show で戻す。`Close` ボタンと `wayhint hide` は従来どおり閉じる
-  （search はそこで抜ける）。
+  モードは保ったまま grab だけ外し、show で戻す。`wayhint hide` も同じ(DECISIONS 0037)。`Close`
+  ボタンは閉じる(search は抜けて絞り込みを保存、edit の下書きは捨てる)。
 - **モード用 hotkey の 2 度目は入場時の表示状態へ戻る**（0014 D4 amend、2026-09-23）。非表示から入った
   ときは、モードを抜けて hide する（NONE、前の view へ focus 復帰）。表示中から入ったときは、モードを
   抜けて `normal` の表示を続ける。「非表示から入った」は view の `mode_entered_hidden`（メモリのみ）で
@@ -454,11 +462,11 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 
 | cmd | 応答 |
 |---|---|
-| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（CLI が「sheet が無い」の理由に添える） |
+| `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（`wayhint context` が「sheet が無い」理由として出す） |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら差し替えてから。ただしエディタ起動で保持した下書きがあれば差し替えない。0035）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
 | `search-mode` | 検索モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら `toggle` と同じく差し替えてから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
 
-CLI（daemon を経由せず自分でファイルに書く。`--sheet ID` 省略時は `context` で決める）の
+CLI（daemon を経由せず自分でファイルに書く。書き換え系は `--sheet ID` 必須、DECISIONS 0038）の
 引数一覧は README「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、
 `--write` 無しは標準出力。`wayhint format --modeline` の path は `editor.schema_path`。
 
@@ -505,7 +513,7 @@ daemon 側は `_reload_config` で `appearance.language` の変化を見て呼�
 | editor 不在 / 起動失敗 | GUI で error 表示 |
 | 検索終了時 focus 復帰失敗 | それでも keyboard_mode は必ず none に戻す(grab 残留禁止) |
 | 復帰先の window が一意に決まらない(app_id と title が同じ window が複数) | focus 復帰を諦めて log に残す。別 window を掴まない |
-| workspace 監視の接続が切れた | 監視だけを止め、表示中の view(モード・下書き)は単一 slot に引き継ぐ。Esc / hide で必ず抜けられる |
+| workspace 監視の接続が切れた | 監視だけを止め、表示中の view(モード・下書き)は単一 slot に引き継ぐ。Esc / 閉じるボタンで必ず抜けられる |
 | YAML が UTF-8 でない | 他の読み取り失敗と同じ Issue。last-known-good を保つ |
 
 ## Testing strategy

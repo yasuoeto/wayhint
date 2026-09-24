@@ -8,7 +8,7 @@ Two levels of API:
 - :func:`load_config` / :func:`load_sheet` / :func:`load_sheets`: one-shot parse + validate,
   returning a :class:`LoadResult` whose ``issues`` list is empty on success.
 - :class:`SheetStore`: keeps the last-known-good sheet per file so a broken edit does not take
-  hints away from the overlay (Failure modes, ``docs/DESIGN.md``).
+  hints away from the overlay (Failure modes, ``dev-docs/DESIGN.md``).
 """
 
 from __future__ import annotations

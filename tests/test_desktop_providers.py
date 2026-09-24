@@ -8,7 +8,7 @@ GTK wants a display. It splits into three:
 * **Signatures** need neither, so every adapter is checked on every run.
 * **Failure** needs neither either: pointing pywayland at a display that is not there is exactly
   the path a session without a compositor takes, and it has to arrive as ``ContextError`` rather
-  than as whatever the library raised (``docs/DESIGN.md`` Failure modes).
+  than as whatever the library raised (``dev-docs/DESIGN.md`` Failure modes).
 * **Success** needs a compositor, so it is skipped when there is none. Where one is running it
   connects for real -- which is the only way to notice that a protocol binding was regenerated
   wrong, or that the GTK and layer-shell typelibs stopped loading in the order DECISIONS 0009

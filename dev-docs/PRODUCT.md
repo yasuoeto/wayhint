@@ -85,7 +85,9 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
    foreground process (name/argv/cmdline/pid/cwd) を取得。name だけに依存せず argv basename
    も照合(`node /path/to/codex`)。取得失敗時はHerdr hintsのみ(§14, §15)。
 9. **parent tag filtering**: 表示対象は tag の交差のみで決め、favorite で決めない。
-   子sheet `inherit.parent_tags` が global `nested.parent_tags` を上書き(§17–§19, §29)。
+   子sheet `inherit.parent_tags` → global `nested.parent_tags` → 親sheet `nested.export_tags` →
+   全部、の順に最初に書いてある段を使う。global は全体の opt-out(`[]`)用(§17–§19, §29、
+   DECISIONS 0034 / 0036、`docs/SHEETS.md`)。
 10. **hint schema**: 必須 `id`,`title`。任意 `kind(shortcut|command|tip|note)`, `key`,
     `command`, `category`, `tags`, `favorite`, `copy`, `remark`, `source`, `learned`(§21–§26)。
     `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで出力する。
@@ -119,7 +121,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 ## Success criteria
 
 - 設計書 §74 Acceptance Criteria 全項目。
-- 実機テスト §69 (Test 1–11、labwc と Wayfire の双方。手順は `docs/DESIGN.md` の実機
+- 実機テスト §69 (Test 1–11、labwc と Wayfire の双方。手順は `dev-docs/DESIGN.md` の実機
   チェックリスト): 右上表示、元アプリへの入力継続、toggle、別outputからの起動、
   output override、px/%サイズ、Search時のみ入力可、Search後にgrabが残らない、
   gvim Edit in editor(sheetが開き該当行へjump)。
@@ -130,7 +132,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 
 ## Open questions
 
-- 依存確認(§78)は 2026-09-16 実施、結果は `docs/PHASE0.md`。未導入: gtk4-layer-shell(apt)、
+- 依存確認(§78)は 2026-09-16 実施、結果は `dev-docs/PHASE0.md`。未導入: gtk4-layer-shell(apt)、
   PyWayfire(PyPI 名 `wayfire`)、ruamel.yaml(PyPI)。2026-09-16 に pywayland を追加し labwc で
   foreign-toplevel 経由の取得と activate を確認。Wayfire は未起動で IPC socket は未確認。
 - labwc / Wayfire 上で layer-shell `ON_DEMAND` が期待どおりfocusを得るか(§47)。実機確認まで未決。

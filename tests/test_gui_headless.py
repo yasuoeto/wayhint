@@ -208,7 +208,7 @@ class FocusFollowTest(unittest.TestCase):
     """The sheet follows the focused *window*, and the overlay does not close on the way.
 
     Two things are pinned here and both are product behaviour that nothing else covers end to
-    end. The first is the pid-suffix convention (README「Terminal の複数窓」): two terminals of
+    end. The first is the pid-suffix convention (README「端末の複数ウィンドウ」): two terminals of
     the same program are told apart because each window names the process drawing it in its
     app_id, and ``/proc`` is then read for what runs inside. The second is that pressing the
     hotkey while looking at a different window *replaces* what is on screen rather than
