@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from wayhint.models import Hint, HintFilter, HintSheet
+from wayhint.models import Hint, HintFilter, HintSheet, IncludeRef
 
 
 def effective_parent_tags(
@@ -101,6 +101,79 @@ def visible_hints(
     for sheet in includes:
         out.extend(sheet.hints)
     return _unique(out)
+
+
+def _stage(child, global_value, parent, child_key, global_key, parent_key):
+    """``(value, where it came from)`` for one of the parent filters, first written wins (0034)."""
+    if child is not None and getattr(child, child_key) is not None:
+        return tuple(getattr(child, child_key)), f"inherit.{child_key}", child.path.name
+    if global_value is not None:
+        return tuple(global_value), f"nested.{global_key}", "config.yaml"
+    if parent is not None and getattr(parent, parent_key) is not None:
+        return tuple(getattr(parent, parent_key)), f"nested.{parent_key}", parent.path.name
+    return None, None, None
+
+
+def explain_filters(
+    active: HintSheet | None,
+    parent: HintSheet | None,
+    sheets: Sequence[HintSheet],
+    global_parent_tags: Sequence[str] | None = None,
+    global_parent_categories: Sequence[str] | None = None,
+    global_include: Sequence[IncludeRef] = (),
+) -> dict:
+    """What narrowed the mixed-in hints, for ``wayhint inspect`` and ``context --shown``.
+
+    Plain data (JSON-able): the parent's tag and category filters with the key and file each came
+    from, and every ``include`` entry with its filter. Counts are before de-duplication, so a hint
+    that is both a parent hint and an include is counted in both.
+    """
+    out: dict = {"sheet": active.id if active is not None else None, "parent": None, "include": []}
+    if active is None:
+        return out
+    if parent is not None and parent is not active:
+        tags, tags_key, tags_file = _stage(
+            active, global_parent_tags, parent, "parent_tags", "parent_tags", "export_tags"
+        )
+        cats, cats_key, cats_file = _stage(
+            active,
+            global_parent_categories,
+            parent,
+            "parent_categories",
+            "parent_categories",
+            "export_categories",
+        )
+        out["parent"] = {
+            "sheet": parent.id,
+            "tags": list(tags) if tags is not None else None,
+            "tags_from": f"{tags_key} ({tags_file})" if tags_key else None,
+            "categories": list(cats) if cats is not None else None,
+            "categories_from": f"{cats_key} ({cats_file})" if cats_key else None,
+            "shown": len(parent_hints_for(parent, tags, cats)),
+            "total": len(parent.hints),
+        }
+    own = active.include is not None
+    refs = active.include if own else tuple(global_include)
+    by_id = {sheet.id: sheet for sheet in sheets}
+    for ref in refs:
+        if ref.sheet == active.id:
+            continue  # a sheet never includes itself (0026)
+        other = by_id.get(ref.sheet)
+        entry = {
+            "sheet": ref.sheet,
+            "from": active.path.name if own else "config.yaml",
+            "tags": list(ref.filter.tags) if ref.filter.tags is not None else None,
+            "categories": list(ref.filter.categories)
+            if ref.filter.categories is not None
+            else None,
+            "shown": None,
+            "total": None,
+        }
+        if other is not None:
+            entry["shown"] = sum(1 for h in other.hints if ref.filter.allows(h))
+            entry["total"] = len(other.hints)
+        out["include"].append(entry)
+    return out
 
 
 def _unique(hints: Sequence[Hint]) -> list[Hint]:

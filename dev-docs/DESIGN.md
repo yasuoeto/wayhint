@@ -185,7 +185,8 @@ hints:
   実装: §1 active / 親 sheet の決定は `context/resolver.py` の `ContextResolver.resolve`、§2 一覧の組み立ては
   `selection.visible_hints` → `selection.sort_hints`、§3 親 hint の絞りは `selection.effective_parent_tags` /
   `effective_parent_categories` と `models.HintFilter`、§4 include は `yaml_store.resolve_includes`(絞った
-  sheet は `hints` だけを減らした写しで、hint は元の object のまま)、§6 の所属ファイルは
+  sheet は `hints` だけを減らした写しで、hint は元の object のまま)、§6 の確認は `selection.explain_filters`
+  (`wayhint inspect` / `context --shown`)、§7 の所属ファイルは
   `hint.location.file`。要点だけ:
   - **`include`**(DECISIONS 0026 / 0039): 要素は sheet id(全部)か `{sheet, tags, categories}`(絞る)。
     sheet 側の `include` は config の `include` を**置き換える**。include 先の include は辿らない。
@@ -469,6 +470,7 @@ canonical 順の 12 項目は Data model「hints/*.yaml」を参照。
 | cmd | 応答 |
 |---|---|
 | `context` | `{active_sheet, parent_context, desktop_app, process: {name, argv_basenames}, include, chain, error}`。argv 全体は載せない。`include` は解決できた混入元 sheet id の list（0026）。`chain` は **問い合わせた nested provider のクラス名**の list（順番どおり、現状は 0 か 1 要素。答えが `null` だった provider も載る＝どこを見ればよいかを示す）。`error` は context 取得が失敗した理由（`wayhint context` が「sheet が無い」理由として出す） |
+| `shown` | サブコマンドではなく `wayhint context --shown` だけが送る(`ipc.QUERIES`)。今の workspace の view の context を**解決し直さずに**、`context` と同じ項目 + `visible` `mode` + `filters`(`selection.explain_filters`: 親の tag / category とそれぞれの出所の key・ファイル・件数、include の要素ごとの絞りと件数)で返す。view が無ければ `{ok: false}`(0040) |
 | `edit-mode` | 編集モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら差し替えてから。ただしエディタ起動で保持した下書きがあれば差し替えない。0035）。編集モード中に再度呼ぶと抜ける（フォームが開いていれば先にフォームを閉じる）。`{visible, mode, sheet, error}` |
 | `search-mode` | 検索モードに入る（表示中でなければ show してから。表示中でも context を取り直し、別の window なら `toggle` と同じく差し替えてから）。検索中に再度呼ぶと抜ける（絞り込みは残す）。`edit` 中は拒否（`{ok: false, error}`）。`{visible, mode, sheet}`（0033） |
 

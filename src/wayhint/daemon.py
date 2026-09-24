@@ -37,6 +37,7 @@ from wayhint.matcher import argv_basenames  # noqa: E402
 from wayhint.models import Hint, HintSheet, ResolvedContext  # noqa: E402
 from wayhint.selection import (  # noqa: E402
     effective_parent_tags,
+    explain_filters,
     same_group,
     sort_hints,
     visible_hints,
@@ -411,7 +412,35 @@ class Daemon:
         Deliberately small: no full argv, no cmdline. The reply has to fit in one 4096-byte
         message, and a command line can carry anything.
         """
-        ctx = self.resolver.resolve(self.store.sheets, self.config)
+        return self._context_fields(self.resolver.resolve(self.store.sheets, self.config))
+
+    def shown_reply(self) -> dict:
+        """``wayhint context --shown``: the overlay on this workspace, as it was opened.
+
+        Not resolved again -- typed in a terminal, resolving would answer for that terminal and
+        the ``wayhint`` running in it. Adds what narrowed the mixed-in hints (0039).
+        """
+        assert self.window is not None
+        view = self._current_view()
+        if view is None:
+            return {"ok": False, "error": "nothing is shown on this workspace"}
+        ctx = view.context
+        filters = explain_filters(
+            self._sheet_by_id(ctx.active_sheet),
+            self._sheet_by_id(ctx.parent_context),
+            self.store.sheets,
+            self.config.parent_tags,
+            self.config.parent_categories,
+            self.config.include,
+        )
+        return {
+            **self._context_fields(ctx),
+            "visible": self.window.is_shown(),
+            "mode": view.mode,
+            "filters": filters,
+        }
+
+    def _context_fields(self, ctx: ResolvedContext) -> dict:
         proc = ctx.foreground_process
         return {
             "active_sheet": ctx.active_sheet,
@@ -942,6 +971,7 @@ class Daemon:
             "hide": self.hide,
             "refresh": self.refresh,
             "context": self.context_reply,
+            "shown": self.shown_reply,
             "edit-mode": self.enter_edit_mode,
             "search-mode": self.enter_search_mode,
         }[cmd]()

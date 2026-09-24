@@ -4,7 +4,9 @@ One request per connection: the client sends a single JSON object terminated by 
 daemon answers with one JSON object and closes. Requests: ``{"cmd": "toggle"|"show"|"hide"|
 "refresh"|"reload"|"ping"|"context"|"edit-mode"|"search-mode"}``. Replies: ``{"ok": true, ...}`` or
 ``{"ok": false, "error": "..."}``. ``context`` answers with the part of the resolved context the
-CLI needs to pick a sheet; it stays small on purpose (the reply limit is 4096 bytes).
+CLI needs to pick a sheet; it stays small on purpose (the reply limit is 4096 bytes). ``shown`` is
+a query with no subcommand of its own (``wayhint context --shown``): the context of the overlay on
+screen, not resolved again, and what narrowed its mixed-in hints.
 
 This module holds the path, the encoding and the blocking client. The server side lives in the
 daemon because it needs the GLib main loop.
@@ -32,6 +34,8 @@ COMMANDS = (
     "edit-mode",
     "search-mode",
 )
+QUERIES = ("shown",)
+"""Requests that only a flag of another subcommand sends, so they are not subcommands."""
 MAX_MESSAGE = 4096
 
 
@@ -63,7 +67,7 @@ def handle_request(raw: bytes, dispatch) -> dict[str, Any]:
     except (ValueError, UnicodeDecodeError) as e:
         return {"ok": False, "error": f"bad request: {e}"}
     cmd = req.get("cmd")
-    if cmd not in COMMANDS:
+    if cmd not in COMMANDS and cmd not in QUERIES:
         return {"ok": False, "error": f"unknown command: {cmd!r}"}
     try:
         result = dispatch(cmd) or {}
@@ -86,7 +90,7 @@ or the caller reports a failure for something that then happens anyway."""
 def send_command(
     cmd: str, path: Path | None = None, timeout: float = CLIENT_TIMEOUT
 ) -> dict[str, Any]:
-    if cmd not in COMMANDS:
+    if cmd not in COMMANDS and cmd not in QUERIES:
         raise ValueError(f"unknown command: {cmd!r}")
     path = path or socket_path()
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:

@@ -434,7 +434,8 @@ exec /usr/bin/foot --app-id "foot.p$$" "$@"
 | `reload` | `config.yaml` とヒントを読み直す |
 | `ping` | daemon の生死確認。pid とシート数を返す |
 | `validate` | YAML を検証する。daemon が無くても動く。問題があれば exit 1 |
-| `context` | いまのウィンドウでどのシートが選ばれるかを表示する |
+| `context` | いまのウィンドウでどのシートが選ばれるかを表示する。`--shown` を付けると、表示中のヒント画面の中身と、混ざったヒントをどう絞ったかを出す |
+| `inspect SHEET [--parent ID]` | シートの include と、仮定した親のヒントが、何件中何件混ざるかを出す。daemon が無くても動く |
 | `add` / `edit` / `remove` / `favorite` / `move` | ヒントを書き換える(下) |
 | `format [PATH...]` | シートを決まった順・形に整える |
 | `schema [--write PATH]` | ヒントシートの JSON Schema を出す |
@@ -495,7 +496,32 @@ active_sheet=vi desktop_app=foot.p12345 chain=['ProcAdapter'] \
 - `desktop_app` の `.p12345` はウィンドウの識別用で、シートの照合や表示には使われない。
 
 端末の中で `wayhint context` を打つと、`wayhint` 自身が前面のコマンドになってしまう。端末の中を
-確かめるときはヒント画面の表示を見るか、[`docs/TERMINALS.md`](docs/TERMINALS.md) の手順を使う。
+確かめるときは `wayhint context --shown` を使う(下)。
+
+### 混ざるはずのヒントが出ないとき
+
+親シートや `include` から混ざるヒントは、タグや category の絞りで落ちることがある。どこで落ちたかは
+次の 2 つで確かめる。
+
+- **シートを書いているとき**: `wayhint inspect <シートの id>`。include の要素ごとに、絞りの中身と
+  「何件中何件混ざるか」を出す。親はそのシートが動くウィンドウで決まるので、`--parent herdr` のように
+  仮定して渡すと、親のヒントの絞りも出る。
+- **実際の画面で**: 見たいウィンドウで `Super+h` を押してヒント画面を出し、別の端末から
+  `wayhint context --shown`。表示中の中身(調べ直さない)について、選ばれたシート・親・絞りと、
+  その絞りがどこ(どのファイルのどの key)から来たかを出す。
+
+```
+$ wayhint inspect claude-code --parent herdr
+sheet claude-code (claude-code.yaml)
+parent herdr: 4/12 shown
+  tags: pane -- nested.export_tags (herdr.yaml)
+  categories: not narrowed
+include git: 3/9 shown (from claude-code.yaml)
+  tags: not narrowed
+  categories: 基本
+```
+
+`0/12` のように 0 件なら、タグや category の書き間違いを疑う。件数は重複を除く前の数。
 
 ## daemon の起動と停止
 
@@ -561,6 +587,7 @@ git pull
 | `⚠ Wayfire IPC unavailable` | `context.backend: wayfire` 固定時のみ。`echo $WAYFIRE_SOCKET`、`[core] plugins` に `ipc` |
 | `this Wayland session has no layer-shell support` | `gir1.2-gtk4layershell-1.0` が入っているか。X11 / Xwayland では動かない |
 | ヒントが足りない / 消えた | 絞り込みが残っていないか、一覧の上の chip を見る。解除は chip の `×`。絞り込みはシートごとに保存されるので、別のシートを開くと効いていないように見える |
+| 親シートや include のヒントが混ざらない | [混ざるはずのヒントが出ないとき](#混ざるはずのヒントが出ないとき)。`wayhint inspect` か `wayhint context --shown` で、どの絞りで落ちたかを見る |
 | 「エディタで編集」でエディタが開かない | `config.yaml` の `editor.command` の先頭のコマンドが PATH にあるか。端末の中で動くエディタ(vim など)は端末ごと起動する形で書く(`[foot, -e, nvim, "+{line}", "{file}"]`)。`wayhintd -v` のログに理由が出る |
 | hotkey を押しても何も出ない | `wayhint ping` で daemon が動いているか。止まっていれば[再起動する](#再起動する) |
 | 端末の中のコマンドのシートが出ない | `wayhint context` の `chain` と `process` を見る(上の「読み方」)。ウィンドウが複数なら[端末の複数ウィンドウ](#端末の複数ウィンドウ)の規約に乗っているか |

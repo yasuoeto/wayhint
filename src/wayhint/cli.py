@@ -4,7 +4,10 @@ Three kinds of subcommand:
 
 - ``validate`` reads the configuration and says whether it is sound. No daemon.
 - ``toggle`` / ``show`` / ``hide`` / ``refresh`` / ``reload`` / ``ping`` / ``context`` /
-  ``edit-mode`` / ``search-mode`` are one-line requests to ``wayhintd``.
+  ``edit-mode`` / ``search-mode`` are one-line requests to ``wayhintd``. ``context --shown`` asks
+  for the overlay on screen instead of resolving the context again.
+- ``inspect`` reads the files, like ``validate``, and says what an include or an assumed parent
+  lets through. No daemon.
 - ``add`` / ``edit`` / ``remove`` / ``favorite`` / ``move`` / ``format`` / ``schema`` change hint
   sheets. They write the files themselves and never go through the daemon (DECISIONS 0014 D11);
   the daemon notices the change through its file monitor. The sheet is always named with
@@ -25,7 +28,7 @@ from wayhint import __version__, ipc
 from wayhint.config import GlobalConfig, config_dir
 from wayhint.models import HINT_KINDS, Hint, HintSheet
 from wayhint.schema import json_schema
-from wayhint.selection import same_group, sort_hints
+from wayhint.selection import explain_filters, same_group, sort_hints
 from wayhint.ui.editmode import kind_fields
 from wayhint.yaml_store import (
     HintNotFoundError,
@@ -70,18 +73,85 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_send(args: argparse.Namespace) -> int:
+    shown = getattr(args, "shown", False)
     try:
-        reply = ipc.send_command(args.command, Path(args.socket) if args.socket else None)
+        reply = ipc.send_command(
+            "shown" if shown else args.command, Path(args.socket) if args.socket else None
+        )
     except ipc.DaemonUnavailable as e:
         print(f"wayhint: {e}", file=sys.stderr)
         return 2
     if not reply.get("ok"):
         print(f"wayhint: {reply.get('error', 'unknown error')}", file=sys.stderr)
         return 1
+    filters = reply.pop("filters", None)
     extras = {k: v for k, v in reply.items() if k != "ok" and v not in (None, [], {})}
     if extras:
         print(" ".join(f"{k}={v}" for k, v in extras.items()))
+    if filters is not None:
+        for line in _filter_lines(filters):
+            print(line)
     return 0
+
+
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """What a sheet's includes, and an assumed parent, let through -- from the files alone."""
+    result = load_all(config_dir())
+    for issue in result.issues:
+        print(str(issue), file=sys.stderr)
+    config = result.config or GlobalConfig()
+    sheet = _sheet_by_id(result, args.sheet)
+    if sheet is None:
+        raise CommandError(f"no sheet with id {args.sheet!r}")
+    parent = None
+    if args.parent:
+        parent = _sheet_by_id(result, args.parent)
+        if parent is None:
+            raise CommandError(f"no sheet with id {args.parent!r}")
+    filters = explain_filters(
+        sheet,
+        parent,
+        result.sheets,
+        config.parent_tags,
+        config.parent_categories,
+        config.include,
+    )
+    print(f"sheet {sheet.id} ({sheet.path.name})")
+    if parent is None:
+        # The parent is the sheet of the window the command runs in, not a property of the sheet.
+        print("parent: decided by the window it runs in; pass --parent ID to assume one")
+    for line in _filter_lines(filters):
+        print(line)
+    return 0
+
+
+def _filter_lines(filters: Mapping) -> list[str]:
+    """The ``explain_filters`` result as text. Tags and categories are ORed; ``[]`` is nothing."""
+    lines = []
+    parent = filters.get("parent")
+    if parent:
+        lines.append(f"parent {parent['sheet']}: {parent['shown']}/{parent['total']} shown")
+        lines.append("  tags: " + _narrowing(parent["tags"], parent["tags_from"]))
+        lines.append("  categories: " + _narrowing(parent["categories"], parent["categories_from"]))
+    if filters.get("sheet") is not None and not filters.get("include"):
+        lines.append("include: none")
+    for entry in filters.get("include") or ():
+        if entry["total"] is None:
+            lines.append(f"include {entry['sheet']}: no such sheet (from {entry['from']})")
+            continue
+        shown = f"{entry['shown']}/{entry['total']} shown"
+        lines.append(f"include {entry['sheet']}: {shown} (from {entry['from']})")
+        if entry["tags"] is not None or entry["categories"] is not None:
+            lines.append("  tags: " + _narrowing(entry["tags"], None))
+            lines.append("  categories: " + _narrowing(entry["categories"], None))
+    return lines
+
+
+def _narrowing(values: Sequence[str] | None, source: str | None) -> str:
+    if values is None:
+        return "not narrowed"
+    text = ", ".join(values) if values else "[] (lets nothing through)"
+    return f"{text} -- {source}" if source else text
 
 
 # --- hint editing ------------------------------------------------------------------------------
@@ -271,7 +341,18 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ipc.COMMANDS:
         c = sub.add_parser(name, help=help_[name])
         c.add_argument("--socket", help="override the Unix socket path")
+        if name == "context":
+            c.add_argument(
+                "--shown",
+                action="store_true",
+                help="the overlay on screen as it was opened, and what narrowed its hints",
+            )
         c.set_defaults(func=cmd_send)
+
+    ins = sub.add_parser("inspect", help="what a sheet's includes (and a parent) let through")
+    ins.add_argument("sheet", help="sheet id")
+    ins.add_argument("--parent", help="assume this sheet is the parent (it depends on the window)")
+    ins.set_defaults(func=cmd_inspect)
 
     add = sub.add_parser("add", help="add a hint to a sheet")
     add.add_argument("title")

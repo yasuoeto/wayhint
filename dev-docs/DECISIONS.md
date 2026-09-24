@@ -1422,6 +1422,24 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   付けない(フォームの category をそのまま書く)。親が category で絞っていると、合わない category で足した
   hint は子の一覧に出ない。
 
+## 0040 — 絞りの効き方は `wayhint inspect` と `wayhint context --shown` で見せ、警告や UI は足さない
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Context**: 親の `export_*` や include の `tags` / `categories`(0039)で落ちたヒントは、画面にも `wayhint context` にも
+  理由が出ない。`wayhint context` は打った瞬間に解決し直すので、端末で打つと `wayhint` 自身を見てしまい、実際の画面の
+  中身を調べられない。親はシートの設定ではなくウィンドウで決まるので、シートを指定した静的な確認では nested が分からない。
+- **Decision**: 2 つのコマンドを足す。**`wayhint inspect SHEET [--parent ID]`**: daemon を使わずファイルから、include の
+  要素ごとの絞りと件数、`--parent` で仮定した親の tag / category とその出所(段の key とファイル)と件数を出す。
+  **`wayhint context --shown`**: IPC に `shown` を足し(サブコマンドにはしない。`ipc.QUERIES`)、表示中の view の context を
+  解決し直さずに同じ説明付きで返す。説明は `selection.explain_filters` 1 つを両方で使う。
+- **Alternatives**: **何にも当たらない絞りを `validate` / `⚠` で警告**——空のシートや当たらない絞りは普通にあり、居座る
+  警告になる(ユーザー判断)。**ヒント画面に件数や落ちたヒントを出す**——普段の表示が騒がしくなり、編集モードの「画面上の
+  隣」の意味にも触る。使って足りなければ再検討。**`wayhint context --sheet`**——`context` は「いま解決するとどうなるか」の
+  コマンドで、静的な確認を混ぜると意味が曖昧になる。
+- **Consequences**: 件数は重複を除く前の数。`inspect` の `--parent` は仮定なので、実際の親と違えば結果も違う(実際の画面は
+  `--shown`)。IPC の応答は絞りの説明の分だけ大きくなるが 4096 byte に余裕がある。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):
