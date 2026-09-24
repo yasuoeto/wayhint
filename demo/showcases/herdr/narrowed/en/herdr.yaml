@@ -49,7 +49,7 @@ hints:
   - id: middle-paste
     title: Middle-click paste
     kind: shortcut
-    key: Shift+中クリック
+    key: Shift+middle-click
     command:
     category: input
     tags:

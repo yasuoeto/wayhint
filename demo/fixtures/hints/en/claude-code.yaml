@@ -20,7 +20,7 @@ hints:
   - id: wheel-scroll
     title: Scroll like a wheel mouse
     kind: shortcut
-    key: 中クリック+TrackPoint↑↓
+    key: Middle-click+TrackPoint↑↓
     command:
     category: scroll
     tags:

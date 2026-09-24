@@ -16,7 +16,7 @@ hints:
   - id: search
     title: Search forward
     kind: command
-    command: /語句
+    command: /pattern
     category: search
   - id: quit
     title: Quit
