@@ -875,6 +875,17 @@ class HerdrLaunchTest(unittest.TestCase):
 class NarrowedSheetTest(unittest.TestCase):
     """The narrowed herdr.yaml of the herdr showcase stays the fixture plus two lines."""
 
+    def test_the_broken_sheet_is_the_fixture_with_one_bracket_gone(self) -> None:
+        """common's edit breaks herdr.yaml by one character, and nothing else about it."""
+        demo = BIN.parent
+        fixture = (demo / "fixtures" / "hints" / "ja" / "herdr.yaml").read_text().splitlines()
+        broken = (demo / "showcases" / "common" / "broken" / "ja" / "herdr.yaml").read_text()
+        self.assertEqual(len(fixture), len(broken.splitlines()))
+        pairs = zip(fixture, broken.splitlines(), strict=True)
+        changed = [i for i, (a, b) in enumerate(pairs) if a != b]
+        self.assertEqual(changed, [fixture.index('    app_id_regex: ["herdr"]')])
+        self.assertEqual(broken.splitlines()[changed[0]], '    app_id_regex: ["herdr"')
+
     def test_the_narrowed_sheet_is_the_fixture_with_nested_added(self) -> None:
         demo = BIN.parent
         fixture = (demo / "fixtures" / "hints" / "ja" / "herdr.yaml").read_text().splitlines()

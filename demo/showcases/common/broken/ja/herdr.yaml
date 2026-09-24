@@ -1,0 +1,70 @@
+id: herdr
+title: Herdr
+match:
+  wayland:
+    app_id_regex: ["herdr"
+hints:
+  - id: pageup-pagedown
+    title: ページ単位でのスクロール
+    kind: shortcut
+    key: PgUp/PgDn
+    command:
+    category: scroll
+    tags:
+    favorite: false
+    copy:
+    remark:
+    source:
+    learned: '2026-09-18'
+  - id: next-tab
+    title: 次のtabへ移動
+    kind: shortcut
+    key: Ctrl+b→n
+    command:
+    category: tab
+    tags: [herdr]
+    favorite: false
+    copy:
+    remark:
+    source:
+    learned:
+  - id: theme
+    title: Cycle theme
+    key: Ctrl+Shift+T
+    category: appearance
+  - id: new-tab
+    title: 新規tab作成
+    kind: shortcut
+    key: Ctrl+b→c
+    command:
+    category: tab
+    tags: [herdr]
+    favorite: false
+    copy:
+    remark: Atrashii Pane
+    source:
+    learned:
+  - id: middle-paste
+    title: 中クリックペースト
+    kind: shortcut
+    key: Shift+中クリック
+    command:
+    category: input
+    tags:
+    favorite: false
+    copy:
+    remark: Linuxなどでいう中ボタンのコピペ、これもShiftが必要
+    source:
+    learned: '2026-09-19'
+  - id: paste
+    title: ペースト
+    kind: shortcut
+    key: Ctrl+Shift+v
+    command:
+    category: input
+    tags:
+    favorite: false
+    copy:
+    remark: 他からコピペするのにShiftが追加で必要
+    source:
+    learned: '2026-09-19'

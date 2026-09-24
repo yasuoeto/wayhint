@@ -136,17 +136,19 @@ steps:
   # --- §4 主役2: 奪わない(search)/ §5 主役3(edit)の入口 --------------------------------------
   # The Claude Code pane: its sheet is the one with commands to copy (codex.yaml and herdr.yaml
   # hold keys only, and a key is not copied -- DECISIONS 0039).
-  - id: claude-again
-    key: super+h
-    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
-    hold: 2.0
-
   - id: search-intro
-    # search's own opening: the same key as claude-again, with the caption that says what this
-    # video is about (the variant starts on its own, without overview's §1).
+    # search's own opening: the caption says what this video is about (the variant starts on
+    # its own, without overview's §1).
     key: super+h
     wait_for: {overlay: visible, label: "Claude Code", hints: 15}
     caption: {ja: "ヒントを探して、そのまま使う"}
+    hold: 4.0
+
+  - id: edit-intro
+    # edit's own opening, as search-intro is search's.
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    caption: {ja: "足りないヒントは、自分で足していく"}
     hold: 4.0
 
   - id: keep-typing
@@ -249,8 +251,8 @@ steps:
     hold: 4.0
 
   - id: type-title
-    type: "直前の検索を繰り返す"
-    wait_for: {overlay: visible, label: "Title", text: "直前の検索を繰り返す"}
+    type: "権限モードを切り替える"
+    wait_for: {overlay: visible, label: "Title", text: "権限モードを切り替える"}
     hold: 3.5
 
   - id: next-field
@@ -259,8 +261,8 @@ steps:
     hold: 0.6
 
   - id: type-key
-    type: "n"
-    wait_for: {overlay: visible, label: "Key", text: "n"}
+    type: "Shift+Tab"
+    wait_for: {overlay: visible, label: "Key", text: "Shift+Tab"}
     hold: 3.5
 
   - id: save-hint
@@ -270,23 +272,40 @@ steps:
     hold: 7.0
 
   - id: break-yaml
+    # herdr.yaml with the `]` of line 5 gone (broken/ is the fixture with that one change;
+    # tests/test_demo_scenario.py keeps it so). herdr.yaml rather than claude-code.yaml: the
+    # hint just added lives in claude-code.yaml, and putting the fixture back would drop it.
+    # Herdr's hints are in this list too, so the error is about what is on screen.
     write:
       file: "hints/{lang}/herdr.yaml"
-      text: |
-        id: herdr
-        title: Herdr
-        hints:
-          - {id: broken, title: [
+      source: "showcases/common/broken/{lang}/herdr.yaml"
     precondition: {overlay: visible}
     wait_for: {overlay: visible, label: "YAML error"}
+    hold: 0
+
+  - id: open-broken
+    # The broken line on screen while the caption says it was broken by hand. vi takes the
+    # focus; the overlay stays, with the error above the list it last read.
+    spawn: {window: vi, argv: [foot-wayhint, -e, vi, "hints/{lang}/herdr.yaml"]}
+    wait_for:
+      context: {active_sheet: vi, process_name: vi}
+      overlay: visible
+      label: "YAML error"
+      timeout: 30
     caption: {ja: "手で編集して壊しても、最後に読めた内容が残る"}
     hold: 7.0
+
+  - id: close-broken
+    close: {window: vi}
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.0
 
   - id: fix-yaml
     write:
       file: "hints/{lang}/herdr.yaml"
       source: "fixtures/hints/{lang}/herdr.yaml"
-    wait_for: {overlay: visible, no_label: "YAML error"}
+    # 16: the list is back, with the hint added above still in it.
+    wait_for: {overlay: visible, no_label: "YAML error", hints: 16}
     caption: {ja: "直せばそのまま復帰する。再起動は要らない"}
     hold: 7.0
 
@@ -385,12 +404,12 @@ variants:
       - clear-filter
       - close
   edit:
-    target: 49
+    target: 52
     tolerance: 6
     steps:
       - boot-herdr
       - boot-claude
-      - claude-again
+      - edit-intro
       - edit-mode
       - open-form
       - type-title
@@ -398,6 +417,8 @@ variants:
       - type-key
       - save-hint
       - break-yaml
+      - open-broken
+      - close-broken
       - fix-yaml
       - close
   sheets:
