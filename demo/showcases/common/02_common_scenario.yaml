@@ -114,14 +114,33 @@ steps:
     hold: 8.0
 
   # --- §4 主役2: 奪わない ------------------------------------------------------------------------
+  # Back to the Claude Code pane: its sheet is the one with commands to copy (codex.yaml and
+  # herdr.yaml hold keys only, and a key is not copied -- DECISIONS 0039).
+  - id: back-to-claude
+    herdr: [tab, focus, "w1:t1"]
+    wait_for: {context: {active_sheet: claude-code}, overlay: visible, timeout: 20}
+    hold: 1.5
+
+  - id: claude-again
+    key: super+h
+    wait_for: {overlay: visible, label: "Claude Code", hints: 15}
+    hold: 2.0
+
   - id: keep-typing
-    type: "/dif"
+    type: "write tests"
     precondition: {overlay: visible}
     wait_for:
       overlay: visible
       unchecked: "文字が出るのは端末の中で、overlay は変わらないのが正しい。証拠は frame にしかない"
     caption: {ja: "通常表示中はキーボードを奪わない"}
     hold: 8.0
+
+  - id: erase-line
+    key: ctrl+u
+    wait_for:
+      overlay: visible
+      unchecked: "端末の行が消えるだけで overlay は変わらない。証拠は frame にしかない"
+    hold: 1.0
 
   - id: open-search
     key: super+shift+h
@@ -131,27 +150,39 @@ steps:
     hold: 2.5
 
   - id: type-search
-    type: "ペースト"
-    wait_for: {overlay: visible, hints: 2, text: "ペースト"}
+    type: "圧縮"
+    wait_for: {overlay: visible, hints: 1, text: "圧縮"}
     caption: {ja: "キーボードの入力先を切り替えるのは、検索を始めたときだけ"}
     hold: 7.0
 
-  - id: copy-and-leave
-    key: enter
-    wait_for: {button: search, hints: 2}
-    caption: {ja: "Enter で先頭のヒントをコピーして戻る"}
-    hold: 6.0
+  - id: to-list
+    key: down
+    wait_for:
+      overlay: visible
+      hints: 1
+      label: "c copy and leave · Enter/Esc leave · ↓ list · Tab category"
+    caption: {ja: "↓ で一覧へ。使えるキーは下に出る"}
+    hold: 4.5
 
-  - id: focus-back
-    type: "f"
-    wait_for: {overlay: visible, hints: 2}
+  - id: copy-and-leave
+    key: c
+    wait_for: {button: search, hints: 1}
+    caption: {ja: "c で選択中のヒントのコマンドをコピーして戻る"}
+    hold: 4.5
+
+  - id: paste
+    key: ctrl+shift+v
+    wait_for:
+      overlay: visible
+      hints: 1
+      unchecked: "端末に /compact が貼られたかは frame にしか出ない"
     caption: {ja: "絞り込みは残り、入力は元のウィンドウへ"}
     hold: 5.5
 
   - id: clear-filter
     press: {button: clear-filter}
-    precondition: {overlay: visible, hints: 2}
-    wait_for: {overlay: visible, hints: 9}
+    precondition: {overlay: visible, hints: 1}
+    wait_for: {overlay: visible, hints: 15}
     caption: {ja: "絞り込みはシートごとに残る。解除は ×"}
     hold: 5.5
 
@@ -188,7 +219,7 @@ steps:
 
   - id: save-hint
     key: enter
-    wait_for: {overlay: visible, no_label: "Title", hints: 10}
+    wait_for: {overlay: visible, no_label: "Title", hints: 16}
     caption: {ja: "Enter で保存すると編集モードは終わる"}
     hold: 7.0
 
@@ -219,12 +250,6 @@ steps:
     precondition: {overlay: visible}
     wait_for: {overlay: hidden}
     caption: {ja: "忘れた瞬間、いつも同じ場所に、必要な情報がある"}
-    hold: 6.0
-
-  - id: no-exec
-    pause: true
-    wait_for: {overlay: hidden}
-    caption: {ja: "command は表示とコピーだけ。実行はしない"}
     hold: 6.0
 
   - id: stack
@@ -266,13 +291,13 @@ steps:
 
   - id: close-yaml
     close: {window: vi}
-    wait_for: {context: {active_sheet: codex}, timeout: 20}
+    wait_for: {context: {active_sheet: claude-code}, timeout: 20}
     hold: 3.0
 
   - id: no-scrape
     pause: true
     wait_for: {overlay: hidden}
-    caption: {ja: "やらないこと: 自動実行・AI 生成・画面の読み取り"}
+    caption: {ja: "やらないこと: コマンドの実行・AI 生成・画面の読み取り"}
     hold: 8.0
 
 # =================================================================================================
@@ -296,11 +321,15 @@ variants:
       - start-codex
       - switch-pane
       - parent-hints
+      - back-to-claude
+      - claude-again
       - keep-typing
+      - erase-line
       - open-search
       - type-search
+      - to-list
       - copy-and-leave
-      - focus-back
+      - paste
       - clear-filter
       - edit-mode
       - open-form
@@ -316,6 +345,5 @@ variants:
       - yaml-include
       - yaml-lang
       - close-yaml
-      - no-exec
       - no-scrape
       - stack
