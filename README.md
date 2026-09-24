@@ -305,7 +305,8 @@ foot などの端末なら wayhint が `/proc` を辿って調べる。端末の
 ### 親シートのヒント
 
 **何も書かなければ、親のヒントは全部子の一覧に並ぶ。** 絞りたいときは親のシートに
-`nested.export_tags` を書き、渡したいヒントに同じタグを付ける。
+`nested.export_tags`(タグで)か `nested.export_categories`(category で)を書く。両方書くと、
+どちらかに当たるヒントが渡る。
 
 ```yaml
 # hints/ja/herdr.yaml — terminal タグの付いたヒントだけを子の一覧に渡す
@@ -318,9 +319,10 @@ hints:
   - {id: theme, title: テーマを切り替える, key: Ctrl+Shift+T}   # 子の一覧には出ない
 ```
 
-- 子のシートに `inherit.parent_tags` を書くと、その子だけ別の絞りにできる。
+- category で渡すなら `nested: {export_categories: [基本]}` のように書く(ヒントに印を付けなくてよい)。
+- 子のシートに `inherit.parent_tags` / `parent_categories` を書くと、その子だけ別の絞りにできる。
 - 親のヒントをどこにも混ぜたくないときは、`config.yaml` に `nested: {parent_tags: []}` と書く。
-- `[]` はどこに書いても「親のヒントを出さない」。
+- `[]` はどこに書いても、もう片方に関係なく「親のヒントを出さない」。
 
 ### 他のシートを混ぜる(`include`)
 
@@ -338,7 +340,9 @@ hints:
 # hints/ja/claude-code.yaml(match とヒントは省略)
 id: claude-code
 title: Claude Code
-include: [wm]          # このシートの一覧の末尾に wm のヒントが並ぶ
+include:
+  - wm                                # このシートの一覧の末尾に wm のヒントが並ぶ
+  - {sheet: git, categories: [基本]}   # git からは「基本」category のヒントだけ
 ```
 
 ```yaml
@@ -347,7 +351,8 @@ include: [wm]
 ```
 
 - シートの `include:` は config の既定を**置き換える**(足し算ではない)。`include: []` で何も混ぜない。
-- 混ぜたヒントはタグで絞らず全部出る。量を抑えたいときは共通シートを小さく分ける。
+- id だけ書くと全部混ざる。一部だけにしたいときは `{sheet, tags, categories}` の形で書く。
+  タグと category を両方書くと、どちらかに当たるヒント。`[]` は 0 件。
 - 混ぜた先の `include` は辿らない(1 段だけ)。
 - 無い id を書いてもシートは出る。ヒント画面の ⚠ と `wayhint validate` に警告が出る(exit 0)。
 - 混ざったヒントを編集・削除すると、**そのヒントのファイル**が書き換わる(詳細欄の `ファイル:`)。

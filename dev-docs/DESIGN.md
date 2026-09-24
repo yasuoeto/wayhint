@@ -136,12 +136,12 @@ overlay:    {anchor: top-right, width: 420px, height: 60%, margin: {top: 24, rig
 appearance: {style: style.css, show_category: true, language: auto}   # language: auto(locale) | en | ja
 editor:     {command: [gvim, --remote-silent, "+{line}", "{file}"], schema_modeline: false,
              schema_path: ~/.config/wayhint/schema.json}
-nested:     {parent_tags: null}   # null = 書いていない。[] で全体の opt-out(docs/SHEETS.md §3)
+nested:     {parent_tags: null, parent_categories: null}   # null = 書いていない。[] で全体の opt-out(docs/SHEETS.md §3)
 context:    {live_update: false, backend: auto, workspace: current}  # backend: auto|wayland|wayfire
                                                                      # workspace: current|all
 search:     {max_results: 50}
 logging:    {level: warning}
-include:    []          # 既定で全 sheet に混ぜる sheet id(DECISIONS 0026)。sheet 側 include が勝つ
+include:    []          # 既定で全 sheet に混ぜる sheet(id か {sheet, tags, categories}。0026 / 0039)。sheet 側 include が勝つ
 ```
 
 - 全項目任意、ファイル自体も無くてよい(上記が既定値)。未知の section / key は error。
@@ -171,10 +171,10 @@ priority: 10            # 任意 int、既定 0
 match:                                                 # 省略可。無い sheet は active にならない
   wayland: {app_id_regex: [...]}                       # 旧綴り wayfire: も同義
   process: {argv_regex: [...], cmdline_regex: [...]}   # Python re でコンパイルできること
-include: [wm, ime]                                     # 混ぜる sheet id。省略時は global include
+include: [wm, {sheet: git, tags: [daily], categories: [基本]}]   # 混ぜる sheet。省略時は global include
 display: {anchor, width, height, margin, output}       # 部分指定、global overlay から継承
-inherit: {parent_tags: [terminal, ai]}                 # 親 hint の絞り。省略時は下の順で決まる
-nested: {export_tags: [pane]}                          # 親として子に渡す hint の tag。省略時は全部
+inherit: {parent_tags: [terminal, ai], parent_categories: [ペイン]}   # 親 hint の絞り。省略時は下の順で決まる
+nested: {export_tags: [pane], export_categories: [ペイン]}   # 親として子に渡す hint。省略時は全部
 hints:
   - {id, title,            # 必須。id は sheet 内で一意
      kind: shortcut|command|tip|note, key, command, category, tags: [], favorite: false,
@@ -183,18 +183,22 @@ hints:
 
 - **他 sheet の hint の混ざり方**(親 sheet と `include`)は `docs/SHEETS.md` にまとめた。同文書の各節の
   実装: §1 active / 親 sheet の決定は `context/resolver.py` の `ContextResolver.resolve`、§2 一覧の組み立ては
-  `selection.visible_hints` → `selection.sort_hints`、§3 親 hint の絞りは `selection.effective_parent_tags`、
-  §4 include は `yaml_store.resolve_includes`、§6 の所属ファイルは `hint.location.file`。要点だけ:
-  - **`include`**(DECISIONS 0026): 並べた sheet の hint を tag で絞らず全部混ぜる。sheet 側の
-    `include` は config の `include` を**置き換える**。include 先の include は辿らない。解決できない
-    id と自己参照は warning で、その id だけ無視する。
-  - **親 hint の絞り**(DECISIONS 0034): 子の `inherit.parent_tags` → config の `nested.parent_tags`
-    → 親の `nested.export_tags` → 全部、の 4 段で最初に書いてあった段だけを使う。`[]` は 0 件。
-    config の `nested.parent_tags` は全体の opt-out(`[]`)用で、tag で絞るのは親の `export_tags`
-    で行う(DECISIONS 0036)。
+  `selection.visible_hints` → `selection.sort_hints`、§3 親 hint の絞りは `selection.effective_parent_tags` /
+  `effective_parent_categories` と `models.HintFilter`、§4 include は `yaml_store.resolve_includes`(絞った
+  sheet は `hints` だけを減らした写しで、hint は元の object のまま)、§6 の所属ファイルは
+  `hint.location.file`。要点だけ:
+  - **`include`**(DECISIONS 0026 / 0039): 要素は sheet id(全部)か `{sheet, tags, categories}`(絞る)。
+    sheet 側の `include` は config の `include` を**置き換える**。include 先の include は辿らない。
+    解決できない id と自己参照は warning で、その id だけ無視する。
+  - **親 hint の絞り**(DECISIONS 0034 / 0039): tag は子の `inherit.parent_tags` → config の
+    `nested.parent_tags` → 親の `nested.export_tags` → 全部、の 4 段で最初に書いてあった段だけを使う。
+    category も `parent_categories` / `export_categories` で同じ規則を独立に解決する。
+  - **tag と category の組み合わせ**(0039): 書いた方の OR。どちらかが `[]` なら、もう片方に関係なく 0 件
+    (config の `nested.parent_tags: []` が全体の opt-out のまま効くため。0036)。category の無い hint は
+    どの category にも当たらない。
 - **`match` は省略可**。`match` の無い sheet はどの context でも active にならず、`include` からだけ
   一覧に出る(共通 hint 用)。`match` があっても include 対象にはできる。
-- 一覧の連結順は active → 親 sheet(tag 一致分) → include(記述順)で、その後 D7 のソートを掛ける。
+- 一覧の連結順は active → 親 sheet(絞った分) → include(記述順、絞った分)で、その後 D7 のソートを掛ける。
   同じ hint が 2 経路から来たときは `(ファイル, id)` で 1 件に落とす(0019)。
 - `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで canonical 順
   (`id` `title` `kind` `key` `command` `category` `tags` `favorite` `copy` `remark` `source`

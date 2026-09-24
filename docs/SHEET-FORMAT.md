@@ -26,10 +26,12 @@ match:                          # 任意。無いシートは単独では出な�
   process:
     argv_regex: ["^claude$"]
     cmdline_regex: ["claude .*--resume"]
-include: [wm]                   # 任意。この一覧に混ぜるシート
+include:                        # 任意。この一覧に混ぜるシート
+  - wm                          #   id だけなら全部
+  - {sheet: git, categories: [基本]}   # {sheet, tags, categories} で一部だけ
 display: {anchor: top-left}     # 任意。このシートを出すときだけヒント画面の位置・大きさを変える
-inherit: {parent_tags: [pane]}  # 任意。子として出るとき、親のヒントをこのタグで絞る
-nested: {export_tags: [pane]}   # 任意。親として出るとき、子に渡すヒントのタグ
+inherit: {parent_tags: [pane]}  # 任意。子として出るとき、親のヒントを絞る(parent_categories も可)
+nested: {export_tags: [pane]}   # 任意。親として出るとき、子に渡すヒントを絞る(export_categories も可)
 hints:                          # ヒントの list
   - id: resume
     title: 前の会話を再開
@@ -48,12 +50,13 @@ hints:                          # ヒントの list
 | `title` | ✓ | 文字列 | シートの見出し |
 | `priority` | | 整数(既定 0) | 複数のシートが当たったとき、大きい方が選ばれる |
 | `match` | | 下の「match」 | どのウィンドウ・コマンドのときに出すか |
-| `include` | | シート id の list | この一覧の末尾に混ぜるシート。書かなければ `config.yaml` の `include`。`[]` で何も混ぜない |
+| `include` | | シート id か `{sheet, tags, categories}` の list | この一覧の末尾に混ぜるシート。map にすると、そのタグか category のヒントだけを混ぜる。書かなければ `config.yaml` の `include`。`[]` で何も混ぜない |
 | `display` | | `anchor` `width` `height` `margin` `output` | このシートを出すときだけ、ヒント画面の位置・大きさを上書きする。書き方は [`CONFIG.md`](CONFIG.md) の overlay と同じ |
-| `inherit.parent_tags` | | タグの list | このシートが子として選ばれたとき、親のヒントをこのタグで絞る |
-| `nested.export_tags` | | タグの list | このシートが親になったとき、子の一覧に渡すヒントのタグ。書かなければ全部渡す |
+| `inherit.parent_tags` / `inherit.parent_categories` | | タグ / category の list | このシートが子として選ばれたとき、親のヒントをこれで絞る |
+| `nested.export_tags` / `nested.export_categories` | | タグ / category の list | このシートが親になったとき、子の一覧に渡すヒントを絞る。書かなければ全部渡す |
 | `hints` | | ヒントの list | 下の「ヒントの項目」 |
 
+タグと category を両方書いたときは、どちらかに当たるヒント(OR)。`[]` はもう片方に関係なく 0 件。
 `include` `inherit` `nested` の関係は [`SHEETS.md`](SHEETS.md) に図でまとめてある。
 
 ## match
@@ -92,7 +95,7 @@ match:
 | `key` | | 文字列 | 一覧の左端に出るキー操作(例 `Ctrl-o`)。長いものは折り返し、YAML に書いた改行もそのまま出る |
 | `command` | | 文字列 | title の下に出るコマンド。**実行はしない**。表示とコピーのみ |
 | `category` | | 文字列 | 一覧の右端に出る見出し。同じ category は隣り合って並ぶ。書かなければ擬似 category(`inbox` / `未定義`) |
-| `tags` | | 文字列の list | 親シートとして混ざるときの絞り込み(`nested.export_tags` / `inherit.parent_tags`)。検索の対象にもなる |
+| `tags` | | 文字列の list | 親シートや `include` から混ざるときの絞り込み。検索の対象にもなる |
 | `favorite` | | `true` / `false`(既定) | `true` で `★` 付きになり、一覧の先頭に並ぶ |
 | `copy` | | 文字列 | コピーする文字列が表示と違うときだけ書く |
 | `remark` | | 文字列 | 行を選んだときだけ出る補足 |

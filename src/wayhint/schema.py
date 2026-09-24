@@ -79,6 +79,10 @@ def _match_schema() -> dict[str, Any]:
     }
 
 
+def _string_list() -> dict[str, Any]:
+    return {"type": ["array", "null"], "items": {"type": "string"}}
+
+
 def json_schema() -> dict[str, Any]:
     """The schema document. ``additionalProperties: false`` mirrors "unknown key is an error"."""
     properties: dict[str, Any] = {
@@ -89,9 +93,23 @@ def json_schema() -> dict[str, Any]:
         "match": _match_schema(),
         # A sheet with no match is never the active one; it exists to be included (0026).
         "include": {
-            "title": "sheet ids mixed into this sheet's list",
+            "title": "sheets mixed into this sheet's list; {sheet, tags, categories} takes part",
             "type": ["array", "null"],
-            "items": {"type": "string", "pattern": _ID_RE.pattern},
+            "items": {
+                "oneOf": [
+                    {"type": "string", "pattern": _ID_RE.pattern},
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["sheet"],
+                        "properties": {
+                            "sheet": {"type": "string", "pattern": _ID_RE.pattern},
+                            "tags": _string_list(),
+                            "categories": _string_list(),
+                        },
+                    },
+                ]
+            },
         },
         "display": {
             "type": ["object", "null"],
@@ -106,12 +124,12 @@ def json_schema() -> dict[str, Any]:
         "inherit": {
             "type": ["object", "null"],
             "additionalProperties": False,
-            "properties": {"parent_tags": {"type": ["array", "null"], "items": {"type": "string"}}},
+            "properties": {"parent_tags": _string_list(), "parent_categories": _string_list()},
         },
         "nested": {
             "type": ["object", "null"],
             "additionalProperties": False,
-            "properties": {"export_tags": {"type": ["array", "null"], "items": {"type": "string"}}},
+            "properties": {"export_tags": _string_list(), "export_categories": _string_list()},
         },
         "hints": {
             "type": ["array", "null"],

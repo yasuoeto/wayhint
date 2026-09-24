@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from wayhint.cli import main
-from wayhint.models import Margin, Size
+from wayhint.models import IncludeRef, Margin, Size
 from wayhint.yaml_store import (
     LoadResult,
     SheetStore,
@@ -103,7 +103,7 @@ class GoodFixtureTest(unittest.TestCase):
         self.assertEqual(result.issues, [])
         by_id = {s.id: s for s in result.sheets}
         self.assertEqual(set(by_id), {"herdr", "claude", "wm"})
-        self.assertEqual(by_id["claude"].include, ("wm",))
+        self.assertEqual(by_id["claude"].include, (IncludeRef("wm"),))
         self.assertEqual([s.id for s in result.includes_for(by_id["claude"])], ["wm"])
         self.assertTrue(by_id["wm"].match.is_empty(), "an included-only sheet has no match")
         self.assertIsNone(by_id["herdr"].include, "no include means: use the global default")
@@ -296,7 +296,7 @@ class IncludeTest(unittest.TestCase):
         self.write("a", "id: a\ntitle: A\ninclude: [wm]\nhints:\n  - {id: x, title: X}\n")
         result = self.load()
         sheet = next(s for s in result.sheets if s.id == "a")
-        self.assertEqual(sheet.include, ("wm",))
+        self.assertEqual(sheet.include, (IncludeRef("wm"),))
         self.assertEqual([s.id for s in result.includes_for(sheet)], ["wm"])
         self.assertEqual(result.issues, [])
 

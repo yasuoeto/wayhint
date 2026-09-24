@@ -3,7 +3,8 @@
 - :func:`visible_hints`: active sheet's hints plus the parent sheet's hints, narrowed by the
   first tag list that was written down: child ``inherit.parent_tags``, then global
   ``nested.parent_tags``, then the parent's own ``nested.export_tags``; none of them written means
-  every parent hint (DECISIONS 0034). ``favorite`` never affects visibility (requirement 9).
+  every parent hint (DECISIONS 0034). Categories are settled the same way on their own, and a
+  hint passes when either matches (0039). ``favorite`` never affects visibility (requirement 9).
 - :func:`sort_hints`: favorites first in YAML order, then the rest by category in order of first
   appearance, then YAML order (requirement 11 as amended by DECISIONS 0014 D7).
 - :func:`search_hints`: case-insensitive substring, whitespace-separated tokens ANDed, over
@@ -15,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from wayhint.models import Hint, HintSheet
+from wayhint.models import Hint, HintFilter, HintSheet
 
 
 def effective_parent_tags(
@@ -39,13 +40,35 @@ def effective_parent_tags(
     return None
 
 
-def parent_hints_for(parent: HintSheet | None, parent_tags: Iterable[str] | None) -> list[Hint]:
+def effective_parent_categories(
+    child: HintSheet | None,
+    global_parent_categories: Sequence[str] | None,
+    parent: HintSheet | None = None,
+) -> tuple[str, ...] | None:
+    """The category filter on the parent's hints: the same rule as :func:`effective_parent_tags`,
+    settled on its own -- ``inherit.parent_categories``, ``nested.parent_categories``,
+    ``export_categories``."""
+    if child is not None and child.parent_categories is not None:
+        return tuple(child.parent_categories)
+    if global_parent_categories is not None:
+        return tuple(global_parent_categories)
+    if parent is not None and parent.export_categories is not None:
+        return tuple(parent.export_categories)
+    return None
+
+
+def parent_hints_for(
+    parent: HintSheet | None,
+    parent_tags: Iterable[str] | None,
+    parent_categories: Iterable[str] | None = None,
+) -> list[Hint]:
     if parent is None:
         return []
-    if parent_tags is None:
-        return list(parent.hints)
-    wanted = set(parent_tags)
-    return [h for h in parent.hints if wanted.intersection(h.tags)]
+    wanted = HintFilter(
+        tags=None if parent_tags is None else tuple(parent_tags),
+        categories=None if parent_categories is None else tuple(parent_categories),
+    )
+    return [h for h in parent.hints if wanted.allows(h)]
 
 
 def visible_hints(
@@ -53,6 +76,7 @@ def visible_hints(
     parent: HintSheet | None,
     global_parent_tags: Sequence[str] | None,
     includes: Sequence[HintSheet] = (),
+    global_parent_categories: Sequence[str] | None = None,
 ) -> list[Hint]:
     """Hints for the overlay before sorting.
 
@@ -61,9 +85,10 @@ def visible_hints(
     When only the parent is known (foreground process unmatched) all parent hints are shown.
 
     ``includes`` are the sheets the active one names in ``include`` (or the global default),
-    already resolved and in the order they were written. Their hints come last, whole -- no tag
-    filter -- and a hint already on the list is not added again: the same sheet can be both the
-    nested parent and an include, and two sheets can include the same one (DECISIONS 0026).
+    already resolved, narrowed by their own ``tags`` / ``categories`` (0039) and in the order they
+    were written. Their hints come last, and a hint already on the list is not added again: the
+    same sheet can be both the nested parent and an include, and two sheets can include the same
+    one (DECISIONS 0026).
     """
     if active is None:
         out = list(parent.hints) if parent is not None else []
@@ -71,7 +96,8 @@ def visible_hints(
         out = list(active.hints)
     else:
         tags = effective_parent_tags(active, global_parent_tags, parent)
-        out = list(active.hints) + parent_hints_for(parent, tags)
+        categories = effective_parent_categories(active, global_parent_categories, parent)
+        out = list(active.hints) + parent_hints_for(parent, tags, categories)
     for sheet in includes:
         out.extend(sheet.hints)
     return _unique(out)

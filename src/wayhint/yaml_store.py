@@ -18,7 +18,7 @@ import itertools
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ruamel.yaml import YAML
@@ -38,7 +38,9 @@ from wayhint.matcher import GENERIC_PROCESS_NAMES, argv_basenames, strip_pid_suf
 from wayhint.models import (
     HINT_KINDS,
     Hint,
+    HintFilter,
     HintSheet,
+    IncludeRef,
     MatchRule,
     ResolvedContext,
     SourceLocation,
@@ -311,23 +313,6 @@ def _req_title(ctx: _Ctx, node: Mapping, where: str) -> str | None:
     return value
 
 
-def _sheet_ids(ctx: _Ctx, node: Mapping, key: str, where: str) -> tuple[str, ...] | None:
-    """A list of sheet ids, or ``None`` when the key is absent (which means "use the default")."""
-    value = node.get(key)
-    if value is None:
-        return None
-    if isinstance(value, str) or not isinstance(value, Sequence):
-        ctx.error(f"{where}.{key} must be a list of sheet ids", node, key)
-        return None
-    out = []
-    for i, item in enumerate(value):
-        if not isinstance(item, str) or not _ID_RE.match(item):
-            ctx.error(f"{where}.{key}[{i}] must match {_ID_RE.pattern}", value, i)
-            continue
-        out.append(item)
-    return tuple(out)
-
-
 def _tags(ctx: _Ctx, node: Mapping, key: str, where: str) -> tuple[str, ...] | None:
     value = node.get(key)
     if value is None:
@@ -341,6 +326,43 @@ def _tags(ctx: _Ctx, node: Mapping, key: str, where: str) -> tuple[str, ...] | N
             ctx.error(f"{where}.{key}[{i}] must be a non-empty string", value, i)
             continue
         out.append(tag)
+    return tuple(out)
+
+
+def _include_refs(ctx: _Ctx, node: Mapping) -> tuple[IncludeRef, ...] | None:
+    """``include``: sheet ids, or ``{sheet, tags, categories}`` to take part of one (0026, 0039).
+
+    ``None`` when the key is absent, which means "use the default from config.yaml".
+    """
+    value = node.get("include")
+    if value is None:
+        return None
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        message = "include must be a list of sheet ids or {sheet, tags, categories}"
+        ctx.error(message, node, "include")
+        return None
+    out = []
+    for i, item in enumerate(value):
+        where = f"include[{i}]"
+        if isinstance(item, str):
+            if not _ID_RE.match(item):
+                ctx.error(f"{where} must match {_ID_RE.pattern}", value, i)
+                continue
+            out.append(IncludeRef(item))
+            continue
+        if not isinstance(item, Mapping):
+            ctx.error(f"{where} must be a sheet id or a mapping", value, i)
+            continue
+        unknown = set(map(str, item)) - {"sheet", "tags", "categories"}
+        if unknown:
+            ctx.error(f"{where}: unknown key(s): {', '.join(sorted(unknown))}", value, i)
+        sheet = item.get("sheet")
+        if not isinstance(sheet, str) or not _ID_RE.match(sheet):
+            ctx.error(f"{where}.sheet must match {_ID_RE.pattern}", value, i)
+            continue
+        tags = _tags(ctx, item, "tags", where)
+        categories = _tags(ctx, item, "categories", where)
+        out.append(IncludeRef(sheet, HintFilter(tags=tags, categories=categories)))
     return tuple(out)
 
 
@@ -405,27 +427,29 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
         ctx.error(str(e), data, "display")
         display = parse_display(None, "display")
 
-    include = _sheet_ids(ctx, data, "include", "sheet")
-    parent_tags = None
+    include = _include_refs(ctx, data)
+    parent_tags = parent_categories = None
     inherit = data.get("inherit")
     if inherit is not None:
         if not isinstance(inherit, Mapping):
             ctx.error("inherit must be a mapping", data, "inherit")
         else:
-            unknown = set(map(str, inherit)) - {"parent_tags"}
+            unknown = set(map(str, inherit)) - {"parent_tags", "parent_categories"}
             if unknown:
                 ctx.error(f"inherit: unknown key(s): {', '.join(sorted(unknown))}", data, "inherit")
             parent_tags = _tags(ctx, inherit, "parent_tags", "inherit")
-    export_tags = None
+            parent_categories = _tags(ctx, inherit, "parent_categories", "inherit")
+    export_tags = export_categories = None
     nested = data.get("nested")
     if nested is not None:
         if not isinstance(nested, Mapping):
             ctx.error("nested must be a mapping", data, "nested")
         else:
-            unknown = set(map(str, nested)) - {"export_tags"}
+            unknown = set(map(str, nested)) - {"export_tags", "export_categories"}
             if unknown:
                 ctx.error(f"nested: unknown key(s): {', '.join(sorted(unknown))}", data, "nested")
             export_tags = _tags(ctx, nested, "export_tags", "nested")
+            export_categories = _tags(ctx, nested, "export_categories", "nested")
 
     hints: list[Hint] = []
     hints_node = data.get("hints", [])
@@ -462,7 +486,9 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
             match=match,
             display=display,
             parent_tags=parent_tags,
+            parent_categories=parent_categories,
             export_tags=export_tags,
+            export_categories=export_categories,
             include=include,
             hints=tuple(hints),
         ),
@@ -541,9 +567,13 @@ def unique_sheet_ids(sheets: Sequence[HintSheet]) -> tuple[list[HintSheet], list
 
 
 def resolve_includes(
-    sheets: Sequence[HintSheet], global_include: Sequence[str] = ()
+    sheets: Sequence[HintSheet], global_include: Sequence[IncludeRef | str] = ()
 ) -> tuple[dict[Path, list[HintSheet]], list[Issue]]:
     """Turn every sheet's ``include`` into the sheets it names (DECISIONS 0026).
+
+    An entry with ``tags`` / ``categories`` yields a copy of the named sheet holding only the hints
+    that pass (0039), so everything downstream keeps working on plain sheets. The hints are the
+    same objects, so editing one still writes to the file it lives in.
 
     A sheet without ``include`` uses ``global_include`` from config.yaml; writing ``include`` in
     the sheet replaces that default rather than adding to it, the way ``inherit.parent_tags``
@@ -558,7 +588,9 @@ def resolve_includes(
         own = sheet.include is not None
         wanted = sheet.include if own else tuple(global_include)
         found: list[HintSheet] = []
-        for name in wanted:
+        for ref in wanted:
+            ref = ref if isinstance(ref, IncludeRef) else IncludeRef(ref)
+            name = ref.sheet
             if name == sheet.id:
                 # The global default names every sheet, this one included; only a sheet that
                 # writes its own name is saying something wrong.
@@ -573,12 +605,14 @@ def resolve_includes(
                     Issue(sheet.path, 1, f"include: no sheet with id {name!r}", "warning")
                 )
                 continue
+            if not ref.filter.is_everything():
+                other = replace(other, hints=tuple(h for h in other.hints if ref.filter.allows(h)))
             found.append(other)
         resolved[sheet.path] = found
     return resolved, issues
 
 
-def load_sheets(hints_dir: Path, global_include: Sequence[str] = ()) -> LoadResult:
+def load_sheets(hints_dir: Path, global_include: Sequence[IncludeRef | str] = ()) -> LoadResult:
     result = LoadResult()
     for path in sheet_files(hints_dir):
         sheet, issues = load_sheet(path)
@@ -615,7 +649,7 @@ class SheetStore:
     succeeds (or the file is removed).
     """
 
-    def __init__(self, hints_dir: Path, global_include: Sequence[str] = ()) -> None:
+    def __init__(self, hints_dir: Path, global_include: Sequence[IncludeRef | str] = ()) -> None:
         self.hints_dir = hints_dir
         self.global_include = tuple(global_include)
         self._sheets: dict[Path, HintSheet] = {}

@@ -84,10 +84,11 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 8. **Herdr adapter**: `herdr pane current` / `herdr pane process-info --pane <id>` から
    foreground process (name/argv/cmdline/pid/cwd) を取得。name だけに依存せず argv basename
    も照合(`node /path/to/codex`)。取得失敗時はHerdr hintsのみ(§14, §15)。
-9. **parent tag filtering**: 表示対象は tag の交差のみで決め、favorite で決めない。
+9. **parent tag filtering**: 表示対象は tag と category で決め、favorite で決めない。
    子sheet `inherit.parent_tags` → global `nested.parent_tags` → 親sheet `nested.export_tags` →
-   全部、の順に最初に書いてある段を使う。global は全体の opt-out(`[]`)用(§17–§19, §29、
-   DECISIONS 0034 / 0036、`docs/SHEETS.md`)。
+   全部、の順に最初に書いてある段を使い、category も `*_categories` で同じく決め、両方書けば OR。
+   global は全体の opt-out(`[]`)用。`include` の要素も `{sheet, tags, categories}` で絞れる
+   (§17–§19, §29、DECISIONS 0034 / 0036 / 0039、`docs/SHEETS.md`)。
 10. **hint schema**: 必須 `id`,`title`。任意 `kind(shortcut|command|tip|note)`, `key`,
     `command`, `category`, `tags`, `favorite`, `copy`, `remark`, `source`, `learned`(§21–§26)。
     `id` と `title` 以外は省略可。GUI / CLI / format が書く hint は 12 項目を null 込みで出力する。

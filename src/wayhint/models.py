@@ -128,6 +128,40 @@ class DisplayConfig:
 
 
 @dataclass(frozen=True)
+class HintFilter:
+    """Which of a mixed-in sheet's hints are let through (DECISIONS 0039).
+
+    ``tags`` and ``categories`` are each ``None`` when not written. What is written is ORed: a
+    hint passes when it carries one of the tags *or* its category is one of the categories (a
+    hint without a category matches no category). ``[]`` written for either lets nothing through
+    whatever the other says -- ``nested.parent_tags: []`` is how parent hints are switched off
+    everywhere (0036), and a category filter must not reopen that.
+    """
+
+    tags: tuple[str, ...] | None = None
+    categories: tuple[str, ...] | None = None
+
+    def is_everything(self) -> bool:
+        return self.tags is None and self.categories is None
+
+    def allows(self, hint: Hint) -> bool:
+        if self.tags == () or self.categories == ():
+            return False
+        if self.is_everything():
+            return True
+        by_tag = self.tags is not None and not set(self.tags).isdisjoint(hint.tags)
+        return by_tag or (self.categories is not None and hint.category in self.categories)
+
+
+@dataclass(frozen=True)
+class IncludeRef:
+    """One entry of ``include``: a sheet id and what to take from it (0026, 0039)."""
+
+    sheet: str
+    filter: HintFilter = field(default_factory=HintFilter)
+
+
+@dataclass(frozen=True)
 class HintSheet:
     id: str
     title: str
@@ -137,9 +171,11 @@ class HintSheet:
     match: MatchRule = field(default_factory=MatchRule)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     parent_tags: tuple[str, ...] | None = None  # None → use global nested.parent_tags
-    # What this sheet hands down as a nested parent (nested.export_tags); None → everything
+    parent_categories: tuple[str, ...] | None = None  # None → global nested.parent_categories
+    # What this sheet hands down as a nested parent (nested.export_*); None → everything
     export_tags: tuple[str, ...] | None = None
-    include: tuple[str, ...] | None = None  # sheet ids mixed in; None → use global include
+    export_categories: tuple[str, ...] | None = None
+    include: tuple[IncludeRef, ...] | None = None  # sheets mixed in; None → use global include
     hints: tuple[Hint, ...] = ()
 
 

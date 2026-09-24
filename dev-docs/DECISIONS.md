@@ -1399,6 +1399,29 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   コピー)は `Enter` で戻るだけの確認になり、コピーは T47 で確かめる。sheet の形式は変わらない(`copy` の
   既定値の説明だけが変わる)。
 
+## 0039 — include でも tag で絞れるようにし、nested と include の両方で category でも絞る
+
+- **Date**: 2026-09-24
+- **Status**: accepted
+- **Amends**: 0026(include 先の hint は tag で絞らず全部、`{sheet: x, tags: [...]}` は却下)、0034(「include の
+  tag 絞り」は再開しない)。
+- **Context**: 共通 sheet を小さく分ける運用だけでは、1 枚の sheet の一部(よく使う category だけ、特定の tag
+  だけ)を別の sheet に混ぜられない。親 sheet の hint も tag でしか絞れず、category で切り出したい要望があった。
+  ユーザー判断で 0026 の却下を改める。
+- **Decision**: **include**: 要素を sheet id(全部)か `{sheet, tags, categories}`(絞る)にする。config の
+  `include` も同じ形。**nested**: tag に加えて category でも絞る。子の `inherit.parent_categories` → config の
+  `nested.parent_categories` → 親の `nested.export_categories` → 全部、を tag とは独立に同じ規則で解決する。
+  **組み合わせ**: tag と category は書いた方の OR(ユーザー判断)。どちらかが `[]` なら、もう片方に関係なく 0 件
+  ——config の `nested.parent_tags: []` が全体の opt-out(0036)のまま効くようにするため。category は完全一致で、
+  category の無い hint はどの category にも当たらない。**実装**: include の絞りは読み込み時に済ませ、`hints`
+  だけを減らした sheet の写しを返す(hint は元の object なので編集先は変わらない、下流は無変更)。
+- **Alternatives**: **別 key(`include_filter:`)で絞る**——混ぜる sheet と絞りが離れて読みにくい。**kind で絞る**
+  ——最初はこれで実装しかけたが、欲しいのは category だった(ユーザー訂正)。**AND**——どちらか一方で拾いたい
+  使い方に合わない(ユーザー判断)。**`[]` も OR に従う**——全体の opt-out が親の `export_categories` で破れる。
+- **Consequences**: quick add で親 sheet に書くとき自動で付くのは tag だけで、category の絞りに合わせた値は
+  付けない(フォームの category をそのまま書く)。親が category で絞っていると、合わない category で足した
+  hint は子の一覧に出ない。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

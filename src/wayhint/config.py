@@ -13,7 +13,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wayhint.i18n import LANGUAGES
-from wayhint.models import ANCHORS, EDITOR_PLACEHOLDERS, DisplayConfig, Margin, Size
+from wayhint.models import (
+    ANCHORS,
+    EDITOR_PLACEHOLDERS,
+    DisplayConfig,
+    HintFilter,
+    IncludeRef,
+    Margin,
+    Size,
+)
 
 _PLACEHOLDER_RE = re.compile(r"\{([^{}]*)\}")
 LOG_LEVELS = ("debug", "info", "warning", "error")
@@ -54,12 +62,14 @@ class GlobalConfig:
     show_category: bool = True
     editor: EditorConfig = field(default_factory=EditorConfig)
     parent_tags: tuple[str, ...] | None = None  # None: not written; the parent sheet decides
+    parent_categories: tuple[str, ...] | None = None  # the same, for categories (0039)
     live_update: bool = False
     context_backend: str = "auto"  # auto | wayland | wayfire
     workspace_scope: str = "current"  # current = 呼び出した workspace だけ | all
     max_results: int = 50
     log_level: str = "warning"
-    include: tuple[str, ...] = ()  # sheet ids mixed into every sheet that has no include of its own
+    # Mixed into every sheet with no include of its own (0026); each may be narrowed (0039)
+    include: tuple[IncludeRef, ...] = ()
 
 
 class ConfigError(ValueError):
@@ -91,18 +101,39 @@ def _mapping(node: object, key: str, allowed: Collection[str] | None = None) -> 
 SHEET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
-def _sheet_ids(node: object, key: str) -> tuple[str, ...]:
-    """Sheet ids for the global ``include`` (DECISIONS 0026); same shape as a sheet's own list."""
+def _include_refs(node: object, key: str) -> tuple[IncludeRef, ...]:
+    """The global ``include`` (DECISIONS 0026, 0039); same shape as a sheet's own list."""
     if node is None:
         return ()
     if isinstance(node, str) or not isinstance(node, Sequence):
-        raise ConfigError(key, "must be a list of sheet ids")
+        raise ConfigError(key, "must be a list of sheet ids or {sheet, tags, categories}")
     out = []
     for i, item in enumerate(node):
-        if not isinstance(item, str) or not SHEET_ID_RE.match(item):
-            raise ConfigError(f"{key}[{i}]", f"must match {SHEET_ID_RE.pattern}")
-        out.append(item)
+        where = f"{key}[{i}]"
+        if isinstance(item, str):
+            if not SHEET_ID_RE.match(item):
+                raise ConfigError(where, f"must match {SHEET_ID_RE.pattern}")
+            out.append(IncludeRef(item))
+            continue
+        m = _mapping(item, where, ("sheet", "tags", "categories"))
+        sheet = m.get("sheet")
+        if not isinstance(sheet, str) or not SHEET_ID_RE.match(sheet):
+            raise ConfigError(f"{where}.sheet", f"must match {SHEET_ID_RE.pattern}")
+        out.append(
+            IncludeRef(
+                sheet,
+                HintFilter(
+                    tags=_opt_str_list(m.get("tags"), f"{where}.tags"),
+                    categories=_opt_str_list(m.get("categories"), f"{where}.categories"),
+                ),
+            )
+        )
     return tuple(out)
+
+
+def _opt_str_list(node: object, key: str) -> tuple[str, ...] | None:
+    """``None`` when not written, so that ``[]`` (nothing) and "not written" (everything) differ."""
+    return None if node is None else _str_list(node, key)
 
 
 def _str_list(node: object, key: str) -> tuple[str, ...]:
@@ -255,7 +286,7 @@ def parse_global_config(data: object) -> GlobalConfig:
         ),
     )
 
-    nested = _mapping(root.get("nested"), "nested", ("parent_tags",))
+    nested = _mapping(root.get("nested"), "nested", ("parent_tags", "parent_categories"))
     context = _mapping(root.get("context"), "context", ("backend", "workspace", "live_update"))
     search = _mapping(root.get("search"), "search", ("max_results",))
     backend = context.get("backend", defaults.context_backend)
@@ -275,15 +306,14 @@ def parse_global_config(data: object) -> GlobalConfig:
         language=language,
         show_category=_bool(appearance.get("show_category"), "appearance.show_category", True),
         editor=editor,
-        parent_tags=(
-            None
-            if nested.get("parent_tags") is None
-            else _str_list(nested["parent_tags"], "nested.parent_tags")
+        parent_tags=_opt_str_list(nested.get("parent_tags"), "nested.parent_tags"),
+        parent_categories=_opt_str_list(
+            nested.get("parent_categories"), "nested.parent_categories"
         ),
         live_update=_bool(context.get("live_update"), "context.live_update", False),
         context_backend=backend,
         workspace_scope=scope,
         max_results=_int(search.get("max_results"), "search.max_results", 50, minimum=1),
         log_level=level.lower(),
-        include=_sheet_ids(root.get("include"), "include"),
+        include=_include_refs(root.get("include"), "include"),
     )

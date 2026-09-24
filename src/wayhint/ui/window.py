@@ -897,6 +897,7 @@ class HintWindow(Gtk.Window):
                     self._parent_sheet(),
                     self._config.parent_tags,
                     self._included,
+                    self._config.parent_categories,
                 )
             ),
             query,
@@ -964,6 +965,7 @@ class HintWindow(Gtk.Window):
                     self._parent_sheet(),
                     self._config.parent_tags,
                     self._included,
+                    self._config.parent_categories,
                 )
             )
         )

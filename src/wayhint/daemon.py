@@ -860,6 +860,7 @@ class Daemon:
                 self._sheet_by_id(self._current_parent_id()),
                 self.config.parent_tags,
                 self.store.includes_for(self._sheet_by_id(self._current_sheet_id())),
+                self.config.parent_categories,
             )
         )
         index = next(

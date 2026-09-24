@@ -46,6 +46,7 @@ editor:
   schema_path: ~/.config/wayhint/schema.json
 nested:
   parent_tags: null
+  parent_categories: null
 include: []
 context:
   backend: auto
@@ -125,27 +126,31 @@ editor:
 | key | 値 | 既定 | 意味 |
 |---|---|---|---|
 | `parent_tags` | タグの list | なし | 子シートの一覧に並べる親のヒントを、このタグで絞る |
+| `parent_categories` | category の list | なし | 同じく category で絞る。タグと両方書けば OR |
 
 **ふつうは書かない。** 何も書かなければ親のヒントは全部並び、絞りたいときは親のシートに
-`nested.export_tags` を書く。ここは「どの親のヒントも子に混ぜない」ときに `[]` を書くためのもの。
+`nested.export_tags` / `export_categories` を書く。ここは「どの親のヒントも子に混ぜない」ときに `[]` を
+書くためのもの(`[]` はもう片方に何が書いてあっても 0 件)。
 
 ```yaml
 nested: {parent_tags: []}   # 親のヒントを一切混ぜない
 ```
 
-ここにタグを書くと全部の親シートの `export_tags` より優先されるので、親ごとに絞りを変えられなくなる。
+ここに絞りを書くと全部の親シートの `export_*` より優先されるので、親ごとに絞りを変えられなくなる。
 規則の全体は [`SHEETS.md`](SHEETS.md) §3。
 
 ## include — 全シートに混ぜるシート
 
 | key | 値 | 既定 | 意味 |
 |---|---|---|---|
-| `include` | シート id の list | `[]` | `include:` を書いていないシート全部に混ぜるシート |
+| `include` | シート id か `{sheet, tags, categories}` の list | `[]` | `include:` を書いていないシート全部に混ぜるシート。map にすると一部だけ混ぜる |
 
 シートに `include:` を書くと、そのシートではこの値を**置き換える**(足し算ではない)。
 
 ```yaml
-include: [wm, ime]
+include:
+  - wm
+  - {sheet: git, categories: [基本]}   # git の「基本」category だけ
 ```
 
 規則の全体は [`SHEETS.md`](SHEETS.md) §4。
