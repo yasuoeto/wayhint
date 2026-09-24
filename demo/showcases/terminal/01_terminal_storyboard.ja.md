@@ -1,5 +1,7 @@
 # terminal — 端末の中を見る
 
+[English](01_terminal_storyboard.md)
+
 - **主語**: multiplexer を使っていない端末のウィンドウと、その中で動いているプログラム
 - **判定経路**: ウィンドウの app_id の `foot.p<pid>` → その pid の /proc → tty の前面プロセス
   (`setup-terminals` が端末をこの形で起動させる。字幕では「前準備」とだけ言う)

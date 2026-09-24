@@ -1,5 +1,7 @@
 # gui — GUI アプリのウィンドウを見る
 
+[English](01_gui_storyboard.md)
+
 - **主語**: 端末ではない GTK アプリのウィンドウ
 - **判定経路**: ウィンドウの app_id を `match.wayland` に照合するだけ。中のプロセスは探さない
 

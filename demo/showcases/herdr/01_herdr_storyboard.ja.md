@@ -1,5 +1,7 @@
 # herdr — Herdr の中を見る
 
+[English](01_herdr_storyboard.md)
+
 - **主語**: Herdr のウィンドウと、その中の pane で動いているコマンド
 - **判定経路**: ウィンドウの app_id に `herdr` → Herdr に focused pane を聞く → その pane の前面プロセス
 

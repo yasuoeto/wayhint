@@ -1,0 +1,85 @@
+id: claude-code
+title: Claude Code
+priority: 10
+match:
+  process:
+    argv_regex: ["^claude$"]
+hints:
+  - id: line-scroll
+    title: Scroll line by line
+    kind: shortcut
+    key: Alt+↑/Alt+↓
+    command:
+    category: scroll
+    tags:
+    favorite: false
+    copy:
+    remark: Scroll one line at a time
+    source:
+    learned: '2026-09-18'
+  - id: wheel-scroll
+    title: Scroll like a wheel mouse
+    kind: shortcut
+    key: 中クリック+TrackPoint↑↓
+    command:
+    category: scroll
+    tags:
+    favorite: false
+    copy:
+    remark: Line-by-line setting
+    source:
+    learned: '2026-09-18'
+  - id: model
+    title: Switch model
+    kind: command
+    key:
+    command: /model
+    category: session
+    tags:
+    favorite: false
+    copy:
+    remark: Goes to the model-switch screen
+    source:
+    learned:
+  - id: compact
+    title: Compact the ctx
+    kind: command
+    key:
+    command: /compact
+    category: session
+    tags:
+    favorite: false
+    copy:
+    remark: Keeps the summary, drops raw tool output.
+    source:
+    learned:
+  - id: clear
+    title: Clear the session
+    kind: command
+    key:
+    command: /clear
+    category: session
+    tags:
+    favorite: false
+    copy:
+    remark: Clears the session and frees the ctx
+    source:
+    learned: '2026-09-18'
+  - id: prompt-editer
+    title: Open an external editor for the prompt
+    kind: shortcut
+    key: Ctrl+G
+    command:
+    category: input
+    tags:
+    favorite: false
+    copy:
+    remark: 'Can edit [pasted] content too'
+    source:
+    learned: '2026-09-19'
+  - id: shell-escape
+    title: Run a command in the real shell
+    kind: tip
+    key: "! <command>"
+    category: input
+    copy: "! "

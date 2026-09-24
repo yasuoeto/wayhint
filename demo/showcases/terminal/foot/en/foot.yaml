@@ -1,0 +1,18 @@
+id: foot
+title: Foot
+match:
+  wayland:
+    app_id_regex: ["^foot$"]
+hints:
+  - id: copy
+    title: Copy the selection
+    key: Ctrl+Shift+C
+    category: terminal
+  - id: paste
+    title: Paste
+    key: Ctrl+Shift+V
+    category: terminal
+  - id: search
+    title: Search the scrollback
+    key: Ctrl+Shift+R
+    category: terminal

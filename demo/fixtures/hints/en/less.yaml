@@ -1,0 +1,24 @@
+id: less
+title: Less
+priority: 10
+match:
+  process:
+    argv_regex: ["^less$"]
+hints:
+  - id: next-page
+    title: Next page
+    key: Space
+    category: movement
+  - id: prev-page
+    title: Previous page
+    key: b
+    category: movement
+  - id: search
+    title: Search forward
+    kind: command
+    command: /語句
+    category: search
+  - id: quit
+    title: Quit
+    key: q
+    category: movement

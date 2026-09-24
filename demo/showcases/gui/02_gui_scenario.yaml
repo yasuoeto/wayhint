@@ -25,7 +25,7 @@ steps:
       context: {active_sheet: notes}
       overlay: hidden
       timeout: 30
-    caption: {ja: "GUI アプリでも同じ"}
+    caption: {ja: "GUI アプリでも同じ", en: "The same for GUI apps"}
     hold: 5.0
 
   - id: notes-hints
@@ -35,13 +35,13 @@ steps:
       overlay: visible
       label: "Notes"
       hints: 9
-    caption: {ja: "アプリごとに、そのアプリのヒントが出る"}
+    caption: {ja: "アプリごとに、そのアプリのヒントが出る", en: "Each app shows its own hints"}
     hold: 8.0
 
   - id: sub-header
     pause: true
     wait_for: {overlay: visible, label: "Notes", no_label: "python3"}
-    caption: {ja: "上の行に、どのアプリのヒントかが出る"}
+    caption: {ja: "上の行に、どのアプリのヒントかが出る", en: "The top line names the app"}
     hold: 8.0
 
   - id: yaml-wayland
@@ -53,7 +53,7 @@ steps:
       overlay: visible
       label: "Notes"
       timeout: 30
-    caption: {ja: "シートの match に、アプリの名前（app_id）を書くだけ"}
+    caption: {ja: "シートの match に、アプリの名前（app_id）を書くだけ", en: "Just put the app's name (app_id) in match"}
     hold: 8.0
 
   - id: close-vi
@@ -73,7 +73,7 @@ steps:
       overlay: visible
       label: "Notes"
       timeout: 30
-    caption: {ja: "出ないときは wayhint context --shown で確かめる"}
+    caption: {ja: "出ないときは wayhint context --shown で確かめる", en: "Nothing showing? Check wayhint context --shown"}
     hold: 9.0
 
   - id: close-shown
@@ -86,7 +86,7 @@ steps:
   - id: outro
     key: super+h
     wait_for: {overlay: hidden}
-    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる", en: "In Herdr, in a terminal or in a GUI app, the hints switch by themselves"}
     hold: 7.0
 
 variants:

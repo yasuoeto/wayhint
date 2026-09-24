@@ -881,21 +881,33 @@ class NarrowedSheetTest(unittest.TestCase):
     def test_the_broken_sheet_is_the_fixture_with_one_bracket_gone(self) -> None:
         """common's edit breaks herdr.yaml by one character, and nothing else about it."""
         demo = BIN.parent
-        fixture = (demo / "fixtures" / "hints" / "ja" / "herdr.yaml").read_text().splitlines()
-        broken = (demo / "showcases" / "common" / "broken" / "ja" / "herdr.yaml").read_text()
-        self.assertEqual(len(fixture), len(broken.splitlines()))
-        pairs = zip(fixture, broken.splitlines(), strict=True)
-        changed = [i for i, (a, b) in enumerate(pairs) if a != b]
-        self.assertEqual(changed, [fixture.index('    app_id_regex: ["herdr"]')])
-        self.assertEqual(broken.splitlines()[changed[0]], '    app_id_regex: ["herdr"')
+        for lang in ("ja", "en"):
+            with self.subTest(lang=lang):
+                fixture = (
+                    (demo / "fixtures" / "hints" / lang / "herdr.yaml").read_text().splitlines()
+                )
+                broken = (
+                    demo / "showcases" / "common" / "broken" / lang / "herdr.yaml"
+                ).read_text()
+                self.assertEqual(len(fixture), len(broken.splitlines()))
+                pairs = zip(fixture, broken.splitlines(), strict=True)
+                changed = [i for i, (a, b) in enumerate(pairs) if a != b]
+                self.assertEqual(changed, [fixture.index('    app_id_regex: ["herdr"]')])
+                self.assertEqual(broken.splitlines()[changed[0]], '    app_id_regex: ["herdr"')
 
     def test_the_narrowed_sheet_is_the_fixture_with_nested_added(self) -> None:
         demo = BIN.parent
-        fixture = (demo / "fixtures" / "hints" / "ja" / "herdr.yaml").read_text().splitlines()
-        narrowed = (demo / "showcases" / "herdr" / "narrowed" / "ja" / "herdr.yaml").read_text()
-        added = ["nested:", "  export_categories: [scroll, input]"]
-        at = fixture.index("hints:")
-        self.assertEqual(narrowed.splitlines(), fixture[:at] + added + fixture[at:])
+        for lang in ("ja", "en"):
+            with self.subTest(lang=lang):
+                fixture = (
+                    (demo / "fixtures" / "hints" / lang / "herdr.yaml").read_text().splitlines()
+                )
+                narrowed = (
+                    demo / "showcases" / "herdr" / "narrowed" / lang / "herdr.yaml"
+                ).read_text()
+                added = ["nested:", "  export_categories: [scroll, input]"]
+                at = fixture.index("hints:")
+                self.assertEqual(narrowed.splitlines(), fixture[:at] + added + fixture[at:])
 
 
 class PagerTest(SheetViewerTest):
@@ -1119,6 +1131,21 @@ class StoryboardLanguageTest(unittest.TestCase):
         )
         self.assertEqual(sb.check(sb.read(story), script, "en")[0], [])
         self.assertNotEqual(sb.check(sb.read(story), script, "ja")[0], [])
+
+
+class NoCaptionMarkerTest(unittest.TestCase):
+    """A row without a caption says so in either language."""
+
+    def test_both_markers_mean_no_caption(self) -> None:
+        for marker in ("(字幕なし)", "(no caption)"):
+            with self.subTest(marker=marker):
+                path = scratch(self) / "01_x_storyboard.md"
+                path.write_text(
+                    "## 1. short\n<!-- variant: short -->\n\n| 秒 | 画面 | 字幕 |\n"
+                    f"|---|---|---|\n| 0–2 | x | {marker} |\n"
+                )
+                rows = sb.read(path).sections[0].rows
+                self.assertEqual(rows[0].caption, "")
 
 
 class PerLanguageConditionTest(unittest.TestCase):

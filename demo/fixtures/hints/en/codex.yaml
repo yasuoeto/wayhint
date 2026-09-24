@@ -1,0 +1,15 @@
+# Codex CLI — often started as ``node /path/to/codex``; argv basenames are matched, so
+# "^codex$" catches both the wrapper and the direct binary.
+id: codex
+title: Codex
+priority: 10
+match:
+  process:
+    argv_regex: ["^codex$"]
+    cmdline_regex: ["node .*/codex"]
+inherit:
+hints:
+  - id: approve
+    title: Approve the pending action
+    key: y
+    category: review

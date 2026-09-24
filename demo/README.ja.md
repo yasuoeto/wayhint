@@ -408,6 +408,19 @@ wrapper は起動せず exit 1 する(裸の `herdr` に落とすと、PATH 先�
 字幕を 1 枚でも変えたら、その showcase は**撮り直し**になる(焼き込みは録画のあとの工程だが、
 `.sub.mp4` も frame も作り直しになる)。
 
+### 英語の字幕
+
+上の規約は日本語の字幕のもの。英語の字幕(`caption.en`、`--lang en` で録る)は次に従う。
+
+1. 短く平易に。なるべく 1 行(45 文字程度)、2 行まで。末尾に句点を置かず、backtick は書かない。
+   コマンド・キー・ファイル名・YAML の key はそのまま
+2. 製品用語: hint、sheet、the overlay、tab(Herdr のタブ)、window、terminal
+3. 同じ日本語の字幕には、`all` も含めてどこでも同じ英語を当てる
+4. 主役 3 場面の見出しと、見つけ方 3 本の締めは固定:「It follows the frontmost process, not the
+   window」「Keep typing with the overlay on screen」「Forgot something? Write it down right
+   there」「In Herdr, in a terminal or in a GUI app, the hints switch by themselves」
+5. 英語の台本では、字幕の無い行を「(no caption)」と書く(日本語の台本は「(字幕なし)」)
+
 ## 字幕帯
 
 字幕は録画のあとで ffmpeg が焼き込む(`tools/demo/encode.py`)。**帯の行はレイアウトから予約して

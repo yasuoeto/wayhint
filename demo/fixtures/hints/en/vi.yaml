@@ -1,0 +1,22 @@
+id: vi
+title: Vi
+priority: 10
+match:
+  process:
+    argv_regex: ["^vi$"]
+include: [wm]
+hints:
+  - id: write-quit
+    title: Save and quit
+    kind: command
+    command: ":wq"
+    category: file
+  - id: quit-hard
+    title: Quit without saving
+    kind: command
+    command: ":q!"
+    category: file
+  - id: undo
+    title: Undo
+    key: u
+    category: edit

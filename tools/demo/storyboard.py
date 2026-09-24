@@ -43,7 +43,8 @@ ROW = re.compile(
     r"^\|\s*(?P<start>\d+(?:\.\d+)?)\s*[-–~〜]\s*(?P<end>\d+(?:\.\d+)?)\s*\|"
     r"(?P<screen>[^|]*)\|(?P<caption>[^|]*)\|"
 )
-NO_CAPTION = "(字幕なし)"
+NO_CAPTION = ("(字幕なし)", "(no caption)")
+"""What a row writes in the caption column when the step has none: Japanese or English."""
 """What a row with no subtitle says, in the storyboard's own words."""
 
 TOLERANCE = 1.0
@@ -58,7 +59,7 @@ class Row:
     line: int
     start: float
     end: float
-    caption: str  # "" when the row says (字幕なし)
+    caption: str  # "" when the row says (字幕なし) / (no caption)
 
 
 @dataclass(frozen=True)
@@ -126,7 +127,7 @@ def read(path: Path) -> Storyboard:
                     line=number,
                     start=float(row.group("start")),
                     end=float(row.group("end")),
-                    caption="" if caption == NO_CAPTION else caption,
+                    caption="" if caption in NO_CAPTION else caption,
                 )
             )
     close()

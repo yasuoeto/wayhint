@@ -31,13 +31,13 @@ steps:
       context: {active_sheet: less, process_name: less}
       overlay: hidden
       timeout: 30
-    caption: {ja: "herdr などの multiplexer を使っていない端末でも"}
+    caption: {ja: "herdr などの multiplexer を使っていない端末でも", en: "Even in a terminal with no multiplexer like herdr"}
     hold: 5.0
 
   - id: supported
     pause: true
     wait_for: {overlay: hidden}
-    caption: {ja: "foot / kitty / Ghostty / Alacritty に対応"}
+    caption: {ja: "foot / kitty / Ghostty / Alacritty に対応", en: "Supports foot / kitty / Ghostty / Alacritty"}
     hold: 6.0
 
   # --- the one step of setup, before it is used ------------------------------------------------
@@ -48,13 +48,13 @@ steps:
       context: {process_name: setup-dry-run}
       overlay: hidden
       timeout: 30
-    caption: {ja: "端末で使うには、前準備が 1 つ要る"}
+    caption: {ja: "端末で使うには、前準備が 1 つ要る", en: "Using it in a terminal needs one setup step"}
     hold: 6.0
 
   - id: setup-oneshot
     pause: true
     wait_for: {context: {process_name: setup-dry-run}}
-    caption: {ja: "準備は scripts/setup-terminals 一発。既定は確認だけ"}
+    caption: {ja: "準備は scripts/setup-terminals 一発。既定は確認だけ", en: "One command, scripts/setup-terminals. Default just checks"}
     hold: 7.0
 
   - id: close-setup
@@ -70,7 +70,7 @@ steps:
       overlay: visible
       label: "Less"
       hints: 6
-    caption: {ja: "端末の中で動いているプロセスのヒントが出る"}
+    caption: {ja: "端末の中で動いているプロセスのヒントが出る", en: "Shows hints for the process running in the terminal"}
     hold: 8.0
 
   - id: open-vi
@@ -87,7 +87,7 @@ steps:
   - id: how-two-windows
     pause: true
     wait_for: {overlay: visible, label: "Less"}
-    caption: {ja: "ウィンドウが 2 枚でも、それぞれの中身を取り違えない"}
+    caption: {ja: "ウィンドウが 2 枚でも、それぞれの中身を取り違えない", en: "Two windows, and it never mixes up their contents"}
     hold: 7.0
 
   - id: vi-hints
@@ -97,7 +97,7 @@ steps:
       overlay: visible
       label: "Vi"
       hints: 5
-    caption: {ja: "別のウィンドウで押し直せば、その一番前のプロセスのヒント"}
+    caption: {ja: "別のウィンドウで押し直せば、その一番前のプロセスのヒント", en: "Press again in another window for its frontmost process"}
     hold: 8.0
 
   # --- the terminal's own hints -----------------------------------------------------------------
@@ -124,7 +124,7 @@ steps:
     wait_for:
       context: {active_sheet: vi, process_name: vi}
       timeout: 30
-    caption: {ja: "端末自体のヒント（コピー・貼り付け）も書ける"}
+    caption: {ja: "端末自体のヒント（コピー・貼り付け）も書ける", en: "The terminal's own hints (copy, paste) can be written too"}
     hold: 8.0
 
   - id: foot-mixed
@@ -133,9 +133,9 @@ steps:
     wait_for:
       context: {active_sheet: vi, process_name: vi}
       overlay: visible
-      label: "スクロールバックを検索"
+      label: {ja: "スクロールバックを検索", en: "Search the scrollback"}
       hints: 8
-    caption: {ja: "一番前のプロセスのヒントと一緒に出る"}
+    caption: {ja: "一番前のプロセスのヒントと一緒に出る", en: "Shows together with the frontmost process's hints"}
     hold: 8.0
 
   # --- when it does not work ------------------------------------------------------------------
@@ -146,9 +146,9 @@ steps:
     wait_for:
       context: {process_name: wayhint-shown}
       overlay: visible
-      label: "スクロールバックを検索"
+      label: {ja: "スクロールバックを検索", en: "Search the scrollback"}
       timeout: 30
-    caption: {ja: "出ないときは wayhint context --shown で確かめる"}
+    caption: {ja: "出ないときは wayhint context --shown で確かめる", en: "Nothing showing? Check wayhint context --shown"}
     hold: 9.0
 
   - id: close-shown
@@ -161,7 +161,7 @@ steps:
   - id: outro
     key: super+h
     wait_for: {overlay: hidden}
-    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる", en: "In Herdr, in a terminal or in a GUI app, the hints switch by themselves"}
     hold: 7.0
 
 variants:

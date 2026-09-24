@@ -1,0 +1,11 @@
+id: wm
+title: Window Manager
+hints:
+  - id: next-window
+    title: Next window
+    key: Alt+Tab
+    category: window
+  - id: edit-mode
+    title: Add a hint to this list
+    key: Super+Ctrl+H
+    category: wayhint

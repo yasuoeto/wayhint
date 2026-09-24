@@ -29,7 +29,7 @@ steps:
       context: {active_sheet: herdr}
       overlay: hidden
       timeout: 40
-    caption: {ja: "Herdr の中を見る"}
+    caption: {ja: "Herdr の中を見る", en: "Look inside Herdr"}
     hold: 4.0
 
   - id: precondition
@@ -39,7 +39,7 @@ steps:
       context: {process_name: herdr-launch}
       overlay: hidden
       timeout: 30
-    caption: {ja: "前準備: Herdr は、名前に herdr を付けた端末で開く"}
+    caption: {ja: "前準備: Herdr は、名前に herdr を付けた端末で開く", en: "Setup: open Herdr in a terminal named herdr"}
     hold: 8.0
 
   - id: close-launch
@@ -62,19 +62,19 @@ steps:
       overlay: visible
       label: "Claude Code"
       hints: 15
-    caption: {ja: "Herdr にフォーカス中のタブを聞き、動いているプロセスを取る"}
+    caption: {ja: "Herdr にフォーカス中のタブを聞き、動いているプロセスを取る", en: "Asks Herdr for the focused tab, then reads its process"}
     hold: 8.0
 
   - id: parent-follows
     pause: true
-    wait_for: {overlay: visible, label: "中クリックペースト"}
-    caption: {ja: "親子関係にあるプロセスのヒントを同時に表示する、親である Herdr の操作も並ぶ"}
+    wait_for: {overlay: visible, label: {ja: "中クリックペースト", en: "Middle-click paste"}}
+    caption: {ja: "親子関係にあるプロセスのヒントを同時に表示する、親である Herdr の操作も並ぶ", en: "Shows hints for the whole process chain, Herdr's own included"}
     hold: 7.0
 
   - id: parent-all
     pause: true
-    wait_for: {overlay: visible, label: "中クリックペースト", hints: 15}
-    caption: {ja: "何も書かなければ、親に当たる Herdr のヒントが全て一緒に表示される"}
+    wait_for: {overlay: visible, label: {ja: "中クリックペースト", en: "Middle-click paste"}, hints: 15}
+    caption: {ja: "何も書かなければ、親に当たる Herdr のヒントが全て一緒に表示される", en: "Write nothing, and all of Herdr's hints show up too"}
     hold: 8.0
 
   - id: new-tab-codex
@@ -91,7 +91,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       timeout: 30
-    caption: {ja: "ヒント画面は、押し直すまで前のタブのまま"}
+    caption: {ja: "ヒント画面は、押し直すまで前のタブのまま", en: "The overlay stays on the last tab until pressed again"}
     hold: 5.0
 
   - id: codex-hints
@@ -101,7 +101,7 @@ steps:
       overlay: visible
       label: "Codex"
       hints: 9
-    caption: {ja: "タブを移って押し直せば、そのタブのシート"}
+    caption: {ja: "タブを移って押し直せば、そのタブのシート", en: "Switch tabs and press again for that tab's sheet"}
     hold: 8.0
 
   - id: new-tab-idle
@@ -116,7 +116,7 @@ steps:
       overlay: visible
       label: "Herdr"
       hints: 8
-    caption: {ja: "動いているプロセスに対応したシートが無ければ、Herdr のヒントが全部出る"}
+    caption: {ja: "動いているプロセスに対応したシートが無ければ、Herdr のヒントが全部出る", en: "No sheet for the running process? All of Herdr's hints show"}
     hold: 8.0
 
   - id: close-hints
@@ -145,7 +145,7 @@ steps:
   - id: yaml-export
     pause: true
     wait_for: {context: {active_sheet: vi}}
-    caption: {ja: "表示内容を絞り込みたい場合は、設定を書く"}
+    caption: {ja: "表示内容を絞り込みたい場合は、設定を書く", en: "To narrow what is shown, write the setting"}
     hold: 8.0
 
   - id: close-yaml
@@ -167,7 +167,7 @@ steps:
       label: "Claude Code"
       no_label: "Cycle theme"
       hints: 12
-    caption: {ja: "Herdr のヒントは scroll と input だけになる"}
+    caption: {ja: "Herdr のヒントは scroll と input だけになる", en: "Herdr's hints are now just scroll and input"}
     hold: 8.0
 
   - id: context-cli
@@ -179,7 +179,7 @@ steps:
       overlay: visible
       label: "Claude Code"
       timeout: 30
-    caption: {ja: "wayhint context --shown で、どこで絞ったかが分かる"}
+    caption: {ja: "wayhint context --shown で、どこで絞ったかが分かる", en: "wayhint context --shown shows where it was narrowed"}
     hold: 9.0
 
   - id: close-shown
@@ -192,7 +192,7 @@ steps:
   - id: outro
     key: super+h
     wait_for: {overlay: hidden}
-    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる"}
+    caption: {ja: "Herdr の中・端末の中・GUI、どこで動いていても、ヒントは自動で切り替わる", en: "In Herdr, in a terminal or in a GUI app, the hints switch by themselves"}
     hold: 7.0
 
 variants:

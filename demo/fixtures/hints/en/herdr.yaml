@@ -1,0 +1,70 @@
+id: herdr
+title: Herdr
+match:
+  wayland:
+    app_id_regex: ["herdr"]
+hints:
+  - id: pageup-pagedown
+    title: Scroll page by page
+    kind: shortcut
+    key: PgUp/PgDn
+    command:
+    category: scroll
+    tags:
+    favorite: false
+    copy:
+    remark:
+    source:
+    learned: '2026-09-18'
+  - id: next-tab
+    title: Move to the next tab
+    kind: shortcut
+    key: Ctrl+b→n
+    command:
+    category: tab
+    tags: [herdr]
+    favorite: false
+    copy:
+    remark:
+    source:
+    learned:
+  - id: theme
+    title: Cycle theme
+    key: Ctrl+Shift+T
+    category: appearance
+  - id: new-tab
+    title: Create a new tab
+    kind: shortcut
+    key: Ctrl+b→c
+    command:
+    category: tab
+    tags: [herdr]
+    favorite: false
+    copy:
+    remark: Atrashii Pane
+    source:
+    learned:
+  - id: middle-paste
+    title: Middle-click paste
+    kind: shortcut
+    key: Shift+中クリック
+    command:
+    category: input
+    tags:
+    favorite: false
+    copy:
+    remark: The middle-button copy/paste found on Linux and elsewhere; this also needs Shift
+    source:
+    learned: '2026-09-19'
+  - id: paste
+    title: Paste
+    kind: shortcut
+    key: Ctrl+Shift+v
+    command:
+    category: input
+    tags:
+    favorite: false
+    copy:
+    remark: Pasting from elsewhere needs the extra Shift
+    source:
+    learned: '2026-09-19'

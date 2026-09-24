@@ -1,0 +1,37 @@
+id: notes
+title: Notes
+match:
+  wayland:
+    app_id_regex: ["^dev\\.wayhint\\.demo\\.Notes$"]
+include: [wm]
+hints:
+  - id: new-note
+    title: New note
+    key: Ctrl+N
+    category: note
+    favorite: true
+  - id: search
+    title: Find a note
+    key: Ctrl+K
+    category: note
+  - id: tag
+    title: Add a tag
+    key: Ctrl+T
+    category: note
+  - id: bold
+    title: Make bold
+    key: Ctrl+B
+    category: format
+  - id: list
+    title: Make a bullet list
+    key: Ctrl+Shift+8
+    category: format
+  - id: export
+    title: Export as Markdown
+    key: Ctrl+Shift+E
+    category: file
+    remark: Exports to the last folder used.
+  - id: quit
+    title: Close
+    key: Ctrl+Q
+    category: file

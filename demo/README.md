@@ -474,6 +474,21 @@ All 4 showcases follow the same convention. The wording itself is defined by the
 Changing even one caption means that showcase needs a **re-take** (burning in happens after
 recording, but the `.sub.mp4` and the frames all have to be remade too).
 
+### English captions
+
+The rules above are for the Japanese captions. The English ones (`caption.en`, recorded with
+`--lang en`) follow these:
+
+1. Short and plain, one line where possible (about 45 characters), never more than two. No
+   trailing period, no backticks. Commands, keys, file names and YAML keys as they are.
+2. Product terms: hint, sheet, the overlay, tab (Herdr's tab), window, terminal.
+3. The same Japanese caption has the same English caption everywhere, including in `all`.
+4. The three lead captions and the closing line of the three finding videos are fixed:
+   "It follows the frontmost process, not the window", "Keep typing with the overlay on
+   screen", "Forgot something? Write it down right there", and "In Herdr, in a terminal or in
+   a GUI app, the hints switch by themselves".
+5. An English storyboard writes "(no caption)" where the Japanese one writes 「(字幕なし)」.
+
 ## Caption band
 
 Captions are burned in by ffmpeg after recording (`tools/demo/encode.py`). **The band's row is

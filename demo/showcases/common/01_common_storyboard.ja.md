@@ -1,5 +1,7 @@
 # common — wayhint で何ができるか
 
+[English](01_common_storyboard.md)
+
 - 形式: 画面録画 + 字幕のみ（無音 or BGM）。ナレーション無し
 - **4 本のうちの 1 本**。この showcase は製品の共通機能だけを扱い、context の**見つけ方**は
   `herdr` / `terminal` / `gui` の 3 本が経路ごとに受け持つ
