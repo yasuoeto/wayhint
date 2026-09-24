@@ -858,10 +858,13 @@ class HerdrLaunchTest(unittest.TestCase):
         return module
 
     def test_the_document_still_has_one_line_per_terminal(self) -> None:
+        """In both languages: the English and the Japanese TERMINALS keep the same block."""
         stub = self.stub()
-        lines = stub.launch_lines(stub.DOC.read_text())
-        self.assertEqual([line.split()[0] for line in lines], ["kitty", "ghostty", "foot"])
-        self.assertTrue(all("herdr" in line for line in lines))
+        for language, doc in stub.DOC.items():
+            with self.subTest(language=language):
+                lines = stub.launch_lines(doc.read_text())
+                self.assertEqual([line.split()[0] for line in lines], ["kitty", "ghostty", "foot"])
+                self.assertTrue(all("herdr" in line for line in lines))
 
     def test_a_section_without_a_block_gives_nothing(self) -> None:
         text = "### Herdr\n\nno block here\n\n### WezTerm\n\n```sh\nwezterm\n```\n"
@@ -1062,12 +1065,89 @@ class StoryboardTest(unittest.TestCase):
     def test_the_real_showcase_agrees_with_its_storyboard(self) -> None:
         root = Path(__file__).resolve().parent.parent / "demo" / "showcases"
         for show in shc.discover(root):
-            with self.subTest(showcase=show.name):
-                if show.storyboard is None:
-                    continue
-                script = scn.load(show.scenario, BIN)
-                problems, _ = sb.check(sb.read(show.storyboard), script)
-                self.assertEqual(problems, [], "\n".join(problems))
+            script = scn.load(show.scenario, BIN)
+            for language, path in show.storyboards.items():
+                with self.subTest(showcase=show.name, language=language):
+                    problems, _ = sb.check(sb.read(path), script, language)
+                    self.assertEqual(problems, [], "\n".join(problems))
+
+
+class StoryboardLanguageTest(unittest.TestCase):
+    """One storyboard per language: ``.ja`` before the suffix, English without one."""
+
+    def showcase(self, *names: str) -> shc.Showcase:
+        root = scratch(self)
+        (root / "herdr").mkdir()
+        (root / "herdr" / "02_herdr_scenario.yaml").write_text(MINIMAL)
+        for name in names:
+            (root / "herdr" / name).write_text("# story")
+        return shc.load(root, "herdr")
+
+    def test_each_language_has_its_own(self) -> None:
+        show = self.showcase("01_herdr_storyboard.md", "01_herdr_storyboard.ja.md")
+        self.assertEqual(
+            {lang: p.name for lang, p in show.storyboards.items()},
+            {"en": "01_herdr_storyboard.md", "ja": "01_herdr_storyboard.ja.md"},
+        )
+        self.assertEqual(show.storyboard.name, "01_herdr_storyboard.md")
+
+    def test_a_japanese_one_alone_is_the_storyboard(self) -> None:
+        self.assertEqual(
+            self.showcase("01_herdr_storyboard.ja.md").storyboard.name,
+            "01_herdr_storyboard.ja.md",
+        )
+
+    def test_two_for_one_language_are_refused(self) -> None:
+        with self.assertRaisesRegex(shc.ShowcaseError, "storyboard \\(ja\\)"):
+            self.showcase("01_herdr_storyboard.ja.md", "02_herdr_storyboard.ja.md")
+
+    def test_a_scenario_is_not_split_by_language(self) -> None:
+        root = scratch(self)
+        (root / "herdr").mkdir()
+        (root / "herdr" / "02_herdr_scenario.yaml").write_text(MINIMAL)
+        (root / "herdr" / "02_herdr_scenario.ja.yaml").write_text(MINIMAL)
+        self.assertEqual(shc.load(root, "herdr").scenario.name, "02_herdr_scenario.yaml")
+
+    def test_captions_are_compared_in_the_storyboards_language(self) -> None:
+        script = parse(
+            MINIMAL.replace('    caption: {ja: "出す"}\n', "    caption: {ja: 見る, en: Look}\n")
+        )
+        story = scratch(self) / "01_x_storyboard.md"
+        story.write_text(
+            "## 1. short\n<!-- variant: short -->\n\n| 秒 | 画面 | 字幕 |\n|---|---|---|\n"
+            "| 0–2 | x | Look |\n"
+        )
+        self.assertEqual(sb.check(sb.read(story), script, "en")[0], [])
+        self.assertNotEqual(sb.check(sb.read(story), script, "ja")[0], [])
+
+
+class PerLanguageConditionTest(unittest.TestCase):
+    """``label: {ja: ..., en: ...}`` is content per language; a plain string is UI text."""
+
+    def condition(self, value: str) -> scn.Condition:
+        text = MINIMAL.replace("wait_for: {overlay: visible}", f"wait_for: {{label: {value}}}")
+        return parse(text).steps["show"].wait_for
+
+    def test_a_mapping_is_kept_per_language(self) -> None:
+        cond = self.condition("{ja: 次の窓へ, en: Next window}")
+        self.assertEqual(dict(cond.label), {"ja": "次の窓へ", "en": "Next window"})
+
+    def test_a_mapping_is_not_translated(self) -> None:
+        run = unittest.mock.Mock(language="en")
+        self.assertEqual(
+            act._wanted(run, (("en", "Next window"), ("ja", "次の窓へ"))), "Next window"
+        )
+        run.tr.assert_not_called()
+
+    def test_a_missing_language_stops_the_recording(self) -> None:
+        run = unittest.mock.Mock(language="en")
+        with self.assertRaisesRegex(act.DemoError, "no en text"):
+            act._wanted(run, (("ja", "次の窓へ"),))
+
+    def test_a_string_is_translated_as_ui_text(self) -> None:
+        run = unittest.mock.Mock(language="ja")
+        run.tr.return_value = "コピー"
+        self.assertEqual(act._wanted(run, "Copy"), "コピー")
 
 
 class WrapperTest(unittest.TestCase):

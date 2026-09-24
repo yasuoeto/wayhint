@@ -348,6 +348,10 @@ class Window:
     app_id: str = DEFAULT_APP_ID
 
 
+PerLanguage = tuple[tuple[str, str], ...]
+"""Text that differs per language, as ``(language, text)`` pairs."""
+
+
 @dataclass(frozen=True)
 class Condition:
     """What has to be true before a step is recorded (or before it may start).
@@ -361,10 +365,13 @@ class Condition:
     process_name: str | None = None  # the foreground process wayhint resolved
     active_sheet: str | None = None  # the sheet id it chose for that context
     overlay: str | None = None  # "visible" | "hidden"
-    label: str | None = None  # a label on the overlay containing this text
-    no_label: str | None = None  # ... and one that must not be there
-    first_hint: str | None = None  # the hint row listed first contains this
-    text: str | None = None  # something typed into the overlay holds this
+    # The next four are a UI string (English source text, translated per language through
+    # wayhint.i18n) or, written as {ja: ..., en: ...}, content that differs per language -- a
+    # hint's title, say -- held as sorted (language, text) pairs so the step stays hashable.
+    label: str | PerLanguage | None = None  # a label on the overlay containing this text
+    no_label: str | PerLanguage | None = None  # ... and one that must not be there
+    first_hint: str | PerLanguage | None = None  # the hint row listed first contains this
+    text: str | PerLanguage | None = None  # something typed into the overlay holds this
     button: str | None = None  # a button by logical name (BUTTONS)
     hints: int | None = None  # how many hint rows are listed
     unchecked: str | None = None  # why nothing above can judge this step; a reason, not a flag
@@ -887,9 +894,15 @@ def _condition(value: object, where: str) -> Condition:
     if not math.isfinite(timeout):
         raise ScenarioError(f"{where}.timeout: expected a finite number of seconds")
     doc["timeout"] = float(timeout)
-    for key in ("process_name", "active_sheet", "label", "no_label", "first_hint", "text"):
+    for key in ("process_name", "active_sheet"):
         if key in doc:
             doc[key] = _string(doc[key], f"{where}.{key}")
+    for key in ("label", "no_label", "first_hint", "text"):
+        if key in doc:
+            if isinstance(doc[key], dict):
+                doc[key] = tuple(sorted(_per_language(doc[key], f"{where}.{key}").items()))
+            else:
+                doc[key] = _string(doc[key], f"{where}.{key}")
     if "unchecked" in doc:
         # A sentence, not a flag: the point of writing it is that the next person reads *why*
         # this step is one nothing can be asserted about.

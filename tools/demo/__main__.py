@@ -213,16 +213,16 @@ def _check_storyboard(show: shc.Showcase, script: Scenario) -> None:
     every second below it in the storyboard is wrong (B-7, B-8). The storyboard is still the
     place the argument is decided; this only checks the parts of it that are claims.
     """
-    if show.storyboard is None:
-        return
-    problems, warnings = sb.check(sb.read(show.storyboard), script)
-    for warning in warnings:
-        print(f"demo: warning: {warning}", file=sys.stderr)
-    if problems:
-        raise ScenarioError(
-            f"{show.storyboard.name} and {show.scenario.name} disagree:\n"
-            + "\n".join(f"  {problem}" for problem in problems)
-        )
+    # One storyboard per language; each is checked against the captions in its own language.
+    for language, path in show.storyboards.items():
+        problems, warnings = sb.check(sb.read(path), script, language)
+        for warning in warnings:
+            print(f"demo: warning: {warning}", file=sys.stderr)
+        if problems:
+            raise ScenarioError(
+                f"{path.name} and {show.scenario.name} disagree:\n"
+                + "\n".join(f"  {problem}" for problem in problems)
+            )
 
 
 def _check_lengths(script: Scenario, variants: list[Variant], *, whole: bool) -> None:

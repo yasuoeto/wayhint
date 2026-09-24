@@ -133,23 +133,31 @@ def read(path: Path) -> Storyboard:
     return Storyboard(path, tuple(sections), totals)
 
 
-def _timeline(script: Scenario, variant: str) -> dict[str, tuple[Step, float, float]]:
-    """``caption -> (step, start, end)`` for one variant. Captions have to be unique in it."""
+def _timeline(
+    script: Scenario, variant: str, language: str = "ja"
+) -> dict[str, tuple[Step, float, float]]:
+    """``caption -> (step, start, end)`` for one variant, in one language. Unique in it."""
     fps = script.output.fps
     at, out = 0.0, {}
     for step in script.variant(variant).steps:
         end = at + step.frames(fps) / fps
-        caption = step.caption.get("ja", "")
+        caption = step.caption.get(language, "")
         if caption:
             out[caption] = (step, at, end)
         at = end
     return out
 
 
-def check(story: Storyboard, script: Scenario) -> tuple[list[str], list[str]]:
-    """``(problems, warnings)``. Problems mean the two documents disagree about the video."""
+def check(story: Storyboard, script: Scenario, language: str = "ja") -> tuple[list[str], list[str]]:
+    """``(problems, warnings)``. Problems mean the two documents disagree about the video.
+
+    ``language`` is the one the storyboard is written in: its captions are compared with the
+    scenario's captions in that language.
+    """
     problems: list[str] = []
-    timelines = {name: _timeline(script, name) for name in (v.name for v in script.variants)}
+    timelines = {
+        name: _timeline(script, name, language) for name in (v.name for v in script.variants)
+    }
     where = f"{story.path.name}"
 
     for variant, seconds in story.totals.items():

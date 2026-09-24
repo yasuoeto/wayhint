@@ -117,6 +117,21 @@ def _write(run: Run, step: Step) -> None:
         target.write_text(payload["text"])
 
 
+def _wanted(run: Run, value: str | tuple[tuple[str, str], ...]) -> str:
+    """What a text condition looks for in this recording's language.
+
+    A plain string is UI text, written in English and translated like the overlay translates
+    it. Pairs are content that is written per language (a hint's title): no translation, and a
+    language the scenario did not write stops the recording rather than matching anything.
+    """
+    if isinstance(value, str):
+        return run.tr(value)
+    texts = dict(value)
+    if run.language not in texts:
+        raise DemoError(f"a condition has no {run.language} text: {texts}")
+    return texts[run.language]
+
+
 def _inside(root: Path, relative: str, step: Step) -> Path:
     """Resolve a path from the scenario, and refuse anything that leaves ``root``.
 
@@ -170,23 +185,23 @@ def satisfied(run: Run, cond: Condition) -> tuple[bool, str]:
         if cond.overlay is not None and state != cond.overlay:
             return False, seen[-1]
         if cond.label is not None:
-            wanted = run.tr(cond.label)
+            wanted = _wanted(run, cond.label)
             if not any(wanted in name for name in names):
                 return False, f"{seen[-1]} labels={_sample(names)}"
         if cond.no_label is not None:
-            unwanted = run.tr(cond.no_label)
+            unwanted = _wanted(run, cond.no_label)
             if any(unwanted in name for name in names):
                 return False, f"{seen[-1]} labels={_sample(names)}"
         if cond.first_hint is not None:
             # The row at the top -- which is what a reordering step changes and nothing else
             # does. ``label`` cannot see it: J and K move a row without changing the set of
             # rows, so every label is still there afterwards.
-            wanted = run.tr(cond.first_hint)
+            wanted = _wanted(run, cond.first_hint)
             top = _first_row(nodes)
             if not any(wanted in name for name in top):
                 return False, f"{seen[-1]} first row={top}"
         if cond.text is not None:
-            wanted = run.tr(cond.text)
+            wanted = _wanted(run, cond.text)
             typed = [node.text for node in nodes if node.text]
             if not any(wanted in text for text in typed):
                 return False, f"{seen[-1]} typed={typed}"

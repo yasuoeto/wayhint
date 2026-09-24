@@ -3,9 +3,10 @@
 says this is the one step of setup the herdr showcase needs.
 
 What it shows is not written here: it is the ``sh`` block under ``### Herdr`` in
-``docs/TERMINALS.md`` (one launch line each for kitty, Ghostty and foot), read when the stub
-starts. The document is where a person looks this up, so the video and the document cannot say
-two different things. The block not being found is a failure, and the rename below is skipped.
+``docs/TERMINALS.md`` (``docs/TERMINALS.ja.md`` in a Japanese recording) -- one launch line each
+for kitty, Ghostty and foot -- read when the stub starts. The document is where a person looks
+this up, so the video and the document cannot say two different things. The block not being
+found is a failure, and the rename below is skipped.
 
 ``comm`` is renamed only *after* the text is written, as in ``wayhint-shown``: the scenario
 waits for this name, so a step that sees it knows the text is already on screen.
@@ -16,10 +17,16 @@ import os
 import sys
 from pathlib import Path
 
-DOC = Path(__file__).resolve().parent.parent.parent / "docs" / "TERMINALS.md"
+DOCS = Path(__file__).resolve().parent.parent.parent / "docs"
+DOC = {"en": DOCS / "TERMINALS.md", "ja": DOCS / "TERMINALS.ja.md"}
+"""The document per language; both keep the heading and the block below verbatim."""
 HEADING = "### Herdr"
+NOTE = {
+    "en": "# Open Herdr in a terminal whose app_id contains herdr (docs/TERMINALS.md)",
+    "ja": "# Herdr は、app_id に herdr を含めた端末で開く(docs/TERMINALS.ja.md)",
+}
 
-NOTE = "\033[38;5;103m"
+GREY = "\033[38;5;103m"
 TEXT = "\033[38;5;252m"
 PROMPT = "\033[38;5;150m"
 OFF = "\033[0m"
@@ -30,6 +37,23 @@ def rename() -> None:
         ctypes.CDLL(None, use_errno=True).prctl(15, os.path.basename(__file__).encode()[:15])
     except OSError:
         pass
+
+
+def demo_language() -> str:
+    """The language this recording is in: the ``language:`` line of the session's config.yaml.
+
+    The recorder writes it into the session's copy of the fixtures (``$WAYHINT_DEMO_CONFIG``);
+    run by hand outside a recording, this is English.
+    """
+    root = os.environ.get("WAYHINT_DEMO_CONFIG")
+    if root:
+        try:
+            for line in (Path(root) / "config.yaml").read_text().splitlines():
+                if line.strip().startswith("language:"):
+                    return line.split(":", 1)[1].strip() or "en"
+        except OSError:
+            pass
+    return "en"
 
 
 def launch_lines(text: str) -> list[str]:
@@ -54,12 +78,14 @@ def launch_lines(text: str) -> list[str]:
 
 
 def main() -> int:
-    lines = launch_lines(DOC.read_text())
+    language = demo_language()
+    doc = DOC.get(language, DOC["en"])
+    lines = launch_lines(doc.read_text())
     if not lines:
-        sys.stderr.write(f"herdr-launch: no sh block under {HEADING!r} in {DOC}\n")
+        sys.stderr.write(f"herdr-launch: no sh block under {HEADING!r} in {doc}\n")
         sys.stdin.read()
         return 1
-    out = [f"{NOTE}# Herdr は、app_id に herdr を含めた端末で開く(docs/TERMINALS.md){OFF}"]
+    out = [f"{GREY}{NOTE.get(language, NOTE['en'])}{OFF}"]
     out += [f"{PROMPT}${OFF} {TEXT}{line}{OFF}" for line in lines]
     sys.stdout.write("\n".join(out) + "\n")
     sys.stdout.flush()

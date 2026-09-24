@@ -14,7 +14,9 @@ of this have to come out pixel for pixel the same.
 It is not a real notes application and does not pretend to be one. The text is made up.
 """
 
+import os
 import sys
+from pathlib import Path
 
 import gi
 
@@ -26,15 +28,31 @@ APP_ID = "dev.wayhint.demo.Notes"
 toplevel: no ``/proc``, no process name (DECISIONS 0024)."""
 TITLE = "Notes"
 
-NOTES = ("買い物メモ", "旅行の下調べ", "読んだ本")
-BODY = (
-    "旅行の下調べ",
-    "",
-    "・宿は駅の近くにする",
-    "・初日の午後は移動だけで終わる",
-    "・二日目の朝に市場へ行く",
-    "・帰りの便は夕方より前に取る",
-)
+TEXT = {
+    "ja": (
+        ("買い物メモ", "旅行の下調べ", "読んだ本"),
+        (
+            "旅行の下調べ",
+            "",
+            "・宿は駅の近くにする",
+            "・初日の午後は移動だけで終わる",
+            "・二日目の朝に市場へ行く",
+            "・帰りの便は夕方より前に取る",
+        ),
+    ),
+    "en": (
+        ("Shopping list", "Trip planning", "Books read"),
+        (
+            "Trip planning",
+            "",
+            "• Stay near the station",
+            "• The first afternoon is only travel",
+            "• Market on the second morning",
+            "• Take a flight home before the evening",
+        ),
+    ),
+}
+"""The note titles and the open note, in the recording's language (``demo_language``)."""
 
 CSS = b"""
 window { background: #1c1c28; }
@@ -47,6 +65,23 @@ label { color: #d6d6e0; }
 """
 
 
+def demo_language() -> str:
+    """The language this recording is in: the ``language:`` line of the session's config.yaml.
+
+    The recorder writes it into the session's copy of the fixtures (``$WAYHINT_DEMO_CONFIG``);
+    run by hand outside a recording, this is English.
+    """
+    root = os.environ.get("WAYHINT_DEMO_CONFIG")
+    if root:
+        try:
+            for line in (Path(root) / "config.yaml").read_text().splitlines():
+                if line.strip().startswith("language:"):
+                    return line.split(":", 1)[1].strip() or "en"
+        except OSError:
+            pass
+    return "en"
+
+
 def label(text: str, *classes: str) -> Gtk.Label:
     widget = Gtk.Label(label=text, xalign=0)
     for name in classes:
@@ -57,16 +92,17 @@ def label(text: str, *classes: str) -> Gtk.Label:
 def build(app: Gtk.Application) -> None:
     window = Gtk.ApplicationWindow(application=app, title=TITLE)
     window.set_default_size(560, 380)
+    notes, text = TEXT.get(demo_language(), TEXT["en"])
 
     side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
     side.add_css_class("side")
-    for index, name in enumerate(NOTES):
+    for index, name in enumerate(notes):
         side.append(label(name, "note", *(["picked"] if index == 1 else [])))
 
     body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
     body.add_css_class("body")
-    body.append(label(BODY[0], "head"))
-    for line in BODY[1:]:
+    body.append(label(text[0], "head"))
+    for line in text[1:]:
         body.append(label(line))
 
     split = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)

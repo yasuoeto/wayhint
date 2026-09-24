@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""A terminal in which ``./scripts/setup-terminals`` has just been typed, for the scenes that say
-a terminal needs one step of setup and that the step is this one command.
+"""A terminal in which ``./scripts/setup-terminals`` has just been typed, for the scenes that say a
+terminal needs one step of setup and that the step is this one command.
 
 The output is the real one: this runs the repository's own ``scripts/setup-terminals`` with no
 arguments -- its dry run, which writes nothing (docs/TERMINALS.md) -- with a fixed argv and no
-shell, in the session's throwaway ``$HOME``. Two things are changed on the way to the screen:
-the prompt line in front of it is drawn here (the session has no shell, DECISIONS 0032), and
-``$HOME`` is written as ``~``, the way a person reads their own paths. The session's home is a
-runtime directory whose name differs between recordings.
+shell, in the session's throwaway ``$HOME``, and in the recording's language (setup-terminals
+prints in the locale's language, so it is handed a locale to match). Two things are changed on
+the way to the screen: the prompt line in front of it is drawn here (the session has no shell,
+DECISIONS 0032), and ``$HOME`` is written as ``~``, the way a person reads their own paths. The
+session's home is a runtime directory whose name differs between recordings.
 
-A dry run exits 1 while something is left to do, which in a fresh home is always. Anything
-else above 1 is a failure: it is put on screen and the rename below is skipped.
+A dry run exits 1 while something is left to do, which in a fresh home is always. Anything else
+above 1 is a failure: it is put on screen and the rename below is skipped.
 
 ``comm`` is renamed only *after* the output is written, as in ``wayhint-shown``: the scenario
 waits for this name, so a step that sees it knows the text is already on screen.
@@ -38,6 +39,27 @@ def rename() -> None:
         pass
 
 
+def demo_language() -> str:
+    """The language this recording is in: the ``language:`` line of the session's config.yaml.
+
+    The recorder writes it into the session's copy of the fixtures (``$WAYHINT_DEMO_CONFIG``);
+    run by hand outside a recording, this is English.
+    """
+    root = os.environ.get("WAYHINT_DEMO_CONFIG")
+    if root:
+        try:
+            for line in (Path(root) / "config.yaml").read_text().splitlines():
+                if line.strip().startswith("language:"):
+                    return line.split(":", 1)[1].strip() or "en"
+        except OSError:
+            pass
+    return "en"
+
+
+LOCALE = {"ja": "ja_JP.UTF-8", "en": "C.UTF-8"}
+"""What setup-terminals is told its locale is: it prints in the locale's language."""
+
+
 def tilde(text: str, home: str) -> str:
     """``$HOME`` as ``~``, only where it is a whole path prefix."""
     if not home or home == "/":
@@ -46,8 +68,10 @@ def tilde(text: str, home: str) -> str:
 
 
 def main() -> int:
+    env = {k: v for k, v in os.environ.items() if k not in ("LC_ALL", "LC_MESSAGES")}
+    env["LANG"] = LOCALE.get(demo_language(), LOCALE["en"])
     done = subprocess.run(
-        [str(SCRIPT)], capture_output=True, text=True, timeout=20, check=False
+        [str(SCRIPT)], capture_output=True, text=True, timeout=20, check=False, env=env
     )
     home = os.environ.get("HOME", "")
     out = [f"{PROMPT}${OFF} {COMMAND}{SHOWN}{OFF}"]
