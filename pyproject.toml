@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wayhint"
-version = "0.1.0.dev0"
+version = "1.0.0"
 description = "Context-aware hint overlay for wlroots Wayland compositors (layer-shell, Herdr nested context)"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -13,7 +13,7 @@ authors = [{ name = "Yasuo Eto", email = "yasuo@etou.org" }]
 requires-python = ">=3.11"
 keywords = ["wayland", "wlroots", "labwc", "wayfire", "gtk4", "layer-shell", "cheatsheet", "herdr"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: GTK",
     "Intended Audience :: End Users/Desktop",
     "Operating System :: POSIX :: Linux",
@@ -22,9 +22,12 @@ classifiers = [
     "Topic :: Desktop Environment",
     "Topic :: Utilities",
 ]
-# [project.urls] (Homepage, Issues) is added once the public repository URL is known.
 dependencies = ["ruamel.yaml>=0.18", "pywayland>=0.4"]
 # PyGObject / GTK4 / gtk4-layer-shell come from the distribution (see dev-docs/PHASE0.md).
+
+[project.urls]
+Homepage = "https://github.com/yasuoeto/wayhint"
+Issues = "https://github.com/yasuoeto/wayhint/issues"
 
 [project.optional-dependencies]
 wayfire = ["wayfire>=0.6"]  # Wayfire IPC fallback backend (context.backend: wayfire)

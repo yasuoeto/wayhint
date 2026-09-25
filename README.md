@@ -60,8 +60,10 @@ Wayfire with the `foreign-toplevel` plugin enabled). Optionally Herdr and gvim. 
 sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
 ```
 
+Clone it wherever you like; the examples below use `~/.local/src/wayhint`.
+
 ```sh
-git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
+git clone https://github.com/yasuoeto/wayhint.git ~/.local/src/wayhint && cd ~/.local/src/wayhint
 ./scripts/setup                 # create .venv and install Python dependencies
 .venv/bin/pip install -e .      # put wayhint / wayhintd in .venv/bin
 ```
@@ -71,7 +73,7 @@ this README assume `wayhint` is called from PATH). The compositor config uses an
 so it does not rely on this symlink.
 
 ```sh
-ln -s ~/work/tools/wayhint/.venv/bin/wayhint ~/work/tools/wayhint/.venv/bin/wayhintd ~/.local/bin/
+ln -s ~/.local/src/wayhint/.venv/bin/wayhint ~/.local/src/wayhint/.venv/bin/wayhintd ~/.local/bin/
 ```
 
 Copy the templates and you can start right away (`style.css` is included too; remove it if you
@@ -97,13 +99,13 @@ call the CLI for hotkeys. The default assignment is these three:
 ```xml
 <keyboard>
   <keybind key="W-h">
-    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint toggle"/>
+    <action name="Execute" command="/home/USER/.local/src/wayhint/.venv/bin/wayhint toggle"/>
   </keybind>
   <keybind key="W-C-h">
-    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode"/>
+    <action name="Execute" command="/home/USER/.local/src/wayhint/.venv/bin/wayhint edit-mode"/>
   </keybind>
   <keybind key="W-S-h">
-    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint search-mode"/>
+    <action name="Execute" command="/home/USER/.local/src/wayhint/.venv/bin/wayhint search-mode"/>
   </keybind>
 </keyboard>
 ```
@@ -112,7 +114,7 @@ Add one line to `~/.config/labwc/autostart` for autostart (the file must be exec
 with `labwc --reconfigure`.
 
 ```sh
-/home/USER/work/tools/wayhint/.venv/bin/wayhintd &
+/home/USER/.local/src/wayhint/.venv/bin/wayhintd &
 ```
 
 If your autostart setup has a mechanism to kill helper processes it started on exit, follow that
@@ -123,14 +125,14 @@ convention (e.g. `spawn wayhintd`). No systemd user unit is provided.
 ```ini
 [command]
 binding_wayhint = <super> KEY_H
-command_wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhint toggle
+command_wayhint = /home/USER/.local/src/wayhint/.venv/bin/wayhint toggle
 binding_wayhint_edit = <super> <ctrl> KEY_H
-command_wayhint_edit = /home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode
+command_wayhint_edit = /home/USER/.local/src/wayhint/.venv/bin/wayhint edit-mode
 binding_wayhint_search = <super> <shift> KEY_H
-command_wayhint_search = /home/USER/work/tools/wayhint/.venv/bin/wayhint search-mode
+command_wayhint_search = /home/USER/.local/src/wayhint/.venv/bin/wayhint search-mode
 
 [autostart]
-wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
+wayhint = /home/USER/.local/src/wayhint/.venv/bin/wayhintd
 ```
 
 Add `foreign-toplevel` to `[core] plugins`. If it is missing but `ipc` and `ipc-rules` are
@@ -586,7 +588,7 @@ A count like `0/12` suggests a mistyped tag or category. The count is before ded
 
 - **Starting**: normally the compositor's autostart launches it at login
   ([Compositor setup](#compositor-setup)). To start it by hand:
-  `~/work/tools/wayhint/.venv/bin/wayhintd &`. If it's already running, it prints
+  `~/.local/src/wayhint/.venv/bin/wayhintd &`. If it's already running, it prints
   `wayhintd already running` and exits.
 - **Stopping**: it stops together with the compositor when you log out. To stop it by hand:
   `kill "$(wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p')"` (the daemon cleans up its socket
@@ -601,7 +603,7 @@ Changes to hints and `config.yaml` are picked up automatically, so a restart is 
 you update wayhint or change `style.css`. Stop and start it again with this one line:
 
 ```sh
-cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p'); \
+cd ~/.local/src/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p'); \
   [ -n "$p" ] && kill "$p" && while kill -0 "$p" 2>/dev/null; do sleep 0.1; done; \
   nohup .venv/bin/wayhintd -v >>"${XDG_RUNTIME_DIR:-/tmp}/wayhint.log" 2>&1 & disown
 ```
@@ -617,7 +619,7 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 ## Update
 
 ```sh
-cd ~/work/tools/wayhint
+cd ~/.local/src/wayhint
 git pull
 ./scripts/setup                 # reinstalls Python dependencies if they changed
 .venv/bin/pip install -e .
@@ -644,7 +646,7 @@ Undo these in order. wayhint never does any of this automatically.
 4. Remove config and state: `~/.config/wayhint/` (this includes your sheets; back them up first
    if you want to keep them) and `~/.local/state/wayhint/`.
 5. Remove the `wayhint` and `wayhintd` links in `~/.local/bin/`, and remove the repository
-   (`~/work/tools/wayhint/`).
+   (`~/.local/src/wayhint/`).
 
 ## Troubleshooting
 

@@ -59,8 +59,10 @@ Wayland(wlroots 系 compositor: labwc / Wayfire など)で、hotkey 一発で**�
 sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
 ```
 
+clone する場所は自由。以下の例は `~/.local/src/wayhint` を使う。
+
 ```sh
-git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
+git clone https://github.com/yasuoeto/wayhint.git ~/.local/src/wayhint && cd ~/.local/src/wayhint
 ./scripts/setup                 # .venv を作り、Python の依存を入れる
 .venv/bin/pip install -e .      # wayhint / wayhintd を .venv/bin に置く
 ```
@@ -69,7 +71,7 @@ git clone <this repo> ~/work/tools/wayhint && cd ~/work/tools/wayhint
 PATH から呼ぶ前提)。compositor の設定には絶対パスを書くので、そちらはこのリンクに頼らない。
 
 ```sh
-ln -s ~/work/tools/wayhint/.venv/bin/wayhint ~/work/tools/wayhint/.venv/bin/wayhintd ~/.local/bin/
+ln -s ~/.local/src/wayhint/.venv/bin/wayhint ~/.local/src/wayhint/.venv/bin/wayhintd ~/.local/bin/
 ```
 
 雛形をコピーすれば、そのまま始められる(`style.css` も入る。アプリ既定の配色で使うなら消す)。
@@ -94,13 +96,13 @@ daemon(`wayhintd`)をセッションに 1 つ起動し、hotkey は compositor �
 ```xml
 <keyboard>
   <keybind key="W-h">
-    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint toggle"/>
+    <action name="Execute" command="/home/USER/.local/src/wayhint/.venv/bin/wayhint toggle"/>
   </keybind>
   <keybind key="W-C-h">
-    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode"/>
+    <action name="Execute" command="/home/USER/.local/src/wayhint/.venv/bin/wayhint edit-mode"/>
   </keybind>
   <keybind key="W-S-h">
-    <action name="Execute" command="/home/USER/work/tools/wayhint/.venv/bin/wayhint search-mode"/>
+    <action name="Execute" command="/home/USER/.local/src/wayhint/.venv/bin/wayhint search-mode"/>
   </keybind>
 </keyboard>
 ```
@@ -109,7 +111,7 @@ autostart は `~/.config/labwc/autostart` に 1 行足す(ファイルには実�
 `labwc --reconfigure`。
 
 ```sh
-/home/USER/work/tools/wayhint/.venv/bin/wayhintd &
+/home/USER/.local/src/wayhint/.venv/bin/wayhintd &
 ```
 
 autostart が起動した helper を終了時に落とす仕組みを使っているなら、その作法に従う
@@ -120,14 +122,14 @@ autostart が起動した helper を終了時に落とす仕組みを使って�
 ```ini
 [command]
 binding_wayhint = <super> KEY_H
-command_wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhint toggle
+command_wayhint = /home/USER/.local/src/wayhint/.venv/bin/wayhint toggle
 binding_wayhint_edit = <super> <ctrl> KEY_H
-command_wayhint_edit = /home/USER/work/tools/wayhint/.venv/bin/wayhint edit-mode
+command_wayhint_edit = /home/USER/.local/src/wayhint/.venv/bin/wayhint edit-mode
 binding_wayhint_search = <super> <shift> KEY_H
-command_wayhint_search = /home/USER/work/tools/wayhint/.venv/bin/wayhint search-mode
+command_wayhint_search = /home/USER/.local/src/wayhint/.venv/bin/wayhint search-mode
 
 [autostart]
-wayhint = /home/USER/work/tools/wayhint/.venv/bin/wayhintd
+wayhint = /home/USER/.local/src/wayhint/.venv/bin/wayhintd
 ```
 
 `[core] plugins` に `foreign-toplevel` を入れる。無くて `ipc` `ipc-rules` があれば Wayfire IPC に
@@ -532,7 +534,7 @@ include git: 3/9 shown (from claude-code.yaml)
 ## daemon の起動と停止
 
 - **起動**: ふつうは compositor の autostart が、ログインと同時に起動する([compositor の設定](#compositor-の設定))。
-  手で起動するなら `~/work/tools/wayhint/.venv/bin/wayhintd &`。すでに動いていれば
+  手で起動するなら `~/.local/src/wayhint/.venv/bin/wayhintd &`。すでに動いていれば
   `wayhintd already running` と出て終わる。
 - **停止**: compositor を終了すると一緒に止まる。手で止めるなら `kill "$(wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p')"`
   (daemon は socket を片付けてから終わる)。
@@ -546,7 +548,7 @@ include git: 3/9 shown (from claude-code.yaml)
 `style.css` を変えたときだけ。次の 1 行で止めて起動し直す:
 
 ```sh
-cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p'); \
+cd ~/.local/src/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\).*/\1/p'); \
   [ -n "$p" ] && kill "$p" && while kill -0 "$p" 2>/dev/null; do sleep 0.1; done; \
   nohup .venv/bin/wayhintd -v >>"${XDG_RUNTIME_DIR:-/tmp}/wayhint.log" 2>&1 & disown
 ```
@@ -560,7 +562,7 @@ cd ~/work/tools/wayhint && p=$(.venv/bin/wayhint ping | sed -n 's/^pid=\([0-9]*\
 ## アップデート
 
 ```sh
-cd ~/work/tools/wayhint
+cd ~/.local/src/wayhint
 git pull
 ./scripts/setup                 # Python の依存が変わっていれば入れ直す
 .venv/bin/pip install -e .
@@ -582,7 +584,7 @@ git pull
      `<ファイル名>.wayhint-backup-<日時>` から戻す(または行の wrapper を元のコマンドに戻す)
 4. 設定と状態を消す: `~/.config/wayhint/`(シートも含む。残すならバックアップを取る)と
    `~/.local/state/wayhint/`。
-5. `~/.local/bin/` に置いた `wayhint` と `wayhintd` のリンクを消し、repository(`~/work/tools/wayhint/`)を消す。
+5. `~/.local/bin/` に置いた `wayhint` と `wayhintd` のリンクを消し、repository(`~/.local/src/wayhint/`)を消す。
 
 ## 困ったとき
 
