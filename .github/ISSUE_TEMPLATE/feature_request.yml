@@ -1,0 +1,21 @@
+name: Feature request
+description: Something wayhint could do, or do differently
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before asking, please check "Out of scope" in dev-docs/PRODUCT.md: some things
+        (running commands, AI-generated hints, reading the screen) are left out on purpose.
+        日本語で書いても構いません。
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation, not the solution -- which app, which moment, what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind (optional)

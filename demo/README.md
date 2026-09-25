@@ -104,6 +104,12 @@ deleted.
 | `stills/` | `steps/` with the same captions burned in as the video. Same picture as that step's frame in `.sub.mp4` (minus only the degradation from compression) |
 | `review/` | only with `--review`. Crops of steps that changed from the adopted take (see "Reviewing a re-take" below) |
 
+The README's picture and video are copies of these outputs, kept in `docs/media/` because
+`out/` is not tracked: `overlay.en.png` / `overlay.ja.png` are `all`'s `60s` still
+`steps/03-q-show-hints.png` in each language with the empty caption band cut off
+(`magick <still> -crop 1280x640+0+0 +repage <png>`), and `wayhint-demo-60s.en.mp4` is
+`all/out/en/60s/wayhint-all-60s.en.sub.mp4`. After re-recording `all`, copy them again.
+
 ## Writing the scenario
 
 ```yaml

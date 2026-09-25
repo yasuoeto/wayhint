@@ -7,6 +7,10 @@ sheet for the app you are currently using** at a fixed spot on the screen (top-r
 It looks into commands running inside a terminal or Herdr (vi, Claude Code, Codex, ...) and
 switches its contents accordingly. You write the contents yourself in YAML and grow it over time.
 
+![The overlay showing Claude Code's hints next to a Herdr window](docs/media/overlay.en.png)
+
+▶ [60-second demo video](docs/media/wayhint-demo-60s.en.mp4) (English captions)
+
 - It does not steal keyboard focus while shown. You can keep working in the original app.
 - Search, add, edit, favorite, and reorder all happen inside the overlay.
 - A `command` written in YAML is only shown and copied, never executed.

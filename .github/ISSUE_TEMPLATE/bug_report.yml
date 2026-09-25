@@ -1,0 +1,55 @@
+name: Bug report
+description: Something does not work the way the documents say it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The details below are what it usually takes to tell which part
+        is at fault: the compositor, the terminal, Herdr, the sheet, or wayhint itself.
+        日本語で書いても構いません。
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The steps that lead to it, if you know them.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: wayhint version or commit
+      description: "`git -C <your clone> log --oneline -n 1`"
+    validations:
+      required: true
+  - type: input
+    id: compositor
+    attributes:
+      label: Compositor and version
+      placeholder: labwc 0.9.1 / Wayfire 0.9.0 / ...
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where the app runs
+      description: A GUI app, a terminal (which one), or inside Herdr (in which terminal)
+      placeholder: foot 1.20 with the setup-terminals wrapper / Herdr 0.8 in kitty / GTK app
+  - type: textarea
+    id: context
+    attributes:
+      label: Output of `wayhint context --shown`
+      description: Show the overlay for the window in question, then run this from another terminal.
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Relevant lines from `wayhintd -v`, if any. Remove anything private.
+      render: text
+  - type: textarea
+    id: sheet
+    attributes:
+      label: The sheet involved (optional)
+      description: The YAML of the sheet that should have been shown, or a minimal one that shows the problem.
+      render: yaml

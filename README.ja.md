@@ -6,6 +6,10 @@ Wayland(wlroots 系 compositor: labwc / Wayfire など)で、hotkey 一発で**�
 チートシート**を画面の決まった場所(既定: 右上)に出す。端末や Herdr の中で動いているコマンド
 (vi、Claude Code、Codex …)まで見て中身を切り替える。中身は YAML で自分で書いて育てる。
 
+![Herdr のウィンドウの横に、Claude Code のヒントを出したヒント画面](docs/media/overlay.ja.png)
+
+▶ [60 秒のデモ動画](docs/media/wayhint-demo-60s.en.mp4)(英語の字幕)
+
 - 出している間も keyboard フォーカスを奪わない。元のアプリで作業を続けられる
 - 検索・追加・修正・favorite・並べ替えはヒント画面の中でできる
 - YAML に書いた command は表示とコピーだけで、実行はしない

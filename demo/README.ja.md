@@ -96,6 +96,11 @@ demo/
 | `stills/` | `steps/` に動画と同じ字幕を焼き込んだもの。`.sub.mp4` のその step の frame と同じ画(圧縮による劣化だけが無い) |
 | `review/` | `--review` のときだけ。採用版から変わった step の切り抜き(下の「撮り直しを見る」) |
 
+README の画像と動画はこの出力の写しで、`out/` は追跡しないので `docs/media/` に置いてある。
+`overlay.en.png` / `overlay.ja.png` は各言語の `all` の `60s` の静止画 `steps/03-q-show-hints.png` から
+空の字幕帯を切ったもの(`magick <静止画> -crop 1280x640+0+0 +repage <png>`)、`wayhint-demo-60s.en.mp4`
+は `all/out/en/60s/wayhint-all-60s.en.sub.mp4`。`all` を撮り直したら写し直す。
+
 ## 脚本の書き方
 
 ```yaml
