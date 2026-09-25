@@ -19,10 +19,14 @@ skip() {
     printf 'check: %s is not on PATH; skipped\n' "$1" >&2
 }
 
-if command -v tool-init >/dev/null 2>&1; then
-    run tool-init lint .agents/skills
-else
-    skip tool-init
+# .agents/skills is the author's local agent setup and is not in the public repository
+# (DECISIONS 0045); lint it only where it exists.
+if [ -d .agents/skills ]; then
+    if command -v tool-init >/dev/null 2>&1; then
+        run tool-init lint .agents/skills
+    else
+        skip tool-init
+    fi
 fi
 
 if command -v ruff >/dev/null 2>&1; then

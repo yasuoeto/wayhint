@@ -3,8 +3,7 @@
 [日本語](DEVELOPMENT.ja.md)
 
 Documentation for the people who use wayhint lives in `README.md` and `docs/`. This file holds
-only what you need to work on wayhint itself. `AGENTS.md` is the source of truth for agent
-conventions.
+only what you need to work on wayhint itself.
 
 ## Setup and validation
 
@@ -14,7 +13,11 @@ conventions.
 ./scripts/check                 # lint + unit tests. This is the one entry point for validation
 ```
 
-Pass/fail is judged by the exit code (`AGENTS.md` §3).
+Pass/fail is judged by the exit code, not by the last lines printed. Never make output narrowed
+with `| tail`, `| grep` or `| head` the condition of `&&` or `if`: a pipeline exits with the status
+of its last command, so a failing check reads as a passing one. Run it unnarrowed, or put
+`set -o pipefail` before it, or capture the output and print it afterwards. New checks go into
+`./scripts/check` rather than into a separate command.
 
 ## GUI tests
 
@@ -59,7 +62,6 @@ Steps are under "Restarting the daemon" in `README.md`.
 
 | Path | Contents |
 |---|---|
-| `STATUS.md` | What is done, what is left, what the real machine looks like |
 | `src/` | Implementation |
 | `tests/` | Tests |
 | `docs/` | Documentation for users (`CONFIG.md`, `HOTKEYS.md`, `SHEET-FORMAT.md`, `SHEETS.md`, `TERMINALS.md`) |
@@ -70,12 +72,7 @@ Steps are under "Restarting the daemon" in `README.md`.
 | `examples/` | Templates for config.yaml and sheets |
 | `demo/` | Introductory videos. Scripts and scenarios under `showcases/<name>/`; `fixtures/` and `bin/` are shared (`demo/README.md`) |
 | `tools/` | Repository tooling. Headless session (shared between tests and demos) and video generation |
-| `scripts/` | `setup`, `check`, `check-gui`, `demo`, `setup-terminals`, and this repository's own agent hooks |
-| `.agents/skills/` | Skills shared between agents |
-| `.claude/`, `.codex/` | Vendor-specific adapter settings (do not edit by hand) |
+| `scripts/` | `setup`, `check`, `check-gui`, `demo`, `setup-terminals` |
 
-## Agent conventions
-
-Shared instructions are collected in `AGENTS.md`; `CLAUDE.md` only points to it. Vendor-specific
-settings are confined to `.claude/` and `.codex/`. Shared hooks are registered once at user scope
-and are not repeated in this repository.
+The author's coding-agent configuration and working log are kept outside the public repository
+(DECISIONS 0045); `.gitignore` lists them so that a clone with its own does not commit them.

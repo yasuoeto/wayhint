@@ -1853,6 +1853,23 @@ failure distinction, and others)
 - **Consequences**: Two copies to keep in step. Links inside a `.ja.md` point at the other
   `.ja.md` files.
 
+## 0045 — The author's coding-agent configuration and working log are not published
+
+- **Date**: 2026-09-25
+- **Status**: accepted
+- **Context**: Before the first push to GitHub, the repository tracked the author's agent setup
+  (`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.codex/`, `.agents/`, `scripts/agent-hooks/`) and the
+  Japanese working log `STATUS.md`. None of it is needed to use or build wayhint.
+- **Decision**: Remove them from the whole history before publishing and list them in
+  `.gitignore`; the author keeps them locally. The rules a contributor needs from `AGENTS.md`
+  (judging a check by its exit code, adding checks to `./scripts/check`) move into
+  `dev-docs/DEVELOPMENT.md`.
+- **Alternatives**: publish them (harmless, but noise for a reader); keep a private `main` and
+  export a history-less public branch at each release (the local routine stays, but the public
+  history is only release cuts and pull requests have to be carried over by hand).
+- **Consequences**: Changes to those files are no longer versioned in this repository. Older
+  entries here still mention `AGENTS.md` and `STATUS.md` as they were at the time.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

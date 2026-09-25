@@ -1,3 +1,13 @@
+# The author's coding-agent configuration and working log: kept locally, not published
+# (DECISIONS 0045).
+AGENTS.md
+CLAUDE.md
+STATUS.md
+.agents/
+.claude/
+.codex/
+scripts/agent-hooks/
+
 # Local-only agent state. Shared configuration is tracked; per-machine overrides are not.
 .claude/settings.local.json
 .claude/state/

@@ -1512,6 +1512,22 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   GitHub で対が隣に並ばない); 英語だけにする(日本語が原文で、作者が最初に手を入れるのは日本語)。
 - **Consequences**: 2 つを揃え続ける手間がある。`.ja.md` の中のリンクは、他の `.ja.md` を指す。
 
+## 0045 — 作者の coding agent 用の設定と作業記録は公開しない
+
+- **Date**: 2026-09-25
+- **Status**: accepted
+- **Context**: GitHub へ最初に push する前の時点で、作者の agent の設定(`AGENTS.md`、`CLAUDE.md`、
+  `.claude/`、`.codex/`、`.agents/`、`scripts/agent-hooks/`)と日本語の作業記録 `STATUS.md` を追跡
+  していた。どれも wayhint を使うにも作るにも要らない。
+- **Decision**: 公開前に履歴全体から消し、`.gitignore` に並べる。作者は手元で持つ。`AGENTS.md` のうち
+  開発に加わる人に要る規則(検査は exit code で判断する、検査は `./scripts/check` に足す)は
+  `dev-docs/DEVELOPMENT.md` に移す。
+- **Alternatives**: 公開する(害はないが、読む人には雑音); main を非公開にしてリリースごとに履歴の無い
+  公開ブランチを書き出す(手元の運用は変わらないが、公開側の履歴はリリースの切れ目だけになり、PR は
+  手で移すことになる)。
+- **Consequences**: それらのファイルの変更は、このリポジトリでは版管理されない。ここの古い entry には、
+  当時の `AGENTS.md` や `STATUS.md` への言及がそのまま残る。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

@@ -3,7 +3,6 @@
 [English](DEVELOPMENT.md)
 
 使う人向けの説明は `README.md` と `docs/`。ここは wayhint 自体を直すときに要るものだけを置く。
-agent 向けの取り決めは `AGENTS.md` が正。
 
 ## 準備と検証
 
@@ -13,7 +12,10 @@ agent 向けの取り決めは `AGENTS.md` が正。
 ./scripts/check                 # lint + 単体テスト。検証の入口はこれ 1 本
 ```
 
-合否は exit code で判断する(`AGENTS.md` §3)。
+合否は exit code で判断し、最後に出た数行では判断しない。`| tail` `| grep` `| head` で絞った出力を
+`&&` や `if` の条件にしない——pipeline は最後のコマンドの status で終わるので、失敗した検査が通った
+ように見える。絞らずに実行するか、前に `set -o pipefail` を置くか、出力をファイルか変数に取って後で
+出す。新しい検査は別のコマンドにせず `./scripts/check` に足す。
 
 ## GUI テスト
 
@@ -54,7 +56,6 @@ sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mo
 
 | パス | 内容 |
 |---|---|
-| `STATUS.md` | 何が終わっていて、何が残っていて、実機がどうなっているか |
 | `src/` | 実装 |
 | `tests/` | テスト |
 | `docs/` | 使う人向けの説明(`CONFIG.md`、`HOTKEYS.md`、`SHEET-FORMAT.md`、`SHEETS.md`、`TERMINALS.md`) |
@@ -65,12 +66,7 @@ sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mo
 | `examples/` | config.yaml と sheet の雛形 |
 | `demo/` | 紹介動画。`showcases/<name>/` に台本と脚本、`fixtures/` と `bin/` は共通(`demo/README.md`) |
 | `tools/` | repository の道具。headless session(テストとデモで共有)と動画生成 |
-| `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals`、この repository 専用の agent hook |
-| `.agents/skills/` | agent 間で共有する skill |
-| `.claude/`、`.codex/` | vendor ごとの adapter 設定(手で編集しない) |
+| `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals` |
 
-## agent 向けの取り決め
-
-共通の指示は `AGENTS.md` にまとめてあり、`CLAUDE.md` はそこを指すだけ。vendor 固有の設定は
-`.claude/` と `.codex/` に閉じている。共通の hook は user scope に一度だけ登録してあり、この
-repository には置かない。
+作者の coding agent 用の設定と作業記録は、公開 repository の外で持つ(DECISIONS 0045)。`.gitignore`
+に並べてあるので、自分の設定を置いた clone でも commit されない。
