@@ -8,7 +8,11 @@ Wayland(wlroots 系 compositor: labwc / Wayfire など)で、hotkey 一発で**�
 
 ![Herdr のウィンドウの横に、Claude Code のヒントを出したヒント画面](docs/media/overlay.ja.png)
 
-▶ [60 秒のデモ動画](docs/media/wayhint-demo-60s.en.mp4)(英語の字幕)
+短いデモ
+
+https://github.com/user-attachments/assets/1bead252-33af-4796-b477-e48ab03284d9
+
+
 
 - 出している間も keyboard フォーカスを奪わない。元のアプリで作業を続けられる
 - 検索・追加・修正・favorite・並べ替えはヒント画面の中でできる
