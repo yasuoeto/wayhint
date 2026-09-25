@@ -14,9 +14,10 @@ Two levels of API:
 from __future__ import annotations
 
 import datetime as _dt
-import itertools
+import io
 import os
 import re
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -164,27 +165,48 @@ loop on every reload."""
 def read_document(path: Path) -> tuple[object, list[Issue]]:
     """Parse one YAML file. Returns ``(data, issues)``; ``data`` is ``None`` on error."""
     try:
-        # Counted in characters, which is never more than bytes. Read to the limit rather than
-        # stat()ed first: the file can grow in between.
-        with open(path, encoding="utf-8") as fh:
-            text = fh.read(MAX_DOCUMENT_BYTES + 1)
-        if len(text) > MAX_DOCUMENT_BYTES:
-            return None, [Issue(path, None, f"larger than {MAX_DOCUMENT_BYTES} bytes; not read")]
+        # Read to one byte past the limit rather than stat()ed first: the file can grow in
+        # between. Bytes, not characters: a Japanese sheet has three of them to a character.
+        with open(path, "rb") as fh:
+            raw = fh.read(MAX_DOCUMENT_BYTES + 1)
     except OSError as e:
         return None, [Issue(path, None, f"cannot read: {e.strerror or e}")]
+    if len(raw) > MAX_DOCUMENT_BYTES:
+        return None, [Issue(path, None, f"larger than {MAX_DOCUMENT_BYTES} bytes; not read")]
+    try:
+        text = raw.decode("utf-8")
     except UnicodeDecodeError as e:
         # A file saved in another encoding is a problem to report like any other, not a crash
         # in whatever asked for it: the CLI, the daemon at start, or a reload.
         return None, [Issue(path, None, f"not valid utf-8 at byte {e.start}: {e.reason}")]
+    # What reading in text mode did: every line ending becomes \n.
+    return parse_text(path, text.replace("\r\n", "\n").replace("\r", "\n"))
+
+
+_DUPLICATE_KEY = re.compile(r'found duplicate key "(?P<key>[^"]*)"')
+
+
+def parse_text(path: Path, text: str) -> tuple[object, list[Issue]]:
+    """Parse YAML already in memory, reporting against ``path``. Same result as ``read_document``.
+
+    What the parser says is shown on screen and printed by the CLI, so it must not carry the
+    file's values: a duplicate key is reported by its name and line only, and an error without
+    a position by its kind. A structure nested deeper than the parser can recurse is a mistake
+    in the file like any other, not a crash in whatever is loading it.
+    """
     try:
         return _yaml().load(text), []
     except MarkedYAMLError as e:
         mark = e.problem_mark
         line = mark.line + 1 if mark is not None else None
         problem = (e.problem or e.context or "YAML error").strip()
+        if (duplicate := _DUPLICATE_KEY.match(problem)) is not None:
+            problem = f'duplicate key "{duplicate.group("key")}"'
         return None, [Issue(path, line, f"YAML syntax error: {problem}")]
     except YAMLError as e:
-        return None, [Issue(path, None, f"YAML error: {e}")]
+        return None, [Issue(path, None, f"YAML error: {type(e).__name__}")]
+    except RecursionError:
+        return None, [Issue(path, None, "YAML error: nested too deeply")]
 
 
 # --- global config -----------------------------------------------------------------------------
@@ -781,22 +803,20 @@ def write_config(path: Path, doc: object) -> None:
     _write_checked(path, doc, check)
 
 
-_write_serial = itertools.count()
-
-
 def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue]]) -> None:
-    """Dump, re-read, validate, then replace. Nothing is written when the result would not load.
+    """Dump, validate, then replace. Nothing is written when the result would not load.
+
+    What is validated is the dumped text itself, parsed in memory, so the temporary file is only
+    ever written, never read back.
 
     The temporary file sits next to the target (``os.replace`` cannot cross filesystems) and must
     not end in ``.yaml`` / ``.yml``: ``hints/`` is watched as a directory, so a temporary sheet
-    would be picked up as a real one for as long as it exists.
-
-    The name also has to be this writer's own. The overlay and the CLI write the same sheets, and
-    a shared ``<name>.tmp`` lets one writer read, replace or delete the other's file mid-flight,
-    which fails in ways that are not "the last writer wins". Process id plus a counter is unique
-    while both are running, which is exactly as long as it matters; a name left behind by a
-    crashed writer is simply overwritten. Ordering between writers is still last-write-wins --
-    no mtime comparison is added here.
+    would be picked up as a real one for as long as it exists. It is created with ``mkstemp``:
+    a name nobody can guess or have put a link at in advance, opened exclusively and ``0600``
+    from the start. The target's own mode (or the umask's, for a new file) is given to it before
+    any content goes in, so a ``0600`` config is never readable by others mid-write. The
+    overlay and the CLI write the same sheets; each writer's file is its own. Ordering between
+    writers is still last-write-wins -- no mtime comparison is added here.
 
     A sheet that is a symlink (into a dotfiles repository, say) has its *target* replaced, so the
     link stays a link. The target is usually outside the watched directory, so the link itself
@@ -808,22 +828,25 @@ def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue
     path = path.resolve() if link is not None else path
     if not path.parent.is_dir():
         raise SheetWriteError(f"no such directory: {path.parent}")
-    tmp = path.with_name(f"{path.name}.{os.getpid()}-{next(_write_serial)}.tmp")
+    buffer = io.StringIO()
+    _yaml().dump(doc, buffer)
+    text = buffer.getvalue()
+    data, issues = parse_text(path, text)
+    if not issues:
+        # Validate what will actually land, but report it against the real name.
+        issues = check(data)
+    if issues:
+        raise SheetWriteError(f"{path.name} would not validate; nothing was written", issues)
+    fd, name = tempfile.mkstemp(prefix=f"{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(name)
     try:
-        with open(tmp, "w", encoding="utf-8") as fh:
-            _yaml().dump(doc, fh)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            os.fchmod(fh.fileno(), _mode_for(path))
+            fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        data, issues = read_document(tmp)
-        if not issues:
-            # Validate what will actually land, but report it against the real name.
-            issues = check(data)
-        if issues:
-            raise SheetWriteError(f"{path.name} would not validate; nothing was written", issues)
-        if path.exists():
-            os.chmod(tmp, path.stat().st_mode & 0o7777)  # keep the mode the user gave the file
         os.replace(tmp, path)
-    except Exception:
+    except BaseException:
         try:
             tmp.unlink()
         except OSError:
@@ -834,6 +857,16 @@ def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue
             os.utime(link, follow_symlinks=False)
         except OSError:
             pass  # the content is written; only the overlay's reload waits for the next change
+
+
+def _mode_for(path: Path) -> int:
+    """The mode the written file ends up with: the one the user gave it, else the umask's."""
+    try:
+        return path.stat().st_mode & 0o7777
+    except FileNotFoundError:
+        umask = os.umask(0)
+        os.umask(umask)
+        return 0o666 & ~umask
 
 
 def set_overlay_size(doc: object, width: int, height: int) -> CommentedMap:

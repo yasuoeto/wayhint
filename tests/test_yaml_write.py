@@ -141,6 +141,63 @@ class WriteDocumentTest(TmpSheetTest):
         self.assertIsNone(data)
         self.assertIn("larger than", issues[0].message)
 
+    def test_the_size_limit_counts_bytes(self) -> None:
+        """Japanese is three bytes a character: a limit in characters would let 3 MiB through."""
+        big = self.dir / "big.yaml"
+        big.write_text("id: big\n# " + "あ" * (MAX_DOCUMENT_BYTES // 3 + 1) + "\n")
+        self.assertIn("larger than", read_document(big)[1][0].message)
+
+    def test_crlf_line_endings_still_read(self) -> None:
+        sheet = self.dir / "crlf.yaml"
+        sheet.write_bytes(b"id: crlf\r\ntitle: T\r\n")
+        self.assertEqual(read_document(sheet), ({"id": "crlf", "title": "T"}, []))
+
+    def test_a_deeply_nested_document_is_a_mistake_not_a_crash(self) -> None:
+        deep = self.dir / "deep.yaml"
+        deep.write_text("[" * 600 + "0" + "]" * 600)
+        data, issues = read_document(deep)
+        self.assertIsNone(data)
+        self.assertIn("nested too deeply", issues[0].message)
+
+    def test_a_duplicate_key_is_reported_without_its_values(self) -> None:
+        """The message goes to the screen and to stderr; the values may be private."""
+        dup = self.dir / "dup.yaml"
+        dup.write_text("id: dup\ntitle: PRIVATE_ONE\ntitle: PRIVATE_TWO\n")
+        _data, issues = read_document(dup)
+        self.assertEqual(issues[0].line, 3)
+        self.assertIn('duplicate key "title"', issues[0].message)
+        self.assertNotIn("PRIVATE", issues[0].message)
+
+    def test_a_link_at_a_temporary_name_is_not_followed(self) -> None:
+        """Temporary names cannot be guessed, and one that exists is never opened."""
+        victim = self.dir / "victim.txt"
+        victim.write_text("keep\n")
+        target = self.copy(DIRTY / "messy.yaml")
+        for serial in range(5000):  # every name the old pid-and-counter scheme could reach
+            (self.dir / f"{target.name}.{os.getpid()}-{serial}.tmp").symlink_to(victim)
+        write_document(target, self.doc(target))
+        self.assertEqual(victim.read_text(), "keep\n")
+        self.assertFalse(target.is_symlink())
+
+    def test_a_private_file_is_never_readable_by_others_mid_write(self) -> None:
+        target = self.copy(DIRTY / "messy.yaml")
+        os.chmod(target, 0o600)
+        modes = []
+        real_fsync = os.fsync
+
+        def spy(fd):  # the content is in the file by now
+            modes.append(os.fstat(fd).st_mode & 0o777)
+            real_fsync(fd)
+
+        old = os.umask(0o022)
+        try:
+            with mock.patch("wayhint.yaml_store.os.fsync", spy):
+                write_document(target, self.doc(target))
+        finally:
+            os.umask(old)
+        self.assertEqual(modes, [0o600])
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
     def test_new_sheet_follows_the_umask(self) -> None:
         source = self.copy(DIRTY / "messy.yaml")
         doc = self.doc(source)

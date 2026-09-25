@@ -114,21 +114,20 @@ def parse_state(text: str) -> tuple[dict[str, str], list[str]]:
 
 def load_state(path: Path) -> tuple[dict[str, str], list[str]]:
     try:
-        size = path.stat().st_size
+        # One byte past the limit, not stat() first: the file can grow in between, and reading
+        # all of it only to cut it would hold the whole file in memory.
+        with open(path, "rb") as fh:
+            raw = fh.read(MAX_STATE_BYTES + 1)
     except FileNotFoundError:
         return {}, []
     except OSError as e:
         return {}, [f"cannot read: {e.strerror or e}"]
-    if size > MAX_STATE_BYTES:
+    if len(raw) > MAX_STATE_BYTES:
         return {}, [f"larger than {MAX_STATE_BYTES} bytes"]
     try:
-        text = path.read_bytes()[: MAX_STATE_BYTES + 1].decode("utf-8")
-    except OSError as e:
-        return {}, [f"cannot read: {e.strerror or e}"]
+        text = raw.decode("utf-8")
     except UnicodeDecodeError:
         return {}, ["not UTF-8"]
-    if len(text.encode("utf-8")) > MAX_STATE_BYTES:  # grew between stat and read
-        return {}, [f"larger than {MAX_STATE_BYTES} bytes"]
     return parse_state(text)
 
 

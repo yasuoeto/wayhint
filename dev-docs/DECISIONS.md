@@ -1892,6 +1892,13 @@ failure distinction, and others)
     `fsync`ed before it replaces the old.
   - Sheets and `config.yaml` over 1 MiB are not read; regexes see at most 4096 characters of each
     app_id, argument or command line.
+- **Decision (addendum, second review the same day)**: The temporary file a write goes through is
+  made with `mkstemp` -- a name nobody can have put a link at, `0600` from the start and given
+  the target's mode before any content goes in -- and what is validated is the dumped text in
+  memory, so the temporary file is never read back. The 1 MiB limit counts bytes (it counted
+  characters). A document nested deeper than the parser can recurse is reported as a mistake
+  instead of raising `RecursionError`. A duplicate key is reported by its name and line, not
+  its two values, since the message is shown on screen and printed to stderr.
 - **Alternatives**: showing nothing new and documenting `copy` as trusted (a shared sheet is exactly
   where it is not); timing regexes out (Python's `re` has no timeout, and a thread per match is out
   of proportion for text this short).
