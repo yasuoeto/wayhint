@@ -9,7 +9,10 @@ switches its contents accordingly. You write the contents yourself in YAML and g
 
 ![The overlay showing Claude Code's hints next to a Herdr window](docs/media/overlay.en.png)
 
-▶ [60-second demo video](docs/media/wayhint-demo-60s.en.mp4) (English captions)
+short demo
+
+https://github.com/user-attachments/assets/22dcb12c-858f-4ffa-888b-19843541b819
+
 
 - It does not steal keyboard focus while shown. You can keep working in the original app.
 - Search, add, edit, favorite, and reorder all happen inside the overlay.
