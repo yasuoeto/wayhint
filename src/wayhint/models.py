@@ -24,6 +24,17 @@ EDITOR_PLACEHOLDERS = ("file", "line", "hint_id")
 
 _SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(px|%)?\s*$")
 
+CONTROL_SHOWN = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def visible(text: str) -> str:
+    """``text`` with every character that would not show on screen written out as an escape.
+
+    For text that came from somewhere else -- a sheet, an app_id, a process name -- and is put
+    where an invisible character changes what it means: the detail pane, a YAML comment.
+    """
+    return "".join(c if c.isprintable() else CONTROL_SHOWN.get(c, f"\\x{ord(c):02x}") for c in text)
+
 
 @dataclass(frozen=True)
 class Size:

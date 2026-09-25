@@ -1528,6 +1528,33 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: それらのファイルの変更は、このリポジトリでは版管理されない。ここの古い entry には、
   当時の `AGENTS.md` や `STATUS.md` への言及がそのまま残る。
 
+## 0046 — 他のプログラムや共有されたシートから来る文字列は、身構えて表示し、書き込む
+
+- **Date**: 2026-09-25
+- **Status**: accepted
+- **Context**: 公開前のセキュリティレビューで、YAML・`/proc`・Herdr の文字列が実行される経路は
+  見つからなかった。一方で、wayhint が決められない文字列(app_id、プロセス名、他人が書いたシート)が
+  利用者を欺いたり、利用者のファイルに何かを残したりできる所が見つかった。シートは引き続き本人のもの
+  として信頼する。以下は、シートが共有される日のため。
+- **Decision**:
+  - 詳細欄に、`c` でコピーされる文字列を、一覧の command とちょうど同じでない限り出す。制御文字は
+    `\n` のように書き出す。見た目と違うコマンドをコピーさせるシートを作れないようにする。
+  - 自動で作るシートの先頭コメントでは制御文字を書き出す。app_id の中の `\r` がコメント行を終わらせ、
+    本物の key になるのを防ぐ。
+  - `XDG_RUNTIME_DIR` が無いときの socket directory `/tmp/wayhint-<uid>` は、symlink でない本物の
+    directory で、本人の持ち物で、mode `0700` でなければ使わない。
+  - `setup-terminals` はラッパーの中の端末のパスをクオートして絶対パスにする。`~/.local/bin` に
+    ランチャーがクオートなしで扱えない文字があれば、何も書く前に止まる。
+  - symlink のシートへの書き込みはリンク先を置き換え、リンクに touch する。新しいファイルは置き換える
+    前に `fsync` する。
+  - 1 MiB を超えるシートと `config.yaml` は読まない。正規表現には app_id・引数・コマンドラインの
+    先頭 4096 文字までを渡す。
+- **Alternatives**: 何も出さず `copy` を信頼するものとして文書にする(共有されたシートこそ信頼できない)。
+  正規表現に timeout を付ける(Python の `re` には timeout が無く、この短さの文字列に match ごとの
+  thread は釣り合わない)。
+- **Consequences**: `$` で終わる pattern は 4096 文字を超えると当たらない。ホームに空白があると
+  `setup-terminals` は使えない(`docs/TERMINALS.md` の手順を手でやれば使える)。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

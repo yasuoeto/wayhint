@@ -1116,6 +1116,9 @@ class HintWindow(Gtk.Window):
         # Only what the row cannot show. `kind` and `id` are for whoever edits the YAML (id is
         # the duplicate check and the `{hint_id}` placeholder), not for whoever reads the hint.
         lines: list[str] = []
+        copied = editmode.copied_detail(hint)
+        if copied is not None:
+            lines.append(f"{self._tr('copies')}: {copied}")
         if hint.remark:
             lines.append(hint.remark)
         if hint.tags:

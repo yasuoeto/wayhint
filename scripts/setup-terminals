@@ -27,6 +27,7 @@ import argparse
 import datetime as _dt
 import os
 import re
+import shlex
 import shutil
 import stat
 import sys
@@ -103,6 +104,11 @@ JA = {
         "反映は waybar 再起動 / labwc --reconfigure など(docs/TERMINALS.md)"
     ),
     "everything is set up": ("すべて設定済みです"),
+    "setup-terminals: {path} has a space or a shell character in it; the launchers "
+    "cannot point at a wrapper there, so nothing was done": (
+        "setup-terminals: {path} に空白かシェルの記号が含まれ、ランチャーから"
+        "そこのラッパーを指せないため、何もしませんでした"
+    ),
 }
 
 
@@ -208,9 +214,24 @@ def wrapper_path(term: Terminal) -> Path:
     return home() / ".local/bin" / f"{term.name}-wayhint"
 
 
+UNSAFE_PATH = re.compile(r"[\s\"'\\`$&;|<>%*?#=(){}\[\]!]")
+"""Characters the wrapper's path cannot have. The path goes unquoted into ``Exec=`` lines,
+JSON, XML and shell launchers alike, and no one quoting fits all of them, so a home directory
+with one of these in it is refused before anything is written."""
+
+
+def unsafe_wrapper_dir() -> Path | None:
+    """The directory the wrappers go in, if its path cannot be written into a launcher safely."""
+    directory = home() / ".local/bin"
+    return directory if UNSAFE_PATH.search(str(directory)) else None
+
+
 def wrapper_body(term: Terminal, binary: str) -> str:
     """The wrapper. ``exec`` is what makes ``$$`` the terminal's own pid."""
-    args = " ".join([binary, *term.extra, term.flag, f'"{term.app_id}.p$$"', '"$@"'])
+    # ``binary`` is quoted and made absolute: a PATH entry with a space in it, or a relative one
+    # such as ``.``, would otherwise give a wrapper that runs something else, or nothing.
+    fixed = [os.path.abspath(binary), *term.extra, term.flag]
+    args = " ".join([*map(shlex.quote, fixed), f'"{term.app_id}.p$$"', '"$@"'])
     return f"#!/bin/sh\n# {MARKER} -- docs/TERMINALS.md\nexec {args}\n"
 
 
@@ -491,6 +512,18 @@ def main(argv: list[str] | None = None) -> int:
         print(
             say(
                 "setup-terminals: {drift} is not in wayhint's TERMINAL_APP_IDS", drift=sorted(drift)
+            ),
+            file=sys.stderr,
+        )
+        return 2
+
+    unsafe = unsafe_wrapper_dir()
+    if unsafe is not None:
+        print(
+            say(
+                "setup-terminals: {path} has a space or a shell character in it; the launchers "
+                "cannot point at a wrapper there, so nothing was done",
+                path=unsafe,
             ),
             file=sys.stderr,
         )

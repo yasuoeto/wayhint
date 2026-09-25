@@ -133,6 +133,31 @@ class IpcTest(unittest.TestCase):
             self.assertEqual(ipc.socket_path(), Path("/run/user/1/wayhint.sock"))
         self.assertEqual(json.loads(ipc.encode({"cmd": "ping"})), {"cmd": "ping"})
 
+    def test_fallback_dir_is_created_private(self) -> None:
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, clear=True):
+            with mock.patch.object(ipc, "FALLBACK_ROOT", d):
+                path = ipc.socket_path()
+            self.assertEqual(path.parent, Path(d) / f"wayhint-{os.getuid()}")
+            self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+
+    def test_fallback_dir_others_can_enter_is_refused(self) -> None:
+        """Another user who made the directory first could swap the socket inside it."""
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, clear=True):
+            (Path(d) / f"wayhint-{os.getuid()}").mkdir(mode=0o777)
+            os.chmod(Path(d) / f"wayhint-{os.getuid()}", 0o777)
+            with mock.patch.object(ipc, "FALLBACK_ROOT", d):
+                with self.assertRaises(ipc.DaemonUnavailable):
+                    ipc.socket_path()
+
+    def test_fallback_symlink_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, clear=True):
+            target = Path(d) / "elsewhere"
+            target.mkdir(mode=0o700)
+            (Path(d) / f"wayhint-{os.getuid()}").symlink_to(target)
+            with mock.patch.object(ipc, "FALLBACK_ROOT", d):
+                with self.assertRaises(ipc.DaemonUnavailable):
+                    ipc.socket_path()
+
 
 class GeometryTest(unittest.TestCase):
     OUT = OutputInfo("DP-1", 2000, 1000)

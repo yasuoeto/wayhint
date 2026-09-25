@@ -79,6 +79,13 @@ class PureTest(unittest.TestCase):
         # A wrapper that called the bare name would find itself on PATH and recurse.
         self.assertNotIn("exec foot ", body)
 
+    def test_the_binary_is_quoted_and_absolute(self) -> None:
+        """A PATH entry with a space, or a relative one like ``.``, must not change what runs."""
+        body = setup_terminals.wrapper_body(FOOT, "/opt/my apps/foot")
+        self.assertIn("exec '/opt/my apps/foot' --app-id", body)
+        relative = setup_terminals.wrapper_body(FOOT, "./foot")
+        self.assertIn(f"exec {os.path.abspath('foot')} --app-id", relative)
+
     def test_a_terminal_that_shares_its_process_is_told_not_to(self) -> None:
         self.assertIn("single_instance=no", setup_terminals.wrapper_body(KITTY, "/usr/bin/kitty"))
         self.assertIn(
@@ -191,6 +198,14 @@ class EndToEndTest(unittest.TestCase):
                 self.assertFalse(self.wrapper.exists())
                 self.assertFalse(self.desktop.exists())
                 self.assertFalse((self.root / "home/.local/bin/kitty-wayhint").exists())
+
+    def test_a_home_the_launchers_cannot_quote_is_refused(self) -> None:
+        """The wrapper's path goes unquoted into .desktop, JSON, XML and shell lines."""
+        with unittest.mock.patch.dict(os.environ, {"HOME": str(self.root / "my home")}):
+            with unittest.mock.patch("sys.stderr"):
+                self.assertEqual(self.run_script("--apply", "foot"), 2)
+            self.assertFalse((self.root / "my home/.local/bin/foot-wayhint").exists())
+            self.assertFalse(self.desktop.exists())
 
     def test_apply_and_check_together_is_refused(self) -> None:
         with unittest.mock.patch("sys.stderr"), self.assertRaises(SystemExit):

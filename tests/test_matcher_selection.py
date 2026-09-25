@@ -2,7 +2,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from wayhint.matcher import match_app, match_process
+from wayhint.matcher import MAX_CANDIDATE, match_app, match_process
 from wayhint.models import Hint, HintSheet, MatchRule, ProcessInfo, SourceLocation
 from wayhint.selection import search_hints, sort_hints, visible_hints
 
@@ -60,6 +60,15 @@ class MatchAppTest(unittest.TestCase):
 
     def test_broken_regex_is_ignored(self) -> None:
         self.assertIsNone(match_app([sheet("bad", app=["("])], "anything"))
+
+    def test_only_the_start_of_a_very_long_candidate_is_matched(self) -> None:
+        """A program can make its app_id or command line as long as it likes; a pattern that
+        backtracks badly must not get all of it (the overlay waits for the match)."""
+        long_id = "a" * MAX_CANDIDATE + "tail"
+        self.assertIsNone(match_app([sheet("tail", app=["tail$"])], long_id))
+        self.assertIsNotNone(match_app([sheet("head", app=["^a"])], long_id))
+        long_cmd = proc(["node", "x" * (MAX_CANDIDATE * 2)])
+        self.assertIsNone(match_process([sheet("end", cmdline=["x{8000}"])], long_cmd))
 
 
 class MatchProcessTest(unittest.TestCase):

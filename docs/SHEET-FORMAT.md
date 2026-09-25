@@ -81,6 +81,9 @@ regardless of the other side. How `include`, `inherit`, and `nested` relate is d
   patterns is preferred (before that comes `priority`, and finally filename order).
 - A window whose app_id has a `.p<number>` suffix (README, "Multiple windows of a terminal") is
   also matched by the name with the suffix stripped. Writing `^foot$` also matches `foot.p12345`.
+- Only the first 4096 characters of an app_id, an argument or a command line are matched: the
+  program sets them, and a slow pattern must not hold up the overlay. Past that, `$` no longer
+  matches.
 
 ```yaml
 match:
@@ -104,7 +107,7 @@ match:
 | `category` | | string | The heading shown at the right edge of the list. Hints with the same category sit next to each other. If omitted, falls into a pseudo-category (`inbox`; `未定義` in the Japanese UI) |
 | `tags` | | a list of strings | Used to restrict what mixes in from a parent sheet or `include`. Also searchable |
 | `favorite` | | `true` / `false` (default) | `true` marks it with `★` and moves it to the front of the list |
-| `copy` | | string | Write only when the copied text should differ from what is shown |
+| `copy` | | string | Write only when the copied text should differ from what is shown. When it does, the detail pane shows it, with control characters such as a newline written out (`\n`) |
 | `remark` | | string | Extra text shown only when the row is selected |
 | `source` | | string | Where it came from (e.g. a URL to official documentation) |
 | `learned` | | a date | The date it was learned. Written like `2026-09-24` |
@@ -150,6 +153,7 @@ where hints mixed in from a parent sheet or `include` land, see [`SHEETS.md`](SH
   shown (and `validate` also exits 0).
 - While the sheet being shown is broken, you cannot enter edit mode (so the broken file is not
   overwritten).
+- A sheet or `config.yaml` larger than 1 MiB is not read; it is reported as a mistake.
 
 ## When the overlay or the CLI writes it
 
@@ -163,6 +167,8 @@ write it yourself, you don't have to follow this; the order and omission of keys
 - Pressing `a` in edit mode, when no sheet yet matches, creates a new sheet. Its filename is the
   app or command's name, and its `match` is filled in automatically to match the current window
   (or, inside a terminal, the command running in it).
+- A sheet that is a symlink (into a dotfiles repository, say) stays one: the file it points to is
+  rewritten.
 
 ## Editor completion
 

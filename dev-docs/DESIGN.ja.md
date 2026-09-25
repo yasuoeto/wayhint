@@ -217,7 +217,8 @@ hints:
 ## Interfaces
 
 - **CLI ↔ daemon**: Unix domain socket `$XDG_RUNTIME_DIR/wayhint.sock`。ネットワーク socket は
-  使わない。メッセージは 1 接続 1 リクエストの改行終端 JSON(DECISIONS 0008): client が
+  使わない。`XDG_RUNTIME_DIR` が無いときは `/tmp/wayhint-<uid>/wayhint.sock` で、その directory が
+  symlink でない・本人の持ち物・他人に閉じている、のどれかを欠けば使わない(0046)。メッセージは 1 接続 1 リクエストの改行終端 JSON(DECISIONS 0008): client が
   `{"cmd": "<name>"}\n` を 1 つ送って書き込み側を閉じ、daemon が `{"ok": true, ...}` か
   `{"ok": false, "error": "..."}` を 1 つ返して切断する。上限 4096 bytes、未知の `cmd` は error。
 - **Wayland (既定)**: `wlr-foreign-toplevel-management-unstable-v1`(pywayland、呼び出し毎に接続)。

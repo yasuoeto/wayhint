@@ -43,6 +43,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 - 1 application/context につき1 YAMLファイル(`~/.config/wayhint/hints/*.yaml`)。
 - 検索(通常表示ではkeyboardを取らず、Search開始時のみinteractive)。
 - 詳細表示(remark / source / learned / tags は詳細のみ。id / kind は表示しない)。clipboard copy。
+  コピーされる文字列が一覧の command と違うときは、制御文字を書き出して詳細に出す。
 - 外部editorによる編集(Edit in editor: sheetを開き該当行へjump)、YAML保存時の自動reload、
   invalid YAML時のlast-known-good保持。
 - daemon + CLI(`wayhint toggle|show|hide|refresh|validate`)、Unix domain socket IPC、

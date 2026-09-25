@@ -246,7 +246,8 @@ hints:
 ## Interfaces
 
 - **CLI ↔ daemon**: a Unix domain socket, `$XDG_RUNTIME_DIR/wayhint.sock`. No network socket is
-  used. Messages are newline-terminated JSON, one request per connection (DECISIONS 0008): the
+  used. Without `XDG_RUNTIME_DIR` it is `/tmp/wayhint-<uid>/wayhint.sock`, and that directory is
+  refused unless it is a real directory, owned by the user and closed to everyone else (0046). Messages are newline-terminated JSON, one request per connection (DECISIONS 0008): the
   client sends `{"cmd": "<name>"}\n` once and closes the write side, and the daemon returns one
   `{"ok": true, ...}` or `{"ok": false, "error": "..."}` and disconnects. Limit 4096 bytes; an
   unknown `cmd` is an error.

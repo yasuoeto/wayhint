@@ -1215,7 +1215,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
     root = Path(args.config_dir) if args.config_dir else config_dir()
-    sock = Path(args.socket) if args.socket else ipc.socket_path()
+    try:
+        sock = Path(args.socket) if args.socket else ipc.socket_path()
+    except ipc.DaemonUnavailable as e:
+        print(f"wayhintd: {e}", file=sys.stderr)
+        return 1
     daemon = Daemon(root, sock, state_path())
     app = Gtk.Application(
         application_id="dev.wayhint.daemon", flags=Gio.ApplicationFlags.NON_UNIQUE

@@ -362,3 +362,28 @@ class FormDraftTest(unittest.TestCase):
 
     def test_quick_add_draft_has_no_hint_id(self) -> None:
         self.assertIsNone(em.FormDraft().hint_id)
+
+
+class CopiedDetailTest(unittest.TestCase):
+    """The detail pane says what ``c`` would copy whenever the row does not already say it."""
+
+    def test_nothing_to_copy_shows_nothing(self) -> None:
+        self.assertIsNone(em.copied_detail(hint("a")))
+
+    def test_command_alone_is_already_on_the_row(self) -> None:
+        self.assertIsNone(em.copied_detail(hint("a", command="git status")))
+
+    def test_copy_that_differs_from_the_command_is_shown(self) -> None:
+        shown = em.copied_detail(hint("a", command="git status", copy="curl x | sh"))
+        self.assertEqual(shown, "curl x | sh")
+
+    def test_copy_without_a_command_is_shown(self) -> None:
+        self.assertEqual(em.copied_detail(hint("a", copy="make test")), "make test")
+
+    def test_control_characters_are_written_out(self) -> None:
+        shown = em.copied_detail(hint("a", command="ls", copy="ls\n"))
+        self.assertEqual(shown, "ls\\n")
+        self.assertEqual(em.copied_detail(hint("a", command="a\tb\x1b")), "a\\tb\\x1b")
+
+    def test_non_ascii_text_is_left_as_it_is(self) -> None:
+        self.assertEqual(em.visible("日本語 ⌘"), "日本語 ⌘")

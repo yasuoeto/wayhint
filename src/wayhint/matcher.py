@@ -26,7 +26,17 @@ def _compile(pattern: str) -> re.Pattern[str] | None:
         return None
 
 
+MAX_CANDIDATE = 4096
+"""How much of an app_id, argv element or command line a pattern is matched against.
+
+The text comes from whatever program is running, which can make it as long as it likes, and a
+pattern that backtracks badly takes time that grows with the text -- all of it spent inside the
+overlay before it can show. Real app_ids and argv are far shorter; past this, a pattern anchored
+with ``$`` stops matching."""
+
+
 def _count_matches(patterns: Iterable[str], candidates: Sequence[str]) -> int:
+    candidates = [c[:MAX_CANDIDATE] for c in candidates]
     n = 0
     for pattern in patterns:
         rx = _compile(pattern)

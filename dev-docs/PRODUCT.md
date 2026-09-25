@@ -52,7 +52,8 @@ features. When in doubt about scope, come back to this.
 - Search (normal display does not grab the keyboard; it becomes interactive only once search
   starts).
 - Detail view (remark / source / learned / tags appear only in the detail view; id / kind are
-  never shown). Clipboard copy.
+  never shown). Clipboard copy. The detail view also shows what would be copied whenever it is
+  not exactly the command on the row, control characters written out.
 - Editing via an external editor (Edit in editor: opens the sheet and jumps to the matching
   line), automatic reload on YAML save, keeping the last-known-good state on invalid YAML.
 - daemon + CLI (`wayhint toggle|show|hide|refresh|validate`), Unix domain socket IPC, the hotkey

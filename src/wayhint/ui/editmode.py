@@ -14,7 +14,7 @@ from collections.abc import Container, Hashable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wayhint.models import Hint, ResolvedContext
+from wayhint.models import Hint, ResolvedContext, visible
 from wayhint.selection import search_hints
 
 MODES = ("normal", "search", "edit")
@@ -218,6 +218,24 @@ def search_action(
 def copy_target(hint: Hint | None) -> str | None:
     """What the Copy button would put on the clipboard for this hint, or ``None``."""
     return hint.copy_text() if hint is not None else None
+
+
+def copied_detail(hint: Hint) -> str | None:
+    """What the clipboard would get, for the detail pane -- when the row does not already say.
+
+    The row shows ``command`` and cuts it off at its end; ``copy`` is not shown anywhere else. A
+    sheet from somewhere else could show one command and copy another, or copy a trailing
+    newline that runs the text the moment it is pasted into a terminal. So the copied text is
+    shown whenever it is not exactly the command on the row, and its control characters are
+    written out (``\\n``) instead of being left invisible.
+    """
+    text = hint.copy_text()
+    if text is None:
+        return None
+    shown = visible(text)
+    if text == hint.command and shown == text:
+        return None
+    return shown
 
 
 def cancels_delete(action: str | None) -> bool:

@@ -1870,6 +1870,35 @@ failure distinction, and others)
 - **Consequences**: Changes to those files are no longer versioned in this repository. Older
   entries here still mention `AGENTS.md` and `STATUS.md` as they were at the time.
 
+## 0046 — Text from other programs and shared sheets is shown and written defensively
+
+- **Date**: 2026-09-25
+- **Status**: accepted
+- **Context**: A security review before publishing found no way for YAML, `/proc` or Herdr text to
+  be executed, but found places where text wayhint does not control -- an app_id, a process name,
+  a sheet someone else wrote -- could mislead the user or leave something in their files.
+  Sheets are still trusted as the user's own; these are for the day one is shared.
+- **Decision**:
+  - The detail pane shows what `c` copies whenever it is not exactly the command on the row, with
+    control characters written out (`\n`), so a sheet cannot show one command and copy another.
+  - The comment at the top of a generated sheet writes control characters out: a bare `\r` in an
+    app_id would otherwise end the comment line and become a real key.
+  - The `/tmp/wayhint-<uid>` socket directory used without `XDG_RUNTIME_DIR` is refused unless it
+    is a real directory, the user's own and mode `0700`.
+  - `setup-terminals` quotes the terminal's path in the wrapper and makes it absolute, and stops
+    before writing anything when `~/.local/bin` has a character the launchers cannot carry
+    unquoted.
+  - A write to a symlinked sheet replaces the target and touches the link; the new file is
+    `fsync`ed before it replaces the old.
+  - Sheets and `config.yaml` over 1 MiB are not read; regexes see at most 4096 characters of each
+    app_id, argument or command line.
+- **Alternatives**: showing nothing new and documenting `copy` as trusted (a shared sheet is exactly
+  where it is not); timing regexes out (Python's `re` has no timeout, and a thread per match is out
+  of proportion for text this short).
+- **Consequences**: A pattern anchored with `$` stops matching past 4096 characters. A home
+  directory with a space in it cannot use `setup-terminals`; the manual steps in
+  `docs/TERMINALS.md` still work.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

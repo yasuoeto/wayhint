@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import socket
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -39,12 +40,36 @@ QUERIES = ("shown",)
 MAX_MESSAGE = 4096
 
 
+FALLBACK_ROOT = "/tmp"  # noqa: S108 - only without XDG_RUNTIME_DIR, and checked below
+"""Where the socket's directory goes when there is no ``$XDG_RUNTIME_DIR``."""
+
+
 def socket_path() -> Path:
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if not runtime:
-        runtime = f"/tmp/wayhint-{os.getuid()}"  # noqa: S108 - fallback only, dir is created 0700
-        os.makedirs(runtime, mode=0o700, exist_ok=True)
+        runtime = _private_dir(Path(FALLBACK_ROOT) / f"wayhint-{os.getuid()}")
     return Path(runtime) / "wayhint.sock"
+
+
+def _private_dir(path: Path) -> Path:
+    """``path`` as a directory only this user can use, created 0700 if it is not there.
+
+    ``/tmp`` is shared: another user can make the directory first, and whoever owns it can
+    replace the socket inside with their own. A directory that is not a plain one, is not ours,
+    or lets anyone else in is refused rather than used.
+    """
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
+    except OSError as e:
+        raise DaemonUnavailable(f"cannot create {path}: {e.strerror or e}") from e
+    st = os.lstat(path)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise DaemonUnavailable(
+            f"{path} is not a private directory of this user; set XDG_RUNTIME_DIR or remove it"
+        )
+    return path
 
 
 def encode(message: dict[str, Any]) -> bytes:

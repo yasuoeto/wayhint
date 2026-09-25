@@ -84,6 +84,10 @@ How it treats existing files:
 Launcher settings are **backed up before being rewritten**. One run makes at most one backup per
 file, named `<filename>.wayhint-backup-<timestamp>`, placed in the same directory.
 
+If the path of `~/.local/bin` has a space or a shell character (`"`, `&`, `<`, `$` and so on) in
+it, the script stops with exit 2 and writes nothing: the launchers would have to name the wrapper
+unquoted.
+
 It exits 1 while work remains, so a dry run doubles as a sanity check. It looks at 8 launcher
 files (listed at the end of the run). If you start terminals some other way you'll need to find
 that path yourself. Launches embedded in a single shell line (`sh -c '... foot ...'`) are also out
