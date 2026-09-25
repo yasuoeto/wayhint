@@ -15,7 +15,7 @@ if ! grep -q '^include-system-site-packages = true' .venv/pyvenv.cfg; then
     sed -i 's/^include-system-site-packages = .*/include-system-site-packages = true/' .venv/pyvenv.cfg
     echo "setup: enabled system site-packages in existing .venv"
 fi
-.venv/bin/python -m pip install --quiet --upgrade ruamel.yaml pywayland wayfire jsonschema
+.venv/bin/python -m pip install --quiet --upgrade ruamel.yaml pywayland regex wayfire jsonschema
 echo "setup: python deps installed into .venv"
 echo "setup: gtk4-layer-shell needs the distribution packages (see dev-docs/PHASE0.md)"
 echo "setup: run ./scripts/check"

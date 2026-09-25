@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import regex
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import CommentMark, MarkedYAMLError, YAMLError
@@ -264,8 +265,8 @@ def _regex_list(ctx: _Ctx, parent: Mapping, key: str, path: str) -> tuple[str, .
             ctx.error(f"{path}[{i}] must be a string", node, i)
             continue
         try:
-            re.compile(item)
-        except re.error as e:
+            regex.compile(item)  # what the matcher runs it with (DECISIONS 0046)
+        except regex.error as e:
             ctx.error(f"{path}[{i}] invalid regex {item!r}: {e}", node, i)
             continue
         out.append(item)

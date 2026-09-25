@@ -7,7 +7,7 @@
 ## 準備と検証
 
 ```sh
-./scripts/setup                 # .venv(system site-packages 共有)+ ruamel.yaml + pywayland(+ PyWayfire)+ dev 依存
+./scripts/setup                 # .venv(system site-packages 共有)+ ruamel.yaml + pywayland + regex(+ PyWayfire)+ dev 依存
 .venv/bin/pip install -e .      # wayhint / wayhintd を .venv/bin に置く
 ./scripts/check                 # lint + 単体テスト。検証の入口はこれ 1 本
 ```

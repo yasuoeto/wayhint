@@ -84,6 +84,10 @@ regardless of the other side. How `include`, `inherit`, and `nested` relate is d
 - Only the first 4096 characters of an app_id, an argument or a command line are matched: the
   program sets them, and a slow pattern must not hold up the overlay. Past that, `$` no longer
   matches.
+- The patterns are run with the [`regex`](https://pypi.org/project/regex/) module, whose syntax is
+  that of Python's `re`. A pattern that takes more than 50 ms on one piece of text (one that
+  backtracks without end, like `^(a|aa)+$`) counts as not matching, and `wayhintd` logs a warning
+  naming it.
 
 ```yaml
 match:

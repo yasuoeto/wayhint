@@ -1556,7 +1556,14 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   して報告する。重複 key は画面と stderr に出るため、2 つの値は出さず key の名前と行だけを報告する。
 - **Alternatives**: 何も出さず `copy` を信頼するものとして文書にする(共有されたシートこそ信頼できない)。
   正規表現に timeout を付ける(Python の `re` には timeout が無く、この短さの文字列に match ごとの
-  thread は釣り合わない)。
+  thread は釣り合わない)——下の 2 回目の追記で覆した。
+- **Decision(2 回目の追記、同日)**: シートの正規表現は `regex` モジュールで、1 回の search に 50 ms
+  の上限を付けて照合する。長さの上限だけでは、61 文字に対する `^(a|aa)+$` のような pattern を止められ
+  ないため。`regex` は `re` の書き方のまま search に timeout を付けられる(上の案に無かったもの)。
+  `^(a+)+$` のような典型的なバックトラックの多くは、それだけで速く終わる。timeout は当たらなかった
+  ものとして扱い、その照合の残りではその pattern を使わず、pattern ごとに 1 回だけ警告ログを出す。
+  検証も `regex` で compile し、検証を通るものと実際に動くものを揃える。代わりに依存が 1 つ増える
+  (Debian では `python3-regex`)。
 - **Consequences**: `$` で終わる pattern は 4096 文字を超えると当たらない。ホームに空白があると
   `setup-terminals` は使えない(`docs/TERMINALS.md` の手順を手でやれば使える)。
 

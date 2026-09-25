@@ -1901,7 +1901,14 @@ failure distinction, and others)
   its two values, since the message is shown on screen and printed to stderr.
 - **Alternatives**: showing nothing new and documenting `copy` as trusted (a shared sheet is exactly
   where it is not); timing regexes out (Python's `re` has no timeout, and a thread per match is out
-  of proportion for text this short).
+  of proportion for text this short) -- reversed by the second addendum below.
+- **Decision (second addendum, the same day)**: Sheet regexes run with the `regex` module and a
+  50 ms limit per search, since the length limit alone does not stop a pattern like
+  `^(a|aa)+$` on 61 characters. `regex` keeps `re`'s syntax and gives a search a timeout, which
+  is what the alternative above lacked; it also finishes many classic backtracking patterns
+  (`^(a+)+$`) quickly on its own. A timeout counts as no match, stops that pattern for the rest
+  of the lookup, and is logged once per pattern. Validation compiles with `regex` too, so what
+  validates is what runs. The cost is one more dependency (in Debian as `python3-regex`).
 - **Consequences**: A pattern anchored with `$` stops matching past 4096 characters. A home
   directory with a space in it cannot use `setup-terminals`; the manual steps in
   `docs/TERMINALS.md` still work.

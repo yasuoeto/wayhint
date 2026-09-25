@@ -1,3 +1,4 @@
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -69,6 +70,28 @@ class MatchAppTest(unittest.TestCase):
         self.assertIsNotNone(match_app([sheet("head", app=["^a"])], long_id))
         long_cmd = proc(["node", "x" * (MAX_CANDIDATE * 2)])
         self.assertIsNone(match_process([sheet("end", cmdline=["x{8000}"])], long_cmd))
+
+    def test_a_pattern_that_backtracks_without_end_gives_up_in_time(self) -> None:
+        """``re`` would search ``^(a|aa)+$`` against this for longer than anyone waits."""
+        slow = sheet("slow", app=["^(a|aa)+$"])
+        fine = sheet("fine", app=["^a"])
+        text = "a" * 60 + "!"
+        start = time.monotonic()
+        with self.assertLogs("wayhint.matcher", "WARNING") as logged:
+            self.assertIs(match_app([slow, fine], text), fine)
+            self.assertIs(match_app([slow, fine], text), fine)
+        self.assertLess(time.monotonic() - start, 1.0)
+        self.assertEqual(len(logged.records), 1)  # once per pattern, naming it
+        self.assertIn("^(a|aa)+$", logged.output[0])
+
+    def test_one_timeout_is_all_a_pattern_costs_per_lookup(self) -> None:
+        """A command with many arguments must not cost one timeout per argument."""
+        argv = ["tool", *["a" * 60 + "!"] * 200]
+        start = time.monotonic()
+        # its own pattern: each is reported once, and the test above has reported its own
+        with self.assertLogs("wayhint.matcher", "WARNING"):
+            self.assertIsNone(match_process([sheet("slow", argv=["^(aa|a)+$"])], proc(argv)))
+        self.assertLess(time.monotonic() - start, 1.0)
 
 
 class MatchProcessTest(unittest.TestCase):

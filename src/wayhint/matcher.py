@@ -4,26 +4,41 @@ Order among several matching sheets (PRODUCT requirement 7): higher ``priority``
 higher *specificity* (the number of regex patterns in the sheet's rule that matched), then file
 order (the order sheets were loaded, i.e. ``hints/`` filename order). DECISIONS 0007.
 
-All regexes come from YAML and are compiled with :func:`re.search`; a pattern that fails to
-compile was already rejected by validation, but a defensive ``re.error`` guard keeps a stale
-sheet from crashing the overlay.
+All regexes come from YAML and are searched with the ``regex`` module, not ``re``: its syntax is
+``re``'s, but a search can be given a time limit (DECISIONS 0046). The text searched comes from
+whatever program is running, so a pattern that backtracks badly -- ``^(a|aa)+$`` -- would
+otherwise hold up the overlay for as long as the program likes. A pattern that fails to compile
+was already rejected by validation, but a defensive ``regex.error`` guard keeps a stale sheet
+from crashing the overlay.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable, Sequence
 from functools import lru_cache
 
+import regex
+
 from wayhint.models import HintSheet, ProcessInfo
+
+log = logging.getLogger("wayhint.matcher")
 
 
 @lru_cache(maxsize=512)
-def _compile(pattern: str) -> re.Pattern[str] | None:
+def _compile(pattern: str) -> regex.Pattern[str] | None:
     try:
-        return re.compile(pattern)
-    except re.error:
+        return regex.compile(pattern)
+    except regex.error:
         return None
+
+
+MATCH_TIMEOUT = 0.05
+"""Seconds one pattern may spend on one piece of text. A sane pattern on text this short takes
+microseconds; one that needs this long is backtracking without end, and gets no longer."""
+
+_reported: set[str] = set()
 
 
 MAX_CANDIDATE = 4096
@@ -40,9 +55,33 @@ def _count_matches(patterns: Iterable[str], candidates: Sequence[str]) -> int:
     n = 0
     for pattern in patterns:
         rx = _compile(pattern)
-        if rx is not None and any(rx.search(c) for c in candidates):
+        if rx is not None and _matches(pattern, rx, candidates):
             n += 1
     return n
+
+
+def _matches(pattern: str, rx: regex.Pattern[str], candidates: Sequence[str]) -> bool:
+    """Whether ``rx`` finds any of ``candidates``. Running out of time counts as not matching.
+
+    A pattern that times out once is not tried on the rest of the candidates: a command with a
+    thousand arguments would otherwise cost a thousand timeouts. It is reported once per
+    pattern, so the log says which rule to fix.
+    """
+    for text in candidates:
+        try:
+            if rx.search(text, timeout=MATCH_TIMEOUT) is not None:
+                return True
+        except TimeoutError:
+            if pattern not in _reported:
+                _reported.add(pattern)
+                log.warning(
+                    "regex %r took longer than %.0f ms and was treated as not matching; "
+                    "rewrite it so that it does not backtrack",
+                    pattern,
+                    MATCH_TIMEOUT * 1000,
+                )
+            return False
+    return False
 
 
 def app_specificity(sheet: HintSheet, app_id: str | None) -> int:

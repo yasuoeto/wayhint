@@ -8,7 +8,7 @@ only what you need to work on wayhint itself.
 ## Setup and validation
 
 ```sh
-./scripts/setup                 # .venv (shares system site-packages) + ruamel.yaml + pywayland (+ PyWayfire) + dev deps
+./scripts/setup                 # .venv (shares system site-packages) + ruamel.yaml + pywayland + regex (+ PyWayfire) + dev deps
 .venv/bin/pip install -e .      # puts wayhint / wayhintd in .venv/bin
 ./scripts/check                 # lint + unit tests. This is the one entry point for validation
 ```
