@@ -1567,6 +1567,28 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: `$` で終わる pattern は 4096 文字を超えると当たらない。ホームに空白があると
   `setup-terminals` は使えない(`docs/TERMINALS.md` の手順を手でやれば使える)。
 
+## 0047 — coding agent が書いたシートは `wayhint check-sheet` で確かめ、そのための skill を `skills/` で公開する
+
+- **Date**: 2026-09-26
+- **Status**: accepted
+- **Context**: 新しいアプリのシートは、手で書くより coding agent に書かせる方が早い。ただ、形式が合って
+  いるかを agent が知る手段が要る。`validate` は設定全体を確かめるもので、設定の外にある下書きについては
+  何も言わない。毎回 `SHEET-FORMAT.md` を読ませると、シートそのものより高くつく。`.agents/` の agent
+  設定は公開しない(0045)ので、そこに置いた skill はほかの人に届かない。
+- **Decision**: `wayhint check-sheet PATH... [--strict] [--config-dir]` で、シートのファイルを置く前でも
+  置いた後でも 1 枚ずつ確かめる。間違い(error)は `load_sheet` のものなので、通れば読み込める。警告は、
+  読み込めるが意図と違いそうなもの。空文字列に当たる match のパターン、どこからも出ないシート、`kind` と
+  中身がはっきり食い違うヒント、置かれているシートとぶつかる `include` や `id`。読み手がループで直している
+  かもしれないので、どのメッセージも何を直すかを書く。`skills/wayhint-add-sheet/` に skill(Claude Code
+  と Codex が同じように読む `SKILL.md`)とテンプレートを置く。skill は形式の規則を繰り返さず、
+  `check-sheet` のメッセージに任せる。テンプレートが `--strict` を通ることは unit test で確かめる。
+- **Alternatives**: `validate` のオプションにする(設定の外のファイルを受け取るよう覚えさせる必要があり、
+  その exit code はすでにスクリプトが頼っている)。`tip` にどちらかの項目が無ければ警告する(同梱の
+  Claude Code のシートに、key と `copy` だけの `tip` がある)。skill を `.agents/skills/` にだけ置く
+  (公開されない)。
+- **Consequences**: 警告は助言で、わざとそう書いたシートには外れることがある。失敗にするのは `--strict`
+  のときだけ。新しい形式の規則は、skill の文章ではなく、読み込み処理か `check-sheet` に入れる。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

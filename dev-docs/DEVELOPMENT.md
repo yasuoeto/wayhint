@@ -70,6 +70,7 @@ Steps are under "Restarting the daemon" in `README.md`.
 | `dev-docs/DECISIONS.md` | Record of decisions |
 | `dev-docs/PHASE0.md` | Phase 0 dependency check |
 | `examples/` | Templates for config.yaml and sheets |
+| `skills/` | Skills for coding agents, published with the code (`wayhint-add-sheet`: writing a sheet; DECISIONS 0047) |
 | `demo/` | Introductory videos. Scripts and scenarios under `showcases/<name>/`; `fixtures/` and `bin/` are shared (`demo/README.md`) |
 | `tools/` | Repository tooling. Headless session (shared between tests and demos) and video generation |
 | `scripts/` | `setup`, `check`, `check-gui`, `demo`, `setup-terminals` |

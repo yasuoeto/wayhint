@@ -3,6 +3,8 @@
 Three kinds of subcommand:
 
 - ``validate`` reads the configuration and says whether it is sound. No daemon.
+- ``check-sheet`` reads one sheet, installed or not, and says whether it is ready: the loader's
+  errors plus warnings about the sheets around it (DECISIONS 0047). No daemon.
 - ``toggle`` / ``show`` / ``hide`` / ``refresh`` / ``reload`` / ``ping`` / ``context`` /
   ``edit-mode`` / ``search-mode`` are one-line requests to ``wayhintd``. ``context --shown`` asks
   for the overlay on screen instead of resolving the context again.
@@ -29,6 +31,7 @@ from wayhint.config import GlobalConfig, config_dir
 from wayhint.models import HINT_KINDS, Hint, HintSheet
 from wayhint.schema import json_schema
 from wayhint.selection import explain_filters, same_group, sort_hints
+from wayhint.sheet_check import check_sheet
 from wayhint.ui.editmode import kind_fields
 from wayhint.yaml_store import (
     HintNotFoundError,
@@ -39,6 +42,8 @@ from wayhint.yaml_store import (
     delete_hint,
     hints_dir,
     load_all,
+    load_sheet,
+    load_sheets,
     normalize_sheet,
     read_document,
     set_favorite,
@@ -70,6 +75,31 @@ def cmd_validate(args: argparse.Namespace) -> int:
     suffix = f", {warned} warning(s)" if warned else ""
     print(f"validate: ok ({len(result.sheets)} sheet(s), {hints} hint(s){suffix}) in {root}")
     return 0
+
+
+def cmd_check_sheet(args: argparse.Namespace) -> int:
+    root = Path(args.config_dir) if args.config_dir else config_dir()
+    config = load_all(root).config or GlobalConfig()
+    installed = load_sheets(hints_dir(root, config.language), config.include).sheets
+    status = 0
+    for path in (Path(p) for p in args.paths):
+        sheet, issues = load_sheet(path)
+        if sheet is not None:
+            here = path.resolve()
+            others = [s for s in installed if s.path.resolve() != here]
+            issues = [*issues, *check_sheet(path, sheet, others, config.include)]
+        for issue in issues:
+            print(str(issue), file=sys.stderr)
+        errors = sum(1 for i in issues if i.severity == "error")
+        warned = len(issues) - errors
+        if errors or (args.strict and warned):
+            print(f"check-sheet: {errors} error(s), {warned} warning(s) in {path}", file=sys.stderr)
+            status = 1
+            continue
+        hints = len(sheet.hints) if sheet is not None else 0
+        suffix = f", {warned} warning(s)" if warned else ""
+        print(f"check-sheet: ok ({hints} hint(s){suffix}) {path}")
+    return status
 
 
 def cmd_send(args: argparse.Namespace) -> int:
@@ -327,6 +357,15 @@ def build_parser() -> argparse.ArgumentParser:
     v = sub.add_parser("validate", help="check config.yaml and hints/*.yaml; exit 1 on problems")
     v.add_argument("--config-dir", help="directory holding config.yaml and hints/ (default: XDG)")
     v.set_defaults(func=cmd_validate)
+    cs = sub.add_parser(
+        "check-sheet", help="check sheet files before installing them; exit 1 on errors"
+    )
+    cs.add_argument("paths", nargs="+", metavar="PATH", help="sheet file, installed or not")
+    cs.add_argument("--strict", action="store_true", help="exit 1 on warnings too")
+    cs.add_argument(
+        "--config-dir", help="directory whose config.yaml and hints/ it is checked against"
+    )
+    cs.set_defaults(func=cmd_check_sheet)
     help_ = {
         "toggle": "show the overlay, or hide it if it is visible",
         "show": "resolve the context and show the overlay",

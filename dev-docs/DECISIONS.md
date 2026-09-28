@@ -1913,6 +1913,32 @@ failure distinction, and others)
   directory with a space in it cannot use `setup-terminals`; the manual steps in
   `docs/TERMINALS.md` still work.
 
+## 0047 — Sheets written by a coding agent are checked by `wayhint check-sheet`, and the skill for it is published in `skills/`
+
+- **Date**: 2026-09-26
+- **Status**: accepted
+- **Context**: Having a coding agent write a sheet for a new app is quicker than writing it by
+  hand, but the agent needs a way to know it got the format right. `validate` checks the whole
+  configuration and says nothing about a draft outside it, and reading `SHEET-FORMAT.md` on
+  every run costs the agent more than the sheet itself. The agent setup under `.agents/` is not
+  published (0045), so a skill kept there would not reach anyone else.
+- **Decision**: `wayhint check-sheet PATH... [--strict] [--config-dir]` checks sheet files one by
+  one, installed or not. Its errors are `load_sheet`'s, so passing means the sheet loads. Its
+  warnings are for what loads but was probably not meant: a match pattern that matches the
+  empty string, a sheet nothing can show, a hint whose `kind` and fields plainly disagree, an
+  `include` or `id` that clashes with the installed sheets. Each message says what to change,
+  since the reader may be fixing the file in a loop. `skills/wayhint-add-sheet/` holds the
+  skill (`SKILL.md`, read the same way by Claude Code and Codex) and a template; the skill
+  leaves the format rules to `check-sheet`'s messages instead of repeating them. The unit tests
+  check that the template passes `--strict`.
+- **Alternatives**: an option on `validate` (it would have to learn to take a file from outside
+  the configuration, and its exit code is what scripts already act on); a warning when a `tip`
+  lacks either field (the shipped Claude Code sheet has a `tip` with a key and `copy`); keeping
+  the skill in `.agents/skills/` only (not published).
+- **Consequences**: Warnings are advice and can be wrong for a sheet written that way on purpose;
+  only `--strict` makes them fail. New format rules belong in the loader or in `check-sheet`,
+  not in the skill's text.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

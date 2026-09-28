@@ -277,6 +277,13 @@ hints:
 保存すると daemon が自動で読み直す(ヒント画面を閉じる必要はない)。YAML が壊れているときは直前の
 正常版を出し続け、ヒント画面の上部に `⚠ YAML error file:line: message` が出る。
 
+`wayhint check-sheet PATH` で、シートを置く前でも後でも 1 枚ずつ確かめられる。読み込めるが意図と
+違いそうなもの(どのウィンドウにも当たるパターンなど)も警告する。コーディングエージェント(Claude Code、
+Codex)にシートを書かせるなら、[`skills/wayhint-add-sheet/`](skills/wayhint-add-sheet/SKILL.md) を
+その skill の置き場所(`~/.claude/skills/`、`~/.agents/skills/`)にリンクし、アプリとショートカットの
+情報源を渡す。テンプレートを埋め、`check-sheet` が通るまで直す
+([`docs/SHEET-FORMAT.md`](docs/SHEET-FORMAT.ja.md) の「シートを 1 枚ずつ確かめる」)。
+
 ### ヒントのフィールド
 
 `id` と `title` だけが必須。
@@ -446,13 +453,14 @@ exec /usr/bin/foot --app-id "foot.p$$" "$@"
 | `reload` | `config.yaml` とヒントを読み直す |
 | `ping` | daemon の生死確認。pid とシート数を返す |
 | `validate` | YAML を検証する。daemon が無くても動く。問題があれば exit 1 |
+| `check-sheet PATH... [--strict]` | シートのファイルを、置く前でも置いた後でも確かめる。`validate` の間違いに加えて、意図と違いそうな点を警告する。daemon が無くても動く。間違いがあれば exit 1(`--strict` なら警告でも) |
 | `context` | いまのウィンドウでどのシートが選ばれるかを表示する。`--shown` を付けると、表示中のヒント画面の中身と、混ざったヒントをどう絞ったかを出す |
 | `inspect SHEET [--parent ID]` | シートの include と、仮定した親のヒントが、何件中何件混ざるかを出す。daemon が無くても動く |
 | `add` / `edit` / `remove` / `favorite` / `move` | ヒントを書き換える(下) |
 | `format [PATH...]` | シートを決まった順・形に整える |
 | `schema [--write PATH]` | ヒントシートの JSON Schema を出す |
 
-`validate` は `--config-dir`、それ以外は `--socket` で既定の場所を変えられる。各コマンドの引数は
+`validate` と `check-sheet` は `--config-dir`、それ以外は `--socket` で既定の場所を変えられる。各コマンドの引数は
 `wayhint <command> --help` で出る。
 
 ### CLI でヒントを書き換える

@@ -64,6 +64,7 @@ sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mo
 | `dev-docs/DECISIONS.md` | 決定の記録 |
 | `dev-docs/PHASE0.md` | Phase 0 の依存確認 |
 | `examples/` | config.yaml と sheet の雛形 |
+| `skills/` | コードと一緒に公開する coding agent 向けの skill(`wayhint-add-sheet`: シートを書く。DECISIONS 0047) |
 | `demo/` | 紹介動画。`showcases/<name>/` に台本と脚本、`fixtures/` と `bin/` は共通(`demo/README.md`) |
 | `tools/` | repository の道具。headless session(テストとデモで共有)と動画生成 |
 | `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals` |

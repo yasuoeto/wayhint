@@ -19,14 +19,16 @@ skip() {
     printf 'check: %s is not on PATH; skipped\n' "$1" >&2
 }
 
-# .agents/skills is the author's local agent setup and is not in the public repository
-# (DECISIONS 0045); lint it only where it exists.
-if [ -d .agents/skills ]; then
-    if command -v tool-init >/dev/null 2>&1; then
+# skills/ is the published skill set (DECISIONS 0047); .agents/skills is the author's local
+# agent setup and is not in the public repository (DECISIONS 0045), linted only where it exists.
+# The template in skills/ is also checked by the unit tests, which do not need tool-init.
+if command -v tool-init >/dev/null 2>&1; then
+    run tool-init lint skills
+    if [ -d .agents/skills ]; then
         run tool-init lint .agents/skills
-    else
-        skip tool-init
     fi
+else
+    skip tool-init
 fi
 
 if command -v ruff >/dev/null 2>&1; then

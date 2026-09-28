@@ -299,6 +299,14 @@ The daemon reloads it automatically on save (you don't need to close the overlay
 is broken, the last good version keeps being shown, and `⚠ YAML error file:line: message` appears
 at the top of the overlay.
 
+`wayhint check-sheet PATH` checks one sheet before or after you put it in place, and warns about
+what loads but was probably not meant (a pattern that matches every window, say). To have a
+coding agent (Claude Code, Codex) write a sheet for you, link
+[`skills/wayhint-add-sheet/`](skills/wayhint-add-sheet/SKILL.md) into its skills directory
+(`~/.claude/skills/`, `~/.agents/skills/`) and give it the app and where its shortcuts are
+documented; it fills a template and runs `check-sheet` until the sheet passes
+([`docs/SHEET-FORMAT.md`](docs/SHEET-FORMAT.md), "Checking one sheet").
+
 ### Hint fields
 
 Only `id` and `title` are required.
@@ -489,13 +497,14 @@ The conditions for each terminal, and how to confirm it's working, are in
 | `reload` | Reload `config.yaml` and hints |
 | `ping` | Check if the daemon is alive. Returns its pid and sheet count |
 | `validate` | Validate the YAML. Works without the daemon running. Exits 1 if there is a problem |
+| `check-sheet PATH... [--strict]` | Check sheet files, installed or not, before using them: `validate`'s errors plus warnings about what probably was not meant. Works without the daemon running. Exits 1 on errors (with `--strict`, on warnings too) |
 | `context` | Shows which sheet would be picked for the current window. With `--shown`, shows the contents of the overlay currently shown and how mixed-in hints were filtered |
 | `inspect SHEET [--parent ID]` | Shows a sheet's includes and, given an assumed parent, how many of how many hints are mixed in. Works without the daemon running |
 | `add` / `edit` / `remove` / `favorite` / `move` | Rewrite hints (below) |
 | `format [PATH...]` | Reformats sheets into a fixed order and shape |
 | `schema [--write PATH]` | Prints the JSON Schema for hint sheets |
 
-`validate` accepts `--config-dir`; every other command accepts `--socket` to change the default
+`validate` and `check-sheet` accept `--config-dir`; every other command accepts `--socket` to change the default
 location. Each command's arguments are shown by `wayhint <command> --help`.
 
 ### Rewriting hints with the CLI

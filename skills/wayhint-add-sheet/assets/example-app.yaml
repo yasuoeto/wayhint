@@ -1,0 +1,28 @@
+# Template for a new wayhint sheet. Copy it to <id>.yaml, replace every value, and delete what
+# you do not need (every key below except id, title and hints is optional).
+# Format: https://github.com/yasuoeto/wayhint/blob/main/docs/SHEET-FORMAT.md
+id: example-app            # = the file name without .yaml; letters, digits, . _ -
+title: Example App
+match:
+  # A GUI app: its Wayland app_id (see `wayhint context`). Anchor with ^...$.
+  wayland:
+    app_id_regex: ["^org\\.example\\.App$"]
+  # A command in a terminal: its name. Use this instead of wayland for a TUI.
+  # process:
+  #   argv_regex: ["^example$"]
+hints:
+  - id: open-file          # unique in this sheet
+    title: Open a file
+    key: Ctrl+O            # kind defaults to shortcut: a key to press
+    category: files        # hints with the same category are shown together
+    source: https://example.org/docs/shortcuts
+  - id: run-headless
+    title: Run without a window
+    kind: command          # a command to copy; wayhint never runs it
+    command: example --headless FILE
+    category: command line
+    source: example --help
+  - id: undo-history
+    title: Undo history is per document
+    kind: note             # prose only; key and command are not shown
+    category: files

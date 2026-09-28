@@ -159,6 +159,29 @@ where hints mixed in from a parent sheet or `include` land, see [`SHEETS.md`](SH
   overwritten).
 - A sheet or `config.yaml` larger than 1 MiB is not read; it is reported as a mistake.
 
+## Checking one sheet
+
+`wayhint check-sheet PATH...` checks sheet files one by one, whether they are already in
+`hints/<language>/` or still somewhere else. Its errors are the ones that keep a sheet from
+loading, the same as `validate`'s. On top of those it warns about what loads but was probably
+not meant:
+
+- a `match` pattern that matches the empty string, and so every window (`"foo|"`, `".*"`);
+- a sheet with no `match` that no other sheet includes, so it is never shown;
+- a hint whose `kind` and fields disagree (a `shortcut` with only a `command`, a `command` with
+  only a `key`, anything but a `note` with neither);
+- an `include` naming a sheet that is not installed, and an `id` an installed sheet already has.
+
+It exits 1 on errors, and with `--strict` on warnings too. Each message says what to change.
+`--config-dir` picks the configuration it is checked against.
+
+### Having a coding agent write a sheet
+
+[`skills/wayhint-add-sheet/`](../skills/wayhint-add-sheet/SKILL.md) is a skill for coding agents
+(Claude Code, Codex and others that read `SKILL.md`). It copies a template, fills it from the
+sources you give it, and runs `check-sheet --strict` until the sheet passes. Copy or link the
+directory to where your agent looks for skills (`~/.claude/skills/`, `~/.agents/skills/`).
+
 ## When the overlay or the CLI writes it
 
 When edit mode or `wayhint add` and the like write a hint, they line it up in this shape. When you
