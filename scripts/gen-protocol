@@ -11,6 +11,31 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
     '# (wlr-protocols, MIT). Imports rewritten to pywayland'"'"'s bundled core protocol. Do not edit by' \
     '# hand; regenerate with scripts/gen-protocol if the XML changes.' \
     '# ruff: noqa'
-  sed 's/^from \.wayland import/from pywayland.protocol.wayland import/' \
-    "$tmp/wlr_foreign_toplevel_management_unstable_v1.py"
+  # pywayland re-exports the *Proxy classes from pywayland.protocol.wayland only from 0.4.19, and
+  # Debian trixie has 0.4.18 (where it is a package, and in 0.4.19 a single module). The Proxy
+  # classes appear only in annotations, so they are imported for type checkers alone. For the
+  # same reason Resource and Global are used unparameterised as base classes: 0.4.18 makes only
+  # Proxy generic.
+  python3 -c '
+import re, sys
+out, proxies = [], []
+for line in sys.stdin.read().splitlines(keepends=True):
+    m = re.match(r"from \.wayland import (\w+)$", line.rstrip("\n"))
+    if m and m[1].endswith("Proxy"):
+        proxies.append(m[1])
+        continue
+    if m:
+        line = "from pywayland.protocol.wayland import %s\n" % m[1]
+    out.append(line)
+text = "".join(out)
+if proxies:
+    block = "\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n" + "".join(
+        "    from pywayland.protocol.wayland import %s\n" % p for p in proxies)
+    last = max(text.rfind("\nfrom pywayland.protocol.wayland import "), 0)
+    cut = text.index("\n", last + 1) + 1
+    text = text[:cut] + block + text[cut:]
+sys.stdout.write(re.sub(r"\((Resource|Global)\[\w+\]\):$", r"(\1):", text, flags=re.M))
+' <"$tmp/wlr_foreign_toplevel_management_unstable_v1.py"
 } > src/wayhint/context/_wlr_foreign_toplevel.py
+# The committed file is formatted like the rest of the tree; without this, ./scripts/check fails.
+if command -v ruff >/dev/null 2>&1; then ruff format -q src/wayhint/context/_wlr_foreign_toplevel.py; fi

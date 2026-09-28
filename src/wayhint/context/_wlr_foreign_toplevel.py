@@ -34,11 +34,15 @@ import enum
 from pywayland.protocol_core import Argument, ArgumentType, Global, Interface, Proxy, Resource
 
 from pywayland.protocol.wayland import WlOutput
-from pywayland.protocol.wayland import WlOutputProxy
 from pywayland.protocol.wayland import WlSeat
-from pywayland.protocol.wayland import WlSeatProxy
 from pywayland.protocol.wayland import WlSurface
-from pywayland.protocol.wayland import WlSurfaceProxy
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pywayland.protocol.wayland import WlOutputProxy
+    from pywayland.protocol.wayland import WlSeatProxy
+    from pywayland.protocol.wayland import WlSurfaceProxy
 
 
 class ZwlrForeignToplevelHandleV1(Interface):
@@ -79,7 +83,7 @@ class ZwlrForeignToplevelManagerV1(Interface):
     version = 3
 
 
-class ZwlrForeignToplevelHandleV1Resource(Resource[ZwlrForeignToplevelHandleV1]):
+class ZwlrForeignToplevelHandleV1Resource(Resource):
     interface = ZwlrForeignToplevelHandleV1
 
     @ZwlrForeignToplevelHandleV1.event(
@@ -200,7 +204,7 @@ class ZwlrForeignToplevelHandleV1Resource(Resource[ZwlrForeignToplevelHandleV1])
         self._post_event(7, parent)
 
 
-class ZwlrForeignToplevelManagerV1Resource(Resource[ZwlrForeignToplevelManagerV1]):
+class ZwlrForeignToplevelManagerV1Resource(Resource):
     interface = ZwlrForeignToplevelManagerV1
 
     @ZwlrForeignToplevelManagerV1.event(
@@ -405,11 +409,11 @@ class ZwlrForeignToplevelManagerV1Proxy(Proxy[ZwlrForeignToplevelManagerV1]):
         self._marshal(0)
 
 
-class ZwlrForeignToplevelHandleV1Global(Global[ZwlrForeignToplevelHandleV1]):
+class ZwlrForeignToplevelHandleV1Global(Global):
     interface = ZwlrForeignToplevelHandleV1
 
 
-class ZwlrForeignToplevelManagerV1Global(Global[ZwlrForeignToplevelManagerV1]):
+class ZwlrForeignToplevelManagerV1Global(Global):
     interface = ZwlrForeignToplevelManagerV1
 
 
