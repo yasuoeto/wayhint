@@ -1,0 +1,229 @@
+.\" Japanese text has no spaces to stretch: justify left (groff reads AD at every paragraph),
+.\" and \: after 、 。 and ・ lets a line break there without adding a space.
+.ds AD l
+.TH WAYHINT 1 2026-09-26 "wayhint 1.0.0" "ユーザーコマンド"
+.nh
+.SH 名前
+wayhint \- wayhint のヒント画面を操作し、\:ヒントシートを編集する
+.SH 書式
+.B wayhint
+.RB [ \-\-version ]
+.I command
+.RI [ options ]
+.SH 説明
+.B wayhint
+は、\:いま見ているウィンドウ向けに自分で書いたショートカット・\:コマンド・\:メモを、
+.BR wayhintd (1)
+が描くヒント画面に出す。
+ヒントは YAML のファイルで、\:アプリや端末のコマンドごとに 1 つ(\fIシート\fP)、
+\fI~/.config/wayhint/hints/\fP に置く。
+シートの中身は決して実行しない。\:コマンドは表示とコピーだけ。
+.PP
+コマンドは 3 種類ある。
+ヒント画面のコマンドは
+.B wayhintd
+に 1 行送るだけで、\:daemon が動いている必要がある。
+確かめるコマンドはファイルを自分で読むので、\:daemon が無くても動く。
+編集するコマンドはシートを直接書き、\:daemon は変更に自分で気づく。
+.SH ヒント画面のコマンド
+どれも
+.BI \-\-socket " PATH"
+で既定と別の socket を使える。
+.TP
+.B toggle
+いまのウィンドウのヒント画面を出す。\:出ていればしまう。
+.TP
+.B show
+文脈を取り直してヒント画面を出す。
+.TP
+.B hide
+ヒント画面をしまう。\:検索中・\:編集中は
+.B toggle
+と同じく、\:モードと下書きを残して隠すだけ。
+.TP
+.B refresh
+出ているなら、\:いまのウィンドウで中身を取り直す。
+.TP
+.B reload
+.I config.yaml
+とシートを読み直す。
+.TP
+.B ping
+daemon の生死確認。\:pid とシート数を出す。
+.TP
+.BR context " [" \-\-shown ]
+daemon がいま解決する文脈と、\:選ぶシートを出す。
+.B \-\-shown
+を付けると、\:代わりに表示中のヒント画面の中身と、\:混ざったヒントをどう絞ったかを出す。
+端末から付けずに実行すると、\:その端末のコマンドは
+.B wayhint
+自身になるので、\:端末では
+.B \-\-shown
+を使う。
+.TP
+.B search\-mode
+ヒント画面の検索に入る。\:もう一度で抜け、\:絞り込みは残る。\:編集モード中は断る。
+.TP
+.B edit\-mode
+ヒント画面の編集モードに入る / 抜ける。
+.SH 確かめるコマンド
+.TP
+.BR validate " [" \-\-config\-dir
+.IR DIR ]
+.I config.yaml
+と、\:設定した言語のシートをすべて確かめる。\:警告は出すが失敗にはしない。
+.TP
+.BR check\-sheet " [" \-\-strict "] [" \-\-config\-dir
+.IR DIR ]
+.I PATH
+\&...
+.br
+シートのファイルを、\:置く前でも置いた後でも 1 枚ずつ確かめる。
+間違い(error)は、\:シートが読み込まれなくなるものだけ。
+加えて、\:どのウィンドウにも当たる match のパターン、\:どこからも出ないシート、\:kind と中身が
+合わないヒント、\:置かれているシートとぶつかる include や id を警告する。
+.B \-\-strict
+なら警告でも失敗にする。
+.TP
+.BI inspect " SHEET" " \fR[\fP\-\-parent" " ID\fR]\fP"
+シートの include が何を通すかと、\:仮定した親シートのヒントが何件中何件混ざるかを出す。
+.SH 編集するコマンド
+どれも
+.BI \-\-sheet " ID"
+でシートを指定する。
+.B validate
+が何か(警告も含む)を報告する間は何も書かない。
+.TP
+.BI add " TITLE"
+ヒントを足す。\:項目は
+.BR \-\-kind " {" shortcut , command , tip , note "}、"
+.BI \-\-key " KEY" \fR、\fP
+.BI \-\-command " COMMAND" \fR、\fP
+.BI \-\-category " CATEGORY" \fR、\fP
+.BI \-\-remark " TEXT"
+で渡す。\:key と command のどちらを取るかは kind で決まる。
+.TP
+.BI edit " ID"
+ヒント 1 件の項目を変える。
+.B add
+のオプションと
+.BI \-\-title " TITLE"
+が使える。
+.TP
+.BI remove " ID"
+ヒントを 1 件消す。
+.TP
+.BI favorite " ID" " \fR[\fP\-\-off\fR]\fP"
+ヒントをお気に入りにする。
+.B \-\-off
+で外す。
+.TP
+.BI move " ID" " \fR{\fPup\fR|\fPdown\fR}\fP"
+ヒントを 1 つ上か下と入れ替える。
+.TP
+.BR format " [" \-\-modeline "] [" \fIPATH\fP ...]
+シート(既定ではすべて)を決まった順・\:形に整える。
+.B \-\-modeline
+で yaml-language-server の modeline も足す。
+.TP
+.BR schema " [" \-\-write
+.RI [ PATH ]]
+シートの JSON Schema を出す。
+.B \-\-write
+なら
+.I PATH
+(既定は
+.I config.yaml
+の
+.BR editor.schema_path )
+に書く。
+.SH オプション
+.TP
+.B \-\-version
+版数を出して終わる。
+.TP
+.BR \-h ", " \-\-help
+.B wayhint
+全体か、\:1 つのコマンドの説明を出す。
+.SH 終了ステータス
+.TP
+.B 0
+成功。
+.TP
+.B 1
+ファイルの問題、\:断られた要求、\:書き込みの失敗。
+.TP
+.B 2
+.B wayhintd
+が動いていない、\:またはつながらない(ヒント画面のコマンド)。
+.SH 環境変数
+.TP
+.B XDG_CONFIG_HOME
+設定は
+.I $XDG_CONFIG_HOME/wayhint/
+(既定
+.IR ~/.config/wayhint/ )
+から読む。
+.TP
+.B XDG_RUNTIME_DIR
+daemon の socket は
+.IR $XDG_RUNTIME_DIR/wayhint.sock 。
+無いときは
+.IR /tmp/wayhint\- UID /wayhint.sock
+を使う。\:ただしそのディレクトリが自分のもので mode 0700 のときだけ。
+.TP
+.BR LC_ALL ", " LC_MESSAGES ", " LANG
+.B language
+が
+.B auto
+のとき、\:この順で最初に設定されているものが、\:画面の言語とシートの言語を決める。
+.SH ファイル
+.TP
+.I ~/.config/wayhint/config.yaml
+全体の設定。
+.TP
+.IR ~/.config/wayhint/hints/ LANG /*.yaml
+ヒントシート。\:拡張子を除いたファイル名がシートの id。
+.TP
+.I ~/.local/state/wayhint/state.yaml
+daemon が起動をまたいで覚えていること。\:シートごとの検索の絞り込み。
+.TP
+.I /usr/share/doc/wayhint/examples/
+始めるための設定とシート。
+.TP
+.I /usr/share/wayhint/scripts/setup\-terminals
+端末の起動方法を、\:wayhint が端末のウィンドウを見分けられる wrapper に向ける。
+.B \-\-apply
+を付けない限り何も書かない。
+.TP
+.I /usr/share/wayhint/skills/wayhint\-add\-sheet/
+シートを書き、
+.B check\-sheet
+で確かめる coding agent 向けの skill。
+.SH 例
+置く前にシートを確かめる:
+.PP
+.RS
+.EX
+wayhint check\-sheet \-\-strict vi.yaml
+.EE
+.RE
+.PP
+シート
+.B vi
+にヒントを足す:
+.PP
+.RS
+.EX
+wayhint add "ファイル全体で置換" \-\-kind command \e
+    \-\-command ':%s/old/new/g' \-\-sheet vi
+.EE
+.RE
+.SH 関連項目
+.BR wayhintd (1)
+.PP
+.I /usr/share/doc/wayhint/
+(README.ja.md、\:SHEET-FORMAT.ja.md、\:SHEETS.ja.md、\:CONFIG.ja.md、\:HOTKEYS.ja.md、\:TERMINALS.ja.md)
+.PP
+.UR https://github.com/yasuoeto/wayhint
+.UE

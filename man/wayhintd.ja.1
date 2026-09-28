@@ -1,0 +1,103 @@
+.\" Japanese text has no spaces to stretch: justify left (groff reads AD at every paragraph),
+.\" and \: after 、 。 and ・ lets a line break there without adding a space.
+.ds AD l
+.TH WAYHINTD 1 2026-09-26 "wayhint 1.0.0" "ユーザーコマンド"
+.nh
+.SH 名前
+wayhintd \- wayhint のヒント画面の daemon
+.SH 書式
+.B wayhintd
+.RB [ \-\-config\-dir
+.IR DIR ]
+.RB [ \-\-socket
+.IR PATH ]
+.RB [ \-v ]
+.SH 説明
+.B wayhintd
+は layer-shell の surface にヒント画面を描き、
+.BR wayhint (1)
+が Unix socket で送る要求に答える。
+出すように言われると、\:wlr-foreign-toplevel-management(または Wayfire IPC)でいまのウィンドウを、
+端末ならその中で動いているコマンドを見て、\:当たるシートを選んで出す。
+出している間もキーボードのフォーカスは取らない(検索と編集モードを除く)。
+.PP
+何もしていない間は何も読まない。\:文脈はヒント画面を出すときと取り直すときだけ調べ、\:シートは
+ファイルが変わったときに読み直す。\:間違いのあるシートは直前の正しい版を出し続け、\:上部に間違いを出す。
+.PP
+compositor の autostart から起動する(labwc なら
+.IR ~/.config/labwc/autostart 、
+Wayfire なら
+.I wayfire.ini
+の
+.BR [autostart] )。
+キーには
+.BR "wayhint toggle" 、
+.BR "wayhint search\-mode" 、
+.B wayhint edit\-mode
+を割り当てる。
+systemd の unit は用意していない。
+socket 1 つにつき daemon は 1 つだけ動き、\:2 つ目は終わる。
+.SH オプション
+.TP
+.BI \-\-config\-dir " DIR"
+.I config.yaml
+と
+.I hints/
+を
+.I $XDG_CONFIG_HOME/wayhint/
+ではなく
+.I DIR
+から読む。
+.TP
+.BI \-\-socket " PATH"
+既定の socket ではなく
+.I PATH
+で待ち受ける。
+.TP
+.BR \-v ", " \-\-verbose
+info レベルのログを標準エラーに出す。
+.TP
+.BR \-h ", " \-\-help
+説明を出して終わる。
+.SH シグナル
+.B SIGTERM
+と
+.B SIGINT
+で止まり、\:socket を消す。
+kill された daemon が残した socket は、\:次の起動時に見つけて回収する。
+.SH 環境変数
+.TP
+.B WAYLAND_DISPLAY
+つなぐ compositor。
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_RUNTIME_DIR ", " XDG_STATE_HOME
+設定、\:socket、
+.I state.yaml
+の場所。
+.BR wayhint (1)
+を参照。
+.SH ファイル
+.TP
+.I ~/.config/wayhint/config.yaml
+全体の設定。\:ヒント画面の位置や、\:文脈の取り方も含む。
+.TP
+.I ~/.config/wayhint/style.css
+任意。\:ヒント画面の見た目。
+.TP
+.IR ~/.config/wayhint/hints/ LANG /*.yaml
+ヒントシート。
+.TP
+.I ~/.local/state/wayhint/state.yaml
+シートごとの検索の絞り込み。\:起動をまたいで残る。
+.TP
+.I $XDG_RUNTIME_DIR/wayhint.sock
+.BR wayhint (1)
+が話しかける socket。
+.SH 関連項目
+.BR wayhint (1)
+.PP
+.I /usr/share/doc/wayhint/
+(README.ja.md、\:CONFIG.ja.md、\:HOTKEYS.ja.md)
+.PP
+.UR https://github.com/yasuoeto/wayhint
+.UE

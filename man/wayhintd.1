@@ -1,0 +1,101 @@
+.TH WAYHINTD 1 2026-09-26 "wayhint 1.0.0" "User Commands"
+.SH NAME
+wayhintd \- the wayhint overlay daemon
+.SH SYNOPSIS
+.B wayhintd
+.RB [ \-\-config\-dir
+.IR DIR ]
+.RB [ \-\-socket
+.IR PATH ]
+.RB [ \-v ]
+.SH DESCRIPTION
+.B wayhintd
+draws the wayhint overlay on a layer-shell surface and answers the requests
+.BR wayhint (1)
+sends over a Unix socket.
+When asked to show, it looks at the focused window through wlr-foreign-toplevel-management
+(or Wayfire IPC), and for a terminal at the command running in it, picks the matching hint
+sheet and shows it.
+It does not take keyboard focus while shown, except in search and edit mode.
+.PP
+It reads nothing while idle: the context is resolved only when the overlay is shown or
+refreshed, and sheets are re-read when their files change.
+A sheet with an error keeps its last good version on screen, with the error shown at the top.
+.PP
+Start it from the compositor's autostart (for labwc,
+.IR ~/.config/labwc/autostart ;
+for Wayfire,
+.B [autostart]
+in
+.IR wayfire.ini ),
+and bind keys to
+.BR "wayhint toggle" ,
+.B wayhint search\-mode
+and
+.BR "wayhint edit\-mode" .
+No systemd unit is provided.
+Only one daemon runs per socket; a second one exits.
+.SH OPTIONS
+.TP
+.BI \-\-config\-dir " DIR"
+Read
+.I config.yaml
+and
+.I hints/
+from
+.I DIR
+instead of
+.IR $XDG_CONFIG_HOME/wayhint/ .
+.TP
+.BI \-\-socket " PATH"
+Listen on
+.I PATH
+instead of the default socket.
+.TP
+.BR \-v ", " \-\-verbose
+Log at info level to standard error.
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.SH SIGNALS
+.B SIGTERM
+and
+.B SIGINT
+stop the daemon and remove its socket.
+A socket left behind by a killed daemon is detected and reclaimed on the next start.
+.SH ENVIRONMENT
+.TP
+.B WAYLAND_DISPLAY
+The compositor to connect to.
+.TP
+.BR XDG_CONFIG_HOME ", " XDG_RUNTIME_DIR ", " XDG_STATE_HOME
+Where the configuration, the socket and
+.I state.yaml
+live; see
+.BR wayhint (1).
+.SH FILES
+.TP
+.I ~/.config/wayhint/config.yaml
+Global settings, including where the overlay is placed and how the context is resolved.
+.TP
+.I ~/.config/wayhint/style.css
+Optional style sheet for the overlay.
+.TP
+.IR ~/.config/wayhint/hints/ LANG /*.yaml
+Hint sheets.
+.TP
+.I ~/.local/state/wayhint/state.yaml
+The search filter of each sheet, kept between runs.
+.TP
+.I $XDG_RUNTIME_DIR/wayhint.sock
+The socket
+.BR wayhint (1)
+talks to.
+.SH SEE ALSO
+.BR wayhint (1)
+.PP
+.I /usr/share/doc/wayhint/
+(README.md, CONFIG.md, HOTKEYS.md)
+.PP
+.UR https://github.com/yasuoeto/wayhint
+.UE

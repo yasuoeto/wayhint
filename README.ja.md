@@ -63,6 +63,27 @@ https://github.com/user-attachments/assets/1bead252-33af-4796-b477-e48ab03284d9
 sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
 ```
 
+### Debian パッケージ
+
+Debian unstable と 13(trixie)では、`.deb` を入れれば上の依存も一緒に入る。release に付いていれば
+apt で入れる。clone から `./scripts/build-deb` で両方を作ることもできる(docker が要る。
+`build/deb/<dist>/` にできる)。
+
+```sh
+sudo apt install ./wayhint_1.0.0-1_all.deb            # unstable
+sudo apt install ./wayhint_1.0.0-1~deb13+1_all.deb    # trixie
+cp -r /usr/share/doc/wayhint/examples/. ~/.config/wayhint/
+```
+
+コマンドは `/usr/bin/wayhint` と `/usr/bin/wayhintd`。下の compositor の設定で
+`~/.local/src/wayhint/.venv/bin/` と書いてあるところは、このパスにする。`setup-terminals` は
+`/usr/share/wayhint/scripts/setup-terminals`、coding agent 向けの skill は `/usr/share/wayhint/skills/`
+にある。`wayhintd` はこれまでどおり compositor の autostart から起動する(systemd の unit は入れていない)。
+Wayfire IPC の fallback(`context.backend: wayfire`)に要る PyWayfire は Debian に無いので、
+`pip install wayfire` で入れる。
+
+### clone から入れる
+
 clone する場所は自由。以下の例は `~/.local/src/wayhint` を使う。
 
 ```sh

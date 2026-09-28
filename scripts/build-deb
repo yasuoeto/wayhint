@@ -1,0 +1,94 @@
+#!/bin/sh
+# Build the .deb for Debian unstable and for the current stable, each in a clean container of
+# that release, then install it in a second fresh container and run it once (DECISIONS 0048).
+#
+#   scripts/build-deb [DIST ...]     DIST: unstable (default: both), trixie
+#
+# Not part of ./scripts/check: it needs docker and a network, and takes minutes. The packages
+# land in build/deb/<dist>/. What is built is the working tree as git sees it (tracked files and
+# untracked ones that are not ignored), so uncommitted changes are included.
+set -eu
+CDPATH=''
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+
+command -v docker >/dev/null 2>&1 || { echo "build-deb: docker is not on PATH" >&2; exit 1; }
+[ $# -gt 0 ] || set -- unstable trixie
+
+# dist -> container image and version suffix. A stable build sorts below the unstable one
+# (1.0.0-1~deb13+1 < 1.0.0-1), so upgrading the release upgrades the package.
+image_for() {
+    case $1 in
+        unstable) echo debian:sid ;;
+        trixie) echo debian:trixie ;;
+        *) echo "build-deb: unknown dist $1 (unstable, trixie)" >&2; return 1 ;;
+    esac
+}
+suffix_for() {
+    case $1 in
+        trixie) echo '~deb13+1' ;;
+        *) echo '' ;;
+    esac
+}
+
+uid=$(id -u)
+gid=$(id -g)
+for dist in "$@"; do
+    image=$(image_for "$dist")
+    out="$root/build/deb/$dist"
+    rm -rf "$out"
+    mkdir -p "$out/src"
+    # --ignore-failed-read: a tracked file deleted in the working tree is simply left out.
+    git ls-files -z --cached --others --exclude-standard |
+        tar --null --ignore-failed-read -T - -cf - 2>/dev/null | tar -xf - -C "$out/src"
+
+    suffix=$(suffix_for "$dist")
+    if [ -n "$suffix" ]; then
+        version=$(sed -n '1s/^[^(]*(\([^)]*\)).*/\1/p' debian/changelog)
+        {
+            printf 'wayhint (%s%s) %s; urgency=medium\n\n' "$version" "$suffix" "$dist"
+            printf '  * Rebuild for %s.\n\n' "$dist"
+            printf ' -- %s  %s\n\n' "$(sed -n 's/^Maintainer: //p' debian/control)" \
+                "$(date -R)"
+            cat debian/changelog
+        } >"$out/src/debian/changelog"
+    fi
+
+    printf 'build-deb: %s: building in %s\n' "$dist" "$image"
+    # The files are handed back to the caller whether or not the build succeeds, or a failed
+    # build leaves root-owned files that the next run cannot remove.
+    docker run --rm -v "$out:/work" -w /work/src "$image" sh -uc "
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq &&
+            apt-get install -y -qq --no-install-recommends build-essential >/dev/null &&
+            apt-get build-dep -y -qq ./ >/dev/null &&
+            dpkg-buildpackage -b -us -uc
+        status=\$?
+        chown -R $uid:$gid /work
+        exit \$status
+    "
+    rm -rf "$out/src"
+    deb=$(ls "$out"/wayhint_*_all.deb)
+
+    printf 'build-deb: %s: installing %s in a fresh %s\n' "$dist" "${deb##*/}" "$image"
+    docker run --rm -v "$out:/work:ro" "$image" sh -euc "
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends /work/${deb##*/} >/dev/null
+        wayhint --version
+        wayhint check-sheet --strict \
+            /usr/share/wayhint/skills/wayhint-add-sheet/assets/example-app.yaml
+        cp -r /usr/share/doc/wayhint/examples /tmp/conf
+        wayhint validate --config-dir /tmp/conf
+        python3 -c 'import wayhint.daemon, wayhint.context.wayland, wayhint.ui.window'
+        /usr/share/wayhint/scripts/setup-terminals --help >/dev/null
+        echo 'build-deb: smoke test ok'
+    "
+
+    if command -v lintian >/dev/null 2>&1; then
+        lintian --info "$deb" || true
+    else
+        echo "build-deb: lintian is not on PATH; skipped" >&2
+    fi
+    printf 'build-deb: %s: %s\n' "$dist" "$deb"
+done

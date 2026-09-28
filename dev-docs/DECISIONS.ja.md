@@ -1589,6 +1589,35 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: 警告は助言で、わざとそう書いたシートには外れることがある。失敗にするのは `--strict`
   のときだけ。新しい形式の規則は、skill の文章ではなく、読み込み処理か `check-sheet` に入れる。
 
+## 0048 — Debian unstable と trixie 向けの .deb をコンテナで作り、コードは trixie のライブラリの版に合わせる
+
+- **Date**: 2026-09-26
+- **Status**: accepted
+- **Context**: clone から入れると、venv、symlink、compositor の設定に venv への絶対パスが要る。実行時の
+  依存は、任意の PyWayfire を除いてすべて Debian の unstable と現行 stable(trixie)にある。
+- **Decision**: `debian/` で、pybuild を使ったアーキテクチャ非依存のパッケージを 1 つ作る。`wayhint` /
+  `wayhintd` は `/usr/bin`、`setup-terminals` は `/usr/share/wayhint/scripts/`、skill は
+  `/usr/share/wayhint/skills/`、examples は `/usr/share/doc/wayhint/examples/` に入る。`wayhintd` は
+  これまでどおり compositor の autostart から起動し、systemd の unit は入れない(0011)。
+  `scripts/build-deb` が unstable 向け(`1.0.0-1`)と trixie 向け(`1.0.0-1~deb13+1`)を、それぞれの
+  リリースのまっさらなコンテナで、ビルド中に unit test を走らせて作り、別のまっさらなコンテナに入れて
+  動かす。trixie 向けに作って 3 つ見つかり、リリースごとの回避ではなく直した。trixie の
+  `python3-pywayland` 0.4.18-4 は `python3-cffi-backend` が無いと import できないのに依存していない
+  (パッケージ側で依存する)。0.4.18 は `pywayland.protocol.wayland` から `*Proxy` を再 export せず、
+  generic なのは `Proxy` だけなので、`scripts/gen-protocol` は Proxy を型検査のときだけ import し、
+  `Resource` / `Global` を型引数なしで基底にする。ビルド環境には demo の session テストが要る
+  `XDG_RUNTIME_DIR` が無い(`debian/rules` で渡す)。
+- **Alternatives**: リリースごとに `debian/` のブランチやソースを分ける(違いは版数だけなので、
+  ビルドスクリプトが changelog の entry を足す)。ホストで sbuild を使う(準備に root が要り、ホストは
+  まっさらな trixie ではない)。ビルド時に入っている scanner で protocol モジュールを作り直す(pip で
+  入れたときはコミット済みのファイルを使うので、経路が 2 つになる)。pywayland 0.4.19 を必須にする
+  (trixie が外れる)。
+- **Consequences**: 対応するライブラリの最も古い版は trixie のもの。それより新しいものを使う変更は
+  `scripts/build-deb` でしか分からず、`./scripts/check` はそれを走らせない。パッケージには両方の
+  コマンドの man ページを英日で入れる(`man/`)。コマンドとオプションが全部載っていることはテストが確かめる。
+  lintian が指摘するのは、unstable 版で最初の entry が ITP のバグを閉じていないことだけ。Debian に
+  upload するのではなく release に付けるパッケージなので。`.deb` はまだどこにも公開していない。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

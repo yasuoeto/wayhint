@@ -1939,6 +1939,39 @@ failure distinction, and others)
   only `--strict` makes them fail. New format rules belong in the loader or in `check-sheet`,
   not in the skill's text.
 
+## 0048 — A .deb for Debian unstable and trixie, built in containers; the code keeps to trixie's library versions
+
+- **Date**: 2026-09-26
+- **Status**: accepted
+- **Context**: Installing from a clone needs a venv, symlinks and an absolute path into it in the
+  compositor's configuration. Every runtime dependency is in Debian, in unstable and in the
+  current stable (trixie), except the optional PyWayfire.
+- **Decision**: `debian/` builds one architecture-independent package with pybuild. It installs
+  `wayhint` / `wayhintd` in `/usr/bin`, `setup-terminals` in `/usr/share/wayhint/scripts/`, the
+  skills in `/usr/share/wayhint/skills/`, the examples in `/usr/share/doc/wayhint/examples/`.
+  `wayhintd` is still started from the compositor's autostart and no systemd unit is shipped
+  (0011). `scripts/build-deb` builds it for unstable (`1.0.0-1`) and trixie (`1.0.0-1~deb13+1`),
+  each in a clean container of that release with the unit tests run during the build, then
+  installs it in a fresh container and runs it. Building for trixie turned up three things,
+  fixed rather than worked around per release: trixie's `python3-pywayland` 0.4.18-4 cannot
+  import without `python3-cffi-backend` and does not depend on it (the package depends on it
+  itself); 0.4.18 does not re-export the `*Proxy` classes from `pywayland.protocol.wayland`, and
+  makes only `Proxy` generic, so `scripts/gen-protocol` imports the Proxy classes for type
+  checkers only and writes `Resource` / `Global` bases without parameters; and the build
+  environment has no `XDG_RUNTIME_DIR`, which the demo session tests need (`debian/rules` gives
+  them one).
+- **Alternatives**: a separate `debian/` branch or source per release (the only difference is the
+  version, so the build script adds a changelog entry instead); building on the host with sbuild
+  (needs root to set up, and the host is not a clean trixie); regenerating the protocol module at
+  build time with the installed scanner (the pip install would still use the committed file, so
+  two code paths); requiring pywayland 0.4.19 (leaves trixie out).
+- **Consequences**: The oldest supported library versions are trixie's, and a change that uses
+  something newer shows up only in `scripts/build-deb`, which `./scripts/check` does not run.
+  The package carries man pages for both commands in English and Japanese (`man/`); the tests
+  check that they name every command and option. lintian reports only that the unstable build's
+  first entry closes no ITP bug: the package is attached to releases, not uploaded to Debian. The `.deb` is not published anywhere
+  yet.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

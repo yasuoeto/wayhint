@@ -1,0 +1,43 @@
+Source: wayhint
+Section: x11
+Priority: optional
+Maintainer: Yasuo Eto <yasuo@etou.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-sequence-python3,
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-setuptools (>= 77),
+ python3-cffi-backend <!nocheck>,
+ python3-jsonschema <!nocheck>,
+ python3-pywayland <!nocheck>,
+ python3-regex <!nocheck>,
+ python3-ruamel.yaml <!nocheck>,
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/yasuoeto/wayhint
+Vcs-Browser: https://github.com/yasuoeto/wayhint
+Vcs-Git: https://github.com/yasuoeto/wayhint.git
+
+Package: wayhint
+Architecture: all
+# python3-cffi-backend: python3-pywayland 0.4.18-4 (trixie) needs it to import but does not
+# depend on it; 0.4.19 in unstable does.
+Depends:
+ gir1.2-gtk-4.0,
+ gir1.2-gtk4layershell-1.0,
+ libgtk4-layer-shell0,
+ python3-cffi-backend,
+ python3-gi,
+ ${misc:Depends},
+ ${python3:Depends},
+Description: context-aware hint overlay for wlroots Wayland compositors
+ wayhint shows a small overlay of the shortcuts, commands and notes you wrote
+ for the app in front of you, and switches them as the focused window or the
+ command running in a terminal changes. It runs on labwc and Wayfire through
+ layer-shell and wlr-foreign-toplevel-management, never takes keyboard focus
+ while shown, and lets you search, add and edit hints inside the overlay.
+ .
+ Hints are plain YAML files under ~/.config/wayhint/. Nothing in them is ever
+ executed. wayhintd is started from the compositor's autostart; no systemd
+ unit is shipped.

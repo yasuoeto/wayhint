@@ -47,6 +47,19 @@ sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mo
 
 脚本の書き方、showcase の作り方、場面の足し方は `demo/README.md`。
 
+## Debian パッケージ
+
+`./scripts/build-deb [unstable|trixie]` は、`debian/` から各リリースのまっさらなコンテナで `.deb` を作り
+(指定しなければ両方)、別のまっさらなコンテナに入れて一度動かし、lintian の指摘を出す。docker と
+ネットワークが要り、`./scripts/check` には入っていない。作るのは git から見た作業ツリーで、未コミットの
+変更も含む。できたものは `build/deb/<dist>/` に置かれる。trixie 版の版数は `<version>~deb13+1` で、
+unstable 版より小さく並ぶ。版数そのものは `debian/changelog` の先頭の entry から取るので、
+`pyproject.toml` の版数を変えたらそこにも entry を足し、`man/` のページの `.TH` 行の版数と日付も変える。
+
+コードは、パッケージが依存するライブラリのうち一番古い版、つまり trixie の版(pywayland 0.4.18、
+GTK 4.18、gtk4-layer-shell 1.0.4、Python 3.13)で動き続ける必要がある。特に `_wlr_foreign_toplevel.py`
+は `scripts/gen-protocol` でだけ作り直す。scanner の出力を、0.4.18 にもあるものを import する形に書き換える。
+
 ## Python を変えたあと
 
 `wayhint reload` が読み直すのは YAML だけなので、コードを変えたら daemon を入れ替える。手順は
@@ -67,7 +80,9 @@ sudo apt install ffmpeg grim imagemagick foot wtype fonts-noto-cjk fonts-noto-mo
 | `skills/` | コードと一緒に公開する coding agent 向けの skill(`wayhint-add-sheet`: シートを書く。DECISIONS 0047) |
 | `demo/` | 紹介動画。`showcases/<name>/` に台本と脚本、`fixtures/` と `bin/` は共通(`demo/README.md`) |
 | `tools/` | repository の道具。headless session(テストとデモで共有)と動画生成 |
-| `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals` |
+| `scripts/` | `setup`、`check`、`check-gui`、`demo`、`setup-terminals`、`gen-protocol`、`build-deb` |
+| `man/` | man ページ `wayhint(1)` と `wayhintd(1)`。英語と `.ja`(コマンドとオプションが全部載っていることをテストが確かめる) |
+| `debian/` | Debian パッケージ。`scripts/build-deb` が unstable と trixie 向けに作る(DECISIONS 0048) |
 
 作者の coding agent 用の設定と作業記録は、公開 repository の外で持つ(DECISIONS 0045)。`.gitignore`
 に並べてあるので、自分の設定を置いた clone でも commit されない。

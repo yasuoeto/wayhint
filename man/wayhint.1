@@ -1,0 +1,229 @@
+.TH WAYHINT 1 2026-09-26 "wayhint 1.0.0" "User Commands"
+.SH NAME
+wayhint \- control the wayhint overlay and edit its hint sheets
+.SH SYNOPSIS
+.B wayhint
+.RB [ \-\-version ]
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B wayhint
+shows the shortcuts, commands and notes you wrote for the window in front of you, in an overlay
+drawn by
+.BR wayhintd (1).
+The hints are YAML files, one per app or terminal command (a
+.IR sheet ),
+under
+.IR ~/.config/wayhint/hints/ .
+Nothing in a sheet is ever executed: commands are shown and copied only.
+.PP
+There are three kinds of command.
+The overlay commands send one line to
+.B wayhintd
+and need it running.
+The checking commands read the files themselves and work without the daemon.
+The editing commands write sheets directly; the daemon notices the change on its own.
+.SH OVERLAY COMMANDS
+Each accepts
+.BI \-\-socket " PATH"
+to use another socket than the default.
+.TP
+.B toggle
+Show the overlay for the focused window, or hide it if it is visible.
+.TP
+.B show
+Resolve the context and show the overlay.
+.TP
+.B hide
+Hide the overlay. In search or edit mode the mode and any draft are kept, as with
+.BR toggle .
+.TP
+.B refresh
+If the overlay is visible, resolve the focused window again.
+.TP
+.B reload
+Re-read
+.I config.yaml
+and the sheets.
+.TP
+.B ping
+Check that the daemon is running; prints its pid and the number of sheets.
+.TP
+.BR context " [" \-\-shown ]
+Print the context the daemon resolves right now and the sheet it would pick.
+With
+.BR \-\-shown ,
+print the overlay on screen as it was opened instead, and what narrowed its hints.
+Run from a terminal, the plain form sees
+.B wayhint
+itself as the command in it; use
+.B \-\-shown
+there.
+.TP
+.B search\-mode
+Enter search mode in the overlay; again to leave, keeping the filter.
+Refused while in edit mode.
+.TP
+.B edit\-mode
+Enter or leave edit mode in the overlay.
+.SH CHECKING COMMANDS
+.TP
+.BR validate " [" \-\-config\-dir
+.IR DIR ]
+Check
+.I config.yaml
+and every sheet of the configured language.
+Warnings are printed but do not fail.
+.TP
+.BR check\-sheet " [" \-\-strict "] [" \-\-config\-dir
+.IR DIR ]
+.I PATH
+\&...
+.br
+Check sheet files one by one, installed or not.
+Its errors are the ones that keep a sheet from loading.
+It also warns about a match pattern that matches every window, a sheet nothing can show,
+a hint whose kind and fields disagree, and an include or id that clashes with the installed
+sheets.
+With
+.BR \-\-strict ,
+warnings fail too.
+.TP
+.BI inspect " SHEET" " \fR[\fP\-\-parent" " ID\fR]\fP"
+Show what the sheet's includes let through and, given an assumed parent sheet, how many of its
+hints are mixed in.
+.SH EDITING COMMANDS
+Each names the sheet with
+.BI \-\-sheet " ID"
+and writes nothing while
+.B validate
+would report anything, warnings included.
+.TP
+.BI add " TITLE"
+Add a hint.
+Fields are given with
+.BR \-\-kind " {" shortcut , command , tip , note "},"
+.BI \-\-key " KEY" \fR,\fP
+.BI \-\-command " COMMAND" \fR,\fP
+.BI \-\-category " CATEGORY"
+and
+.BI \-\-remark " TEXT" \fR.\fP
+The kind decides which of key and command it takes.
+.TP
+.BI edit " ID"
+Change fields of one hint: the options of
+.B add
+and
+.BI \-\-title " TITLE" \fR.\fP
+.TP
+.BI remove " ID"
+Delete one hint.
+.TP
+.BI favorite " ID" " \fR[\fP\-\-off\fR]\fP"
+Mark a hint as favorite, or clear it with
+.BR \-\-off .
+.TP
+.BI move " ID" " \fR{\fPup\fR|\fPdown\fR}\fP"
+Swap a hint with the one above or below it.
+.TP
+.BR format " [" \-\-modeline "] [" \fIPATH\fP ...]
+Rewrite sheets (default: every sheet) in canonical form.
+.B \-\-modeline
+also adds the yaml-language-server modeline.
+.TP
+.BR schema " [" \-\-write
+.RI [ PATH ]]
+Print the JSON Schema for sheets, or write it to
+.I PATH
+(default:
+.B editor.schema_path
+in
+.IR config.yaml ).
+.SH OPTIONS
+.TP
+.B \-\-version
+Print the version and exit.
+.TP
+.BR \-h ", " \-\-help
+Show help, for
+.B wayhint
+or for one command.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+A problem in the files, a refused request, or an error writing.
+.TP
+.B 2
+.B wayhintd
+is not running or cannot be reached (overlay commands).
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME
+The configuration is read from
+.IR $XDG_CONFIG_HOME/wayhint/
+(default
+.IR ~/.config/wayhint/ ).
+.TP
+.B XDG_RUNTIME_DIR
+The daemon's socket is
+.IR $XDG_RUNTIME_DIR/wayhint.sock .
+Without it,
+.IR /tmp/wayhint\- UID /wayhint.sock
+is used, only if that directory is the user's own with mode 0700.
+.TP
+.BR LC_ALL ", " LC_MESSAGES ", " LANG
+In this order, the first one set picks the language of the interface and of the sheets when
+.B language
+is
+.BR auto .
+.SH FILES
+.TP
+.I ~/.config/wayhint/config.yaml
+Global settings.
+.TP
+.IR ~/.config/wayhint/hints/ LANG /*.yaml
+Hint sheets. The file name without the extension is the sheet's id.
+.TP
+.I ~/.local/state/wayhint/state.yaml
+What the daemon remembers between runs: the search filter of each sheet.
+.TP
+.I /usr/share/doc/wayhint/examples/
+A configuration and sheets to start from.
+.TP
+.I /usr/share/wayhint/scripts/setup\-terminals
+Points terminal launchers at wrappers that let wayhint tell terminal windows apart.
+Writes nothing without
+.BR \-\-apply .
+.TP
+.I /usr/share/wayhint/skills/wayhint\-add\-sheet/
+A skill for coding agents that writes a sheet and checks it with
+.BR check\-sheet .
+.SH EXAMPLES
+Check a sheet before putting it in place:
+.PP
+.RS
+.EX
+wayhint check\-sheet \-\-strict vi.yaml
+.EE
+.RE
+.PP
+Add a hint to the sheet
+.BR vi :
+.PP
+.RS
+.EX
+wayhint add "Replace in the whole file" \-\-kind command \e
+    \-\-command ':%s/old/new/g' \-\-sheet vi
+.EE
+.RE
+.SH SEE ALSO
+.BR wayhintd (1)
+.PP
+.I /usr/share/doc/wayhint/
+(README.md, SHEET-FORMAT.md, SHEETS.md, CONFIG.md, HOTKEYS.md, TERMINALS.md)
+.PP
+.UR https://github.com/yasuoeto/wayhint
+.UE

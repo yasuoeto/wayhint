@@ -63,6 +63,27 @@ Wayfire with the `foreign-toplevel` plugin enabled). Optionally Herdr and gvim. 
 sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
 ```
 
+### Debian package
+
+On Debian unstable or 13 (trixie), a `.deb` pulls in every dependency above. When a release
+carries one, install it with apt; or build both from a clone with `./scripts/build-deb` (needs
+docker; the packages land in `build/deb/<dist>/`).
+
+```sh
+sudo apt install ./wayhint_1.0.0-1_all.deb            # unstable
+sudo apt install ./wayhint_1.0.0-1~deb13+1_all.deb    # trixie
+cp -r /usr/share/doc/wayhint/examples/. ~/.config/wayhint/
+```
+
+The commands are `/usr/bin/wayhint` and `/usr/bin/wayhintd`: use those paths where the
+compositor setup below says `~/.local/src/wayhint/.venv/bin/`. `setup-terminals` is
+`/usr/share/wayhint/scripts/setup-terminals`, and the coding-agent skill is under
+`/usr/share/wayhint/skills/`. `wayhintd` is still started from the compositor's autostart; the
+package ships no systemd unit. The Wayfire IPC fallback (`context.backend: wayfire`) needs
+PyWayfire, which Debian does not package (`pip install wayfire`).
+
+### From a clone
+
 Clone it wherever you like; the examples below use `~/.local/src/wayhint`.
 
 ```sh

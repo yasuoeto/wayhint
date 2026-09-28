@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=wayhint
+
+%:
+	dh $@ --buildsystem=pybuild
+
+# The tests live outside the package and read files next to them (fixtures, skills/, examples/),
+# so they run from the source tree against src/ rather than from pybuild's build directory.
+# A build has no login session; the demo session tests need an XDG_RUNTIME_DIR to put sockets in.
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	runtime=$$(mktemp -d) && \
+	XDG_RUNTIME_DIR=$$runtime PYTHONPATH=$(CURDIR)/src python3 -m unittest discover -s tests -t .; \
+	status=$$?; rm -rf "$$runtime"; exit $$status
+endif
