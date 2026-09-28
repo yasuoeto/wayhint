@@ -70,10 +70,14 @@ apt で入れる。clone から `./scripts/build-deb` で両方を作ること�
 `build/deb/<dist>/` にできる)。
 
 ```sh
-sudo apt install ./wayhint_1.0.0-1_all.deb            # unstable
-sudo apt install ./wayhint_1.0.0-1~deb13+1_all.deb    # trixie
+base=https://github.com/yasuoeto/wayhint/releases/download/v1.0.0
+curl -LO $base/wayhint_1.0.0-1_all.deb && sudo apt install ./wayhint_1.0.0-1_all.deb                  # unstable
+curl -LO $base/wayhint_1.0.0-1.deb13+1_all.deb && sudo apt install ./wayhint_1.0.0-1.deb13+1_all.deb  # trixie
 cp -r /usr/share/doc/wayhint/examples/. ~/.config/wayhint/
 ```
+
+trixie 版のファイル名の `~` は GitHub が `.` に変える。中の版数は `1.0.0-1~deb13+1` のままなので、
+Debian の次のリリースに上げると unstable 版に置き換わる。
 
 コマンドは `/usr/bin/wayhint` と `/usr/bin/wayhintd`。下の compositor の設定で
 `~/.local/src/wayhint/.venv/bin/` と書いてあるところは、このパスにする。`setup-terminals` は

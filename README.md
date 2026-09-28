@@ -70,10 +70,14 @@ carries one, install it with apt; or build both from a clone with `./scripts/bui
 docker; the packages land in `build/deb/<dist>/`).
 
 ```sh
-sudo apt install ./wayhint_1.0.0-1_all.deb            # unstable
-sudo apt install ./wayhint_1.0.0-1~deb13+1_all.deb    # trixie
+base=https://github.com/yasuoeto/wayhint/releases/download/v1.0.0
+curl -LO $base/wayhint_1.0.0-1_all.deb && sudo apt install ./wayhint_1.0.0-1_all.deb                  # unstable
+curl -LO $base/wayhint_1.0.0-1.deb13+1_all.deb && sudo apt install ./wayhint_1.0.0-1.deb13+1_all.deb  # trixie
 cp -r /usr/share/doc/wayhint/examples/. ~/.config/wayhint/
 ```
+
+GitHub turns the `~` of the trixie package's file name into `.`; the version inside is still
+`1.0.0-1~deb13+1`, so upgrading to Debian's next release replaces it with the unstable build.
 
 The commands are `/usr/bin/wayhint` and `/usr/bin/wayhintd`: use those paths where the
 compositor setup below says `~/.local/src/wayhint/.venv/bin/`. `setup-terminals` is
