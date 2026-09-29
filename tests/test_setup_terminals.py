@@ -8,6 +8,7 @@ maintains is only ever reported.
 
 import importlib.machinery
 import importlib.util
+import io
 import os
 import stat
 import sys
@@ -310,8 +311,17 @@ class EndToEndTest(unittest.TestCase):
         self.assertTrue((self.root / "home/.local/bin/ghostty-wayhint").exists())
 
     def test_a_terminal_that_cannot_carry_the_convention_is_refused(self) -> None:
-        self.assertEqual(self.run_script("wezterm"), 1)
-        self.assertEqual(self.run_script("emacs"), 1)
+        with unittest.mock.patch.dict(os.environ, {"LC_ALL": "C"}):
+            out = io.StringIO()
+            with unittest.mock.patch("sys.stdout", out):
+                self.assertEqual(setup_terminals.main(["wezterm"]), 1)
+            self.assertIn("wezterm", out.getvalue())
+            self.assertIn("cannot", out.getvalue())  # the UNSUPPORTED reason, not a generic refusal
+
+            out = io.StringIO()
+            with unittest.mock.patch("sys.stdout", out):
+                self.assertEqual(setup_terminals.main(["emacs"]), 1)
+            self.assertIn("unknown terminal", out.getvalue())
 
     def test_a_desktop_entry_with_no_system_copy_is_skipped(self) -> None:
         (self.root / "usr/share/applications/foot.desktop").unlink()

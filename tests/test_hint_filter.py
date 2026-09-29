@@ -204,12 +204,26 @@ class ConfigTest(unittest.TestCase):
 
 
 class SchemaTest(unittest.TestCase):
-    def test_the_schema_knows_the_new_keys(self) -> None:
-        props = json_schema()["properties"]
-        entry = props["include"]["items"]["oneOf"][1]["properties"]
-        self.assertEqual(set(entry), {"sheet", "tags", "categories"})
-        self.assertIn("parent_categories", props["inherit"]["properties"])
-        self.assertIn("export_categories", props["nested"]["properties"])
+    def test_the_schema_validates_documents_using_the_new_keys(self) -> None:
+        import jsonschema
+
+        schema = json_schema()
+        valid = {
+            "id": "sheet-a",
+            "title": "Sheet A",
+            "include": [{"sheet": "sheet-b", "tags": ["x"], "categories": ["y"]}],
+            "inherit": {"parent_categories": ["cat"]},
+            "nested": {"export_categories": ["cat"]},
+        }
+        jsonschema.validate(valid, schema)
+
+        invalid = {
+            "id": "sheet-a",
+            "title": "Sheet A",
+            "include": [{"sheet": "sheet-b", "tags": "not-a-list", "categories": ["y"]}],
+        }
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.validate(invalid, schema)
 
 
 if __name__ == "__main__":

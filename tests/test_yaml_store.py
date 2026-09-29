@@ -10,6 +10,7 @@ from pathlib import Path
 from wayhint.cli import main
 from wayhint.models import IncludeRef, Margin, Size
 from wayhint.yaml_store import (
+    _ID_RE,
     LoadResult,
     SheetStore,
     hints_dir,
@@ -344,9 +345,17 @@ class IncludeTest(unittest.TestCase):
 
     def test_include_must_be_a_list_of_sheet_ids(self) -> None:
         self.write("a", "id: a\ntitle: A\ninclude: wm\n")
-        self.assertTrue(any("include" in i.message for i in load_sheets(self.dir).issues))
+        result = load_sheets(self.dir)
+        expected = "include must be a list of sheet ids or {sheet, tags, categories}"
+        self.assertTrue(any(i.message == expected for i in result.issues))
+        self.assertFalse(any(sheet.id == "a" for sheet in result.sheets))
+
         self.write("a", "id: a\ntitle: A\ninclude: ['not an id!']\n")
-        self.assertTrue(any("include" in i.message for i in load_sheets(self.dir).issues))
+        result = load_sheets(self.dir)
+        self.assertTrue(
+            any(i.message == "include[0] must match " + _ID_RE.pattern for i in result.issues)
+        )
+        self.assertFalse(any(sheet.id == "a" for sheet in result.sheets))
 
 
 class HintsDirTest(unittest.TestCase):

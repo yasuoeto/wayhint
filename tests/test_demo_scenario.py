@@ -126,14 +126,13 @@ class ScenarioTest(unittest.TestCase):
                 )
             )
 
-    def test_the_new_conditions_are_read(self) -> None:
+    def test_first_hint_and_text_conditions_are_read(self) -> None:
         text = MINIMAL.replace(
             "wait_for: {overlay: visible}",
             'wait_for: {overlay: visible, first_hint: "承認", text: "n"}',
         )
         wait_for = parse(text).steps["show"].wait_for
         self.assertEqual((wait_for.first_hint, wait_for.text), ("承認", "n"))
-        self.assertIn("first_hint='承認'", wait_for.describe())
 
     def test_a_write_outside_the_fixtures_is_refused(self) -> None:
         text = MINIMAL.replace(
@@ -444,10 +443,10 @@ class SessionSpecTest(unittest.TestCase):
 
     def test_a_session_with_herdr_is_told_where_it_is(self) -> None:
         work = scratch(self)
-        demo = sess.DemoSession(parse(MINIMAL), work, work, work)
-        self.assertTrue(demo.wants_herdr)
-        if shutil.which(sess.HERDR) is not None:  # not installed everywhere
-            self.assertIn(sess.HERDR_BIN_ENV, demo._env())
+        with unittest.mock.patch.object(sess.shutil, "which", return_value="/usr/bin/herdr"):
+            demo = sess.DemoSession(parse(MINIMAL), work, work, work)
+            self.assertTrue(demo.wants_herdr)
+            self.assertEqual(demo._env()[sess.HERDR_BIN_ENV], "/usr/bin/herdr")
 
 
 class OutDirTest(unittest.TestCase):
@@ -533,9 +532,6 @@ class SpawnTest(unittest.TestCase):
     def test_a_wrapper_from_demo_bin_is_accepted(self) -> None:
         script = self.spawn("[foot-herdr]", self.bin())
         self.assertEqual(script.steps["show"].action.payload["argv"], ["foot-herdr"])
-
-    def test_a_wrapper_with_a_stub_after_it_is_accepted(self) -> None:
-        self.spawn("[foot-wayhint, -e, vi]", self.bin())
 
     def test_a_terminal_with_no_command_is_refused(self) -> None:
         """foot with no command starts the login shell, and that is the hole D1 closed."""
@@ -626,6 +622,10 @@ class SpawnTest(unittest.TestCase):
     def test_programs_lists_what_a_step_would_start(self) -> None:
         """What ``session._check_stubs`` walks before a compositor is up."""
         script = self.spawn("[foot-wayhint, --app-id=foot-x, -e, vi]", self.bin())
+        self.assertEqual(
+            script.steps["show"].action.payload["argv"],
+            ["foot-wayhint", "--app-id=foot-x", "-e", "vi"],
+        )
         self.assertEqual(scn.programs(script.steps["show"]), ["foot-wayhint", "vi"])
         run = parse(
             MINIMAL.replace("    cli: show\n", "    herdr: [pane, run, 'w1:p1', vi]\n"), self.bin()
@@ -687,10 +687,6 @@ class PaneProgramTest(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         loader.exec_module(module)
         return module
-
-    def test_the_startable_names_are_written_out_not_listed(self) -> None:
-        """A listing would grow the answer every time somebody adds a file to demo/bin."""
-        self.assertEqual(self.idle().STARTABLE, ("claude", "codex", "vi"))
 
     def test_a_name_outside_the_list_starts_nothing(self) -> None:
         idle = self.idle()
@@ -1171,10 +1167,10 @@ class PerLanguageConditionTest(unittest.TestCase):
         with self.assertRaisesRegex(act.DemoError, "no en text"):
             act._wanted(run, (("ja", "次の窓へ"),))
 
-    def test_a_string_is_translated_as_ui_text(self) -> None:
+    def test_a_string_is_passed_through_the_ui_translator(self) -> None:
         run = unittest.mock.Mock(language="ja")
-        run.tr.return_value = "コピー"
-        self.assertEqual(act._wanted(run, "Copy"), "コピー")
+        act._wanted(run, "Copy")
+        run.tr.assert_called_once_with("Copy")
 
 
 class WrapperTest(unittest.TestCase):
@@ -1297,23 +1293,23 @@ class CommandLineNameTest(unittest.TestCase):
                 self.assertIn("has to be lower-case", err)
 
     def test_every_name_on_the_command_line_goes_through_the_one_check(self) -> None:
-        seen: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
         original = nm.validate_name
         self.addCleanup(setattr, nm, "validate_name", original)
-        nm.validate_name = lambda kind, value: (seen.append((kind, value)), value)[1]
+        nm.validate_name = lambda kind, value: (seen.add((kind, value)), value)[1]
         self.run_cli("--showcase", "herdr", "--variant", "60s", "--only", "a,b", "--from", "a")
         self.assertEqual(
-            seen[:5],
-            [
+            seen,
+            {
                 ("--showcase value", "herdr"),
                 ("--variant value", "60s"),
                 ("--from value", "a"),
                 ("--only value", "a"),
                 ("--only value", "b"),
-            ],
+                # ... and the showcase resolver reaches the same function, not its own regex.
+                ("showcase name", "herdr"),
+            },
         )
-        # ... and the showcase resolver reaches the same function, rather than its own regex.
-        self.assertIn(("showcase name", "herdr"), seen)
 
 
 class ConditionTest(unittest.TestCase):

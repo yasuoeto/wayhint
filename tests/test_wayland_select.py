@@ -111,7 +111,11 @@ class AutoProviderTest(unittest.TestCase):
         primary, fallback = Fake(), Fake()
         auto = AutoDesktopProvider(lambda: primary, lambda: fallback, lambda: True)
         self.assertEqual(auto.snapshot().app_id, "foot")
-        self.assertTrue(auto.focus_view("foot\tt"))
+        primary.error = "no protocol"  # primary now fails, but the choice already stuck
+        with self.assertRaises(ContextError) as cm:
+            auto.snapshot()
+        self.assertEqual(str(cm.exception), "no protocol")  # from primary, not the fallback
+        self.assertIs(auto._chosen, primary)  # still stuck on primary, fallback never tried
         self.assertEqual(fallback.focused, [])
 
     def test_falls_back_when_primary_fails_and_fallback_available(self) -> None:

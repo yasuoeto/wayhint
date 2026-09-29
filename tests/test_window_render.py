@@ -176,20 +176,25 @@ class RenderTest(unittest.TestCase):
                     )
                 self.assertEqual(tuple(win.get_size_request()), (place.width, place.height or -1))
 
-    def test_search_narrows_the_list_without_touching_the_sheet(self) -> None:
-        active = sheet(
-            "s", [hint("copy", "s.yaml"), hint("paste", "s.yaml"), hint("quit", "s.yaml")]
-        )
+    def test_filtering_narrows_the_list_without_touching_the_sheet(self) -> None:
+        """Rows shrink to match the filter, but the ``Hint`` objects on the sheet are untouched.
+
+        The narrowing itself (typing into the search box, case-insensitivity) is covered end to
+        end by ``test_gui_headless.SearchModeTest``; what that one cannot see is whether
+        ``set_filter`` mutates the sheet it was handed -- it drives a real compositor and only
+        reads back what is on screen.
+        """
+        hints = [hint("copy", "s.yaml"), hint("paste", "s.yaml"), hint("quit", "s.yaml")]
+        active = sheet("s", hints)
         win = self.window()
         win.lay_out(ResolvedContext(active_sheet="s", output=OUT), [active], GlobalConfig())
         self.assertEqual(sorted(self.rows(win)), ["copy", "paste", "quit"])
 
-        win.set_mode("search", refocus=False)
-        win._search.set_text("PAST")  # the search is case-insensitive
-        win._render_list()
+        win.set_filter("paste")
         self.assertEqual(self.rows(win), ["paste"])
+        self.assertEqual(active.hints, tuple(hints))  # the sheet itself was never touched
 
-        win.set_mode("normal", refocus=False)
+        win.set_filter("")
         self.assertEqual(sorted(self.rows(win)), ["copy", "paste", "quit"])
 
 

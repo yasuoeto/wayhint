@@ -328,8 +328,10 @@ class DaemonEditTest(unittest.TestCase):
         )
         self.daemon._debounced_reload(self.paths[1])
         self.assertTrue(self.window.visible)
-        self.assertEqual(self.sheet(self.paths[1]).hints[0].title, "curated in the editor")
-        self.assertEqual([s.id for s in self.daemon.store.sheets], ["a", "b"])
+        # The store's own copy, not the file on disk, is what the window is asked to show.
+        reloaded = next(s for s in self.daemon.store.sheets if s.id == "b")
+        self.assertEqual(reloaded.hints[0].title, "curated in the editor")
+        self.assertEqual(self.window.context.active_sheet, "b")
 
     def test_an_editor_that_cannot_start_leaves_the_overlay_as_it_was(self):
         self.action(em.OPEN_FORM)
@@ -541,8 +543,17 @@ class FrontSheetQuickAddTest(unittest.TestCase):
         self.assertEqual(self.titles("notes"), ["first nvim hint"])
 
     def test_an_app_without_a_sheet_does_not_follow_an_included_hint(self):
-        self.open(ResolvedContext(desktop_app="notes"))
-        self.assertIsNone(self.add_on_the_parent_hint())
+        # "app" has a sheet, but no hints of its own: everything shown for it comes from
+        # ``include: [herdr]`` (DECISIONS 0026). The row under the cursor is herdr's, so quick
+        # add must still land in app.yaml rather than herdr.yaml (0041).
+        self.write("app", "include: [herdr]\nhints: []\n")
+        self.open(ResolvedContext(desktop_app="notes", active_sheet="app"))
+        sheet_app = next(s for s in self.daemon.store.sheets if s.id == "app")
+        included = [s.id for s in self.daemon.store.includes_for(sheet_app)]
+        self.assertEqual(included, ["herdr"], "actually included")
+        target = self.add_on_the_parent_hint()
+        self.assertEqual(target, "app")
+        self.assertEqual(self.titles("app"), ["first nvim hint"])
         self.assertEqual(self.titles("herdr"), ["split the pane"])
 
     def test_the_terminal_itself_in_front_is_not_a_process_without_a_sheet(self):
@@ -589,7 +600,17 @@ class DaemonHintsDirTest(unittest.TestCase):
 
     def test_a_new_sheet_is_created_where_the_others_are_read_from(self):
         self.set_language("ja")
-        self.assertEqual(self.daemon.hints_dir, self.root / "hints" / "ja")
+        self.daemon.window = Window()
+        view = WorkspaceView(ResolvedContext(desktop_app="unmatched"), mode="edit")
+        self.daemon._open[""] = view
+        self.daemon._shown_key = ""
+        self.daemon.on_edit_action(em.ADD, None)
+        self.daemon.window.form.fields.update(title="new hint")
+        self.daemon.on_edit_action(em.FORM_SAVE, {"draft": self.daemon.window.form})
+        made = [p for p in (self.root / "hints" / "ja").glob("*.yaml") if p.name != "x.yaml"]
+        self.assertEqual(len(made), 1, "a new sheet appeared next to the existing ja sheet")
+        self.assertEqual(made[0].parent, self.daemon.hints_dir)
+        self.assertEqual(load_sheet(made[0])[0].hints[0].title, "new hint")
 
     def test_a_flat_layout_still_works(self):
         for lang in ("en", "ja"):

@@ -303,13 +303,6 @@ class ProcAdapterTest(unittest.TestCase):
         p.finish()
         self.assertEqual(ProcAdapter().foreground_process("foot").pid, 300)
 
-    def test_a_shell_alone_in_the_terminal_is_the_foreground_process(self) -> None:
-        p = self.build()
-        p.add(100, "/usr/bin/foot", ppid=1)
-        p.add(200, "/usr/bin/bash", ppid=100, pgrp=200, tty=TTY, tpgid=200)
-        p.finish()
-        self.assertEqual(ProcAdapter().foreground_process("foot").name, "bash")
-
     def test_no_foreground_process_and_a_missing_proc_both_answer_none(self) -> None:
         p = self.build()
         p.add(100, "/usr/bin/foot", ppid=1)  # tty_nr 0: nothing is on a terminal

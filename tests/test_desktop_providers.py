@@ -108,10 +108,12 @@ class LiveCompositorTest(unittest.TestCase):
         self.assertIsNone(provider.find_output("wayhint-no-such-output"))
 
     def test_the_resolver_produces_a_context_from_the_real_desktop(self) -> None:
-        ctx = ContextResolver(WaylandContextProvider()).resolve([], GlobalConfig())
+        provider = WaylandContextProvider()
+        snap = provider.snapshot()
+        ctx = ContextResolver(provider).resolve([], GlobalConfig())
         self.assertIsNone(ctx.error)
-        self.assertEqual(ctx.chain, ())  # no sheets, so no nested provider was registered
-        self.assertIsNone(ctx.active_sheet)
+        self.assertEqual(ctx.desktop_app, snap.app_id)
+        self.assertEqual(ctx.output, snap.output or snap.focused_output)
 
 
 @needs_compositor

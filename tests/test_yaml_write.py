@@ -169,15 +169,31 @@ class WriteDocumentTest(TmpSheetTest):
         self.assertNotIn("PRIVATE", issues[0].message)
 
     def test_a_link_at_a_temporary_name_is_not_followed(self) -> None:
-        """Temporary names cannot be guessed, and one that exists is never opened."""
+        """The temporary is created exclusively (a7607f4): a symlink at the exact name the
+        writer tries next must make the write fail rather than being written through, no
+        matter what that name is."""
         victim = self.dir / "victim.txt"
         victim.write_text("keep\n")
         target = self.copy(DIRTY / "messy.yaml")
-        for serial in range(5000):  # every name the old pid-and-counter scheme could reach
-            (self.dir / f"{target.name}.{os.getpid()}-{serial}.tmp").symlink_to(victim)
-        write_document(target, self.doc(target))
-        self.assertEqual(victim.read_text(), "keep\n")
-        self.assertFalse(target.is_symlink())
+        fixed_name = str(self.dir / f"{target.name}.a-name-nobody-guessed.tmp")
+        Path(fixed_name).symlink_to(victim)
+
+        calls: list[tuple[object, object, object]] = []
+
+        def spy_mkstemp(*, prefix: object, suffix: object, dir: object) -> tuple[int, str]:
+            calls.append((prefix, suffix, dir))
+            # Same exclusive-create semantics as tempfile.mkstemp itself, at a name an
+            # attacker could have planted a link at in advance.
+            fd = os.open(fixed_name, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+            return fd, fixed_name
+
+        with mock.patch("wayhint.yaml_store.tempfile.mkstemp", side_effect=spy_mkstemp):
+            with self.assertRaises(OSError):
+                write_document(target, self.doc(target))
+
+        self.assertTrue(calls, "the writer must go through tempfile.mkstemp for the temporary")
+        self.assertEqual(victim.read_text(), "keep\n", "the link's target was never written to")
+        self.assertTrue(Path(fixed_name).is_symlink(), "the planted link itself is untouched")
 
     def test_a_private_file_is_never_readable_by_others_mid_write(self) -> None:
         target = self.copy(DIRTY / "messy.yaml")
@@ -336,10 +352,6 @@ class BuildHintTest(unittest.TestCase):
         self.assertEqual(hint["kind"], "shortcut")
         self.assertIs(hint["favorite"], False)
 
-    def test_tags_stay_flow_style(self) -> None:
-        hint = build_hint({"id": "h", "title": "T", "tags": ["terminal"]})
-        self.assertTrue(hint["tags"].fa.flow_style())
-
     def test_unknown_field_is_a_programming_error(self) -> None:
         with self.assertRaises(ValueError):
             build_hint({"id": "h", "title": "T", "colour": "red"})
@@ -354,6 +366,13 @@ class HintOpsTest(TmpSheetTest):
     def text_after_write(self) -> str:
         write_document(self.path, self.document)
         return self.path.read_text()
+
+    def test_tags_stay_flow_style(self) -> None:
+        append_hint(
+            self.document, build_hint({"id": "fourth", "title": "Fourth", "tags": ["terminal"]})
+        )
+        text = self.text_after_write()
+        self.assertIn("tags: [terminal]", text)
 
     def test_append_and_update_touch_only_their_own_hint(self) -> None:
         append_hint(self.document, build_hint({"id": "fourth", "title": "Fourth"}))

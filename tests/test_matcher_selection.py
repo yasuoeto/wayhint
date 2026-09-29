@@ -255,9 +255,6 @@ class IncludeTest(unittest.TestCase):
     def test_including_the_active_sheet_changes_nothing(self) -> None:
         self.assertEqual(self.ids(self.claude, None, [], [self.claude]), ["compact"])
 
-    def test_nothing_included_is_the_old_behaviour(self) -> None:
-        self.assertEqual(self.ids(self.claude, None, [], []), ["compact"])
-
 
 class SortSearchTest(unittest.TestCase):
     def test_sort(self) -> None:

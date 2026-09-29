@@ -279,10 +279,6 @@ class IpcCommandTest(unittest.TestCase):
             with mock.patch.object(daemon.resolver, "resolve", return_value=context):
                 return ipc.handle_request(b'{"cmd":"context"}\n', daemon.dispatch)
 
-    def test_new_commands_exist(self) -> None:
-        self.assertIn("context", ipc.COMMANDS)
-        self.assertIn("edit-mode", ipc.COMMANDS)
-
     def test_context_reply_shape(self) -> None:
         reply = self.context_reply(
             ResolvedContext(

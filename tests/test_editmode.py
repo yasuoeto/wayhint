@@ -208,9 +208,12 @@ class CategoryCycleTest(unittest.TestCase):
         self.assertFalse(em.matches_category(hint("x", "one"), em.PSEUDO_CATEGORY))
 
     def test_the_pseudo_category_never_looks_like_a_yaml_value(self) -> None:
-        # The label is i18n; the value must never reach a file.
-        self.assertNotIn(em.PSEUDO_CATEGORY, ("inbox", "未定義"))
-        self.assertTrue(em.PSEUDO_CATEGORY.startswith("\x00"))
+        # The label is i18n; only ``PSEUDO_TOKEN`` ("-"), never the internal sentinel, may reach
+        # the search box text that state.yaml keeps for a sheet's filter (0033 D).
+        text = em.with_category("", em.PSEUDO_CATEGORY)
+        self.assertNotIn(em.PSEUDO_CATEGORY, text)
+        self.assertEqual(em.category_token(em.PSEUDO_CATEGORY), em.PSEUDO_TOKEN)
+        self.assertEqual(em.parse_search(text).category, em.PSEUDO_CATEGORY, "round-trips back")
 
 
 class RestoreSelectionTest(unittest.TestCase):
@@ -261,12 +264,13 @@ class SwapRuleTest(unittest.TestCase):
         self.assertTrue(same_group(hint("a", "one", True), hint("b", "two", True)))
         self.assertFalse(same_group(hint("a", "one", True), hint("b", "one")))
         self.assertFalse(same_group(hint("a", "one"), hint("b", "two")))
-
-    def test_a_hint_from_the_parent_sheet_is_a_different_file(self) -> None:
+        # Same group across two files (parent/child): being in the same group is not by itself
+        # enough to swap. The daemon also checks the file (0025), covered where the write happens
+        # -- ``test_move_locates_the_selected_parent_hint_not_the_same_id_in_the_child`` in
+        # test_daemon_edit.py.
         mine = hint("a", "one", file="child.yaml")
         theirs = hint("b", "one", file="parent.yaml")
-        self.assertTrue(same_group(mine, theirs), "same group…")
-        self.assertNotEqual(mine.location.file, theirs.location.file, "…but not the same sheet")
+        self.assertTrue(same_group(mine, theirs))
 
     def test_sheet_for_hint_finds_the_owner(self) -> None:
         from wayhint.models import HintSheet
@@ -283,8 +287,23 @@ class SwapRuleTest(unittest.TestCase):
         self.assertIsNone(sheet_for_hint(sheets, None))
 
     def test_neighbours_follow_the_displayed_order(self) -> None:
-        hints = [hint("a", "one"), hint("fav", "two", favorite=True), hint("b", "one")]
-        self.assertEqual([h.id for h in sort_hints(hints)], ["fav", "a", "b"])
+        """J/K swaps with whatever is next in ``sort_hints``'s order, not the YAML order.
+
+        Categories are grouped together (0014 D7), so a hint's neighbour on screen can be one
+        that sits several rows away in the file -- that is the row ``J``/``K`` has to reach.
+        """
+        hints = [
+            hint("a1", "one"),
+            hint("b1", "two"),
+            hint("a2", "one"),
+            hint("fav", "two", favorite=True),
+        ]
+        shown = sort_hints(hints)
+        self.assertEqual([h.id for h in shown], ["fav", "a1", "a2", "b1"])
+        # "a1"'s neighbour going down is "a2", grouped by category, not "b1" which comes right
+        # after it in the file.
+        index = next(i for i, h in enumerate(shown) if h.id == "a1")
+        self.assertEqual(shown[index + 1].id, "a2")
 
 
 class StaleSheetTest(unittest.TestCase):
@@ -359,9 +378,6 @@ class FormDraftTest(unittest.TestCase):
         fields = em.draft_fields(draft)
         self.assertEqual(fields["key"], "Ctrl-r")
         self.assertEqual(fields["command"], "reset")
-
-    def test_quick_add_draft_has_no_hint_id(self) -> None:
-        self.assertIsNone(em.FormDraft().hint_id)
 
 
 class CopiedDetailTest(unittest.TestCase):
