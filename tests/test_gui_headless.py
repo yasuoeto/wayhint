@@ -542,5 +542,265 @@ class SearchChecklistTest(unittest.TestCase):
         self.assertIn("filter: quit", shown)
 
 
+@needs_key_injection
+class KeysReturnToTheAppTest(unittest.TestCase):
+    """Six items of the manual checklist (T6, T13, T15, T16, T21, T28): whatever the mode does,
+    the compositor must not be left holding the keyboard for the overlay once the item's action
+    is done. Every test proves it the way ``SearchChecklistTest`` does for T45: type into
+    ``textsink`` afterwards and read back what actually arrived, because "no grab left behind" is
+    a fact about the compositor, not about the process running the overlay (only
+    ``_sync_keyboard_mode`` may touch ``keyboard_mode``, DESIGN 編集モード §1).
+    """
+
+    OVERLAY = "{anchor: top-right, width: 400px, margin: {top: 20, right: 20}}"
+
+    def showing(self, session: HeadlessSession) -> list[str]:
+        return [node.name for node in session.a11y_nodes() if node.showing]
+
+    def until(self, session: HeadlessSession, what: str, ready, timeout: float = 15) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if ready():
+                return
+            time.sleep(0.2)
+        self.fail(f"{what}\n{self.showing(session)}\n{session.log_tail()}")
+
+    def searching(self, session: HeadlessSession) -> bool:
+        shown = self.showing(session)
+        return "Done" in shown and "Search" not in shown
+
+    def normal(self, session: HeadlessSession) -> bool:
+        shown = self.showing(session)
+        return "Search" in shown and "Done" not in shown and not self.editing(session)
+
+    def editing(self, session: HeadlessSession) -> bool:
+        return any(s.startswith("a add") for s in self.showing(session))
+
+    def form_open(self, session: HeadlessSession) -> bool:
+        return "Title" in self.showing(session)
+
+    def spawn_textsink(self, session: HeadlessSession, typed: Path) -> None:
+        session.spawn([str(FIXTURE_BIN / "textsink"), str(typed)])
+        self.until(
+            session,
+            "textsink never became the active window",
+            lambda: "dev.wayhint.test.TextSink" in session.wayhint("context"),
+            timeout=30,
+        )
+
+    def assert_keys_reach_the_app(self, session: HeadlessSession, typed: Path, word: str) -> None:
+        session.type_text(word)
+        self.until(
+            session,
+            "the keys did not come back to the application",
+            lambda: typed.exists() and word in typed.read_text(),
+        )
+
+    def test_t6_leaving_search_keeps_the_filter_and_returns_the_keys(self) -> None:
+        root = config_root(self, self.OVERLAY, {"demo": SHEET, "textsink": TEXTSINK_SHEET})
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        with HeadlessSession(
+            root, width=WIDTH, height=HEIGHT, keybind=("W-S-h", "search-mode")
+        ) as session:
+            self.spawn_textsink(session, typed)
+            session.wayhint("show")
+            self.until(
+                session, "the overlay never opened", lambda: "Type here" in self.showing(session)
+            )
+
+            # First round: Esc.
+            session.press("win", "shift", "h")
+            self.until(
+                session, "the hotkey did not start a search", lambda: self.searching(session)
+            )
+            session.type_text("type")
+            self.until(
+                session,
+                "typing did not narrow the list",
+                lambda: "Type here" in self.showing(session),
+            )
+            session.press("Escape")
+            self.until(session, "Esc did not leave search", lambda: self.normal(session))
+            self.assertIn("filter: type", self.showing(session), "Esc dropped the filter")
+            self.assert_keys_reach_the_app(session, typed, "after-esc")
+
+            # Second round: Enter, from the same window.
+            session.press("win", "shift", "h")
+            self.until(
+                session, "the hotkey did not start a search", lambda: self.searching(session)
+            )
+            session.press("Return")
+            self.until(session, "Enter did not leave search", lambda: self.normal(session))
+            self.assertIn("filter: type", self.showing(session), "Enter dropped the filter")
+            self.assert_keys_reach_the_app(session, typed, "after-enter")
+
+    def test_t13_leaving_edit_returns_the_keys(self) -> None:
+        root = config_root(self, self.OVERLAY, {"textsink": TEXTSINK_SHEET})
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        with HeadlessSession(
+            root, width=WIDTH, height=HEIGHT, keybind=("W-C-h", "edit-mode")
+        ) as session:
+            self.spawn_textsink(session, typed)
+
+            # Esc with no form open exits edit mode outright.
+            session.press("win", "ctrl", "h")
+            self.until(session, "the hotkey did not enter edit mode", lambda: self.editing(session))
+            session.press("Escape")
+            self.until(session, "Esc did not leave edit mode", lambda: not self.editing(session))
+            self.assert_keys_reach_the_app(session, typed, "after-esc")
+
+            # The hotkey a second time also exits.
+            session.press("win", "ctrl", "h")
+            self.until(session, "the hotkey did not enter edit mode", lambda: self.editing(session))
+            session.press("win", "ctrl", "h")
+            self.until(
+                session,
+                "the hotkey again did not leave edit mode",
+                lambda: not self.editing(session),
+            )
+            self.assert_keys_reach_the_app(session, typed, "after-hotkey-again")
+
+            # With a form open, the first call only closes the form; the second leaves edit mode.
+            session.press("win", "ctrl", "h")
+            self.until(session, "the hotkey did not enter edit mode", lambda: self.editing(session))
+            session.press("a")
+            self.until(
+                session, "'a' did not open the quick-add form", lambda: self.form_open(session)
+            )
+            session.press("win", "ctrl", "h")
+            self.until(
+                session,
+                "the first call did not close the form",
+                lambda: not self.form_open(session),
+            )
+            self.assertTrue(
+                self.editing(session), "the first call left edit mode instead of the form"
+            )
+            session.press("win", "ctrl", "h")
+            self.until(
+                session,
+                "the second call did not leave edit mode",
+                lambda: not self.editing(session),
+            )
+            self.assert_keys_reach_the_app(session, typed, "after-form-then-exit")
+
+    def test_t15_the_toggle_hotkey_hides_and_shows_edit_with_state_intact(self) -> None:
+        root = config_root(self, self.OVERLAY, {"textsink": TEXTSINK_SHEET})
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        with HeadlessSession(
+            root,
+            width=WIDTH,
+            height=HEIGHT,
+            keybinds=[("W-h", "toggle"), ("W-C-h", "edit-mode")],
+        ) as session:
+            self.spawn_textsink(session, typed)
+            session.press("win", "ctrl", "h")
+            self.until(session, "the hotkey did not enter edit mode", lambda: self.editing(session))
+
+            session.press("win", "h")  # hide: mode and draft are kept, the keyboard is released
+            self.until(session, "the overlay did not hide", lambda: not session.a11y_nodes())
+            self.assert_keys_reach_the_app(session, typed, "while-hidden")
+
+            session.press("win", "h")  # show again, without swapping context or dropping edit
+            self.until(session, "the overlay did not come back", lambda: bool(session.a11y_nodes()))
+            self.until(session, "it did not come back in edit mode", lambda: self.editing(session))
+            # Shown again in edit, the keyboard is retaken: what is typed now must not reach the
+            # application underneath.
+            session.type_text("must-not-arrive")
+            time.sleep(1.0)
+            self.assertNotIn(
+                "must-not-arrive",
+                typed.read_text() if typed.exists() else "",
+                "the keyboard was not retaken when the overlay came back",
+            )
+
+    def test_t16_quick_add_with_no_sheet_creates_one_and_shows_the_hint(self) -> None:
+        root = config_root(self, self.OVERLAY, {"demo": SHEET})  # nothing matches textsink
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        hints_dir = root / "hints" / "en"
+        with HeadlessSession(
+            root, width=WIDTH, height=HEIGHT, keybind=("W-C-h", "edit-mode")
+        ) as session:
+            self.spawn_textsink(session, typed)
+            before = set(hints_dir.glob("*.yaml"))
+
+            session.press("win", "ctrl", "h")
+            self.until(session, "the hotkey did not enter edit mode", lambda: self.editing(session))
+            session.press("a")
+            self.until(
+                session, "'a' did not open the quick-add form", lambda: self.form_open(session)
+            )
+            session.type_text("Brand new hint")
+            session.press("Return")  # the title field's own activate saves the form
+
+            self.until(
+                session,
+                "a sheet was never created for the context",
+                lambda: set(hints_dir.glob("*.yaml")) != before,
+            )
+            self.until(
+                session,
+                "the new hint never appeared in the list",
+                lambda: "Brand new hint" in self.showing(session),
+            )
+            self.assertTrue(self.normal(session), "saving did not return to normal mode")
+            self.assert_keys_reach_the_app(session, typed, "after-quick-add")
+
+    def test_t21_edit_mode_is_refused_while_the_yaml_is_broken(self) -> None:
+        root = config_root(self, self.OVERLAY, {"textsink": TEXTSINK_SHEET})
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        sheet = root / "hints" / "en" / "textsink.yaml"
+        with HeadlessSession(root, width=WIDTH, height=HEIGHT) as session:
+            self.spawn_textsink(session, typed)
+            session.wayhint("show")
+            self.until(
+                session, "the overlay never opened", lambda: "Type here" in self.showing(session)
+            )
+
+            sheet.write_text("hints: [this is not valid: yaml: at all\n")
+            self.until(
+                session,
+                "the YAML error was never shown",
+                lambda: any("YAML error" in s for s in self.showing(session)),
+            )
+
+            with self.assertRaises(RuntimeError) as caught:
+                session.wayhint("edit-mode")
+            self.assertIn("cannot edit while the YAML is broken", str(caught.exception))
+            self.assertFalse(self.editing(session), "edit mode was entered despite the refusal")
+            self.assert_keys_reach_the_app(session, typed, "after-refusal")
+
+    def test_t28_edit_in_editor_stays_shown_and_hands_back_the_keys(self) -> None:
+        root = config_root(self, self.OVERLAY, {"textsink": TEXTSINK_SHEET})
+        (root / "config.yaml").write_text(
+            f"overlay: {self.OVERLAY}\nappearance: {{language: en}}\n"
+            "context: {workspace: all}\n"
+            f"editor: {{command: ['{FIXTURE_BIN / 'fake-editor'}', '{{file}}']}}\n"
+        )
+        typed = scratch(self, "wayhint-sink-") / "typed.txt"
+        with HeadlessSession(
+            root, width=WIDTH, height=HEIGHT, keybind=("W-C-h", "edit-mode")
+        ) as session:
+            self.spawn_textsink(session, typed)
+            session.press("win", "ctrl", "h")
+            self.until(session, "the hotkey did not enter edit mode", lambda: self.editing(session))
+
+            self.assertTrue(session.a11y_press("Edit in editor"), session.log_tail())
+            self.until(session, "the editor did not end edit mode", lambda: self.normal(session))
+            self.until(
+                session,
+                "the overlay closed instead of staying shown",
+                lambda: "Type here" in self.showing(session),
+            )
+            # The stub editor was launched with the sheet's own path: its first save appends a
+            # fixed hint there, which only shows up if that is the file it was given.
+            self.until(
+                session,
+                "the editor's save never reached the overlay's list",
+                lambda: "Quit again" in self.showing(session),
+            )
+            self.assert_keys_reach_the_app(session, typed, "after-edit-in-editor")
+
+
 if __name__ == "__main__":
     unittest.main()

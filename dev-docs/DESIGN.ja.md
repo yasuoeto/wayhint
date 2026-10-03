@@ -655,7 +655,7 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T4 sheet の `display.output` override が効く
 - T5 `width: 30%` / `height: 60%` が対象 output の logical size 基準
   （`./scripts/check-gui` が単一 output で見る。実機では回転・スケールのある output で確認する）
-- T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る
+- T6 検索中だけ入力を受け、完了 / Esc 後に grab が残らず前の view に focus が戻る **(自動テスト済: `KeysReturnToTheAppTest.test_t6_leaving_search_keeps_the_filter_and_returns_the_keys`、check-gui)**
 - T7 エディタで編集: 選択中の hint の sheet が開き該当行に jump、無選択では表示中の sheet の先頭
 - T8 Herdr で bash → Herdr hints、`claude` → Claude sheet + tag 付き Herdr hints
 - T9 Herdr で unknown process → Herdr hints のみ
@@ -665,13 +665,13 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T13 `wayhint edit-mode` で EXCLUSIVE、Esc で NONE に戻り前の view に focus が返る。
   もう一度 `wayhint edit-mode` を呼んでも同じく抜ける（フォームが開いていれば 1 回目はフォームを閉じるだけ）。
   作業中（非表示）から `Super+Ctrl+H` → もう一度 `Super+Ctrl+H` で overlay が消え、**元アプリにそのまま入力が通る**
-  **(2026-09-24 確認済)**
+  **(2026-09-24 確認済)** **(自動テスト済: `KeysReturnToTheAppTest.test_t13_leaving_edit_returns_the_keys`、check-gui)**
 - T14 edit 中に workspace を離れる → NONE、戻ると grab が張り直され入力が残っている
-- T15 edit 中の hotkey → hide / show、入力が残る
+- T15 edit 中の hotkey → hide / show、入力が残る **(自動テスト済: `KeysReturnToTheAppTest.test_t15_the_toggle_hotkey_hides_and_shows_edit_with_state_intact`、check-gui)**
 - T16 sheet が無い context で quick add → 新規 sheet が生成され、保存直後にその hint が
   一覧へ出る(次の hotkey を待たない)。保存すると overlay は表示されたまま `normal` に戻り、
   元アプリへ入力できる。続けて追加するときは再度 `wayhint edit-mode` → `a`（同じ sheet に追記される）
-  **(2026-09-19 確認済)**
+  **(2026-09-19 確認済)** **(自動テスト済: `KeysReturnToTheAppTest.test_t16_quick_add_with_no_sheet_creates_one_and_shows_the_hint`、check-gui)**
 - T17 `f` / `J` `K` など `edit` に留まる操作 → reload で overlay が閉じず、選択位置が保たれる。
   選択中の hint が画面外に出ていたら見える位置までスクロールする。一覧が画面に収まらないとき
   スクロールバーが出ている。フォーム保存の場合は `normal` に戻った一覧で同じことを確認する
@@ -683,7 +683,7 @@ daemon 化して session のプロセスグループを抜けるので、session
   作業中（非表示）から `Super+Shift+H` → もう一度 `Super+Shift+H` で overlay が消え、**元アプリにそのまま入力が通る**
   **(2026-09-24 確認済)**
 - T20 `#` 途中入力 + Tab → 補完
-- T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない
+- T21 `⚠ YAML error` 中に `wayhint edit-mode` → 拒否メッセージ、grab しない **(自動テスト済: `KeysReturnToTheAppTest.test_t21_edit_mode_is_refused_while_the_yaml_is_broken`、check-gui)**
 - T22 `d` `d` → 削除、`u` → 復帰
 - T22b `f` を続けて 2 回 → favorite が付いて外れる。`J` を続けて 2 回 → 2 つ下まで動く
   **(2026-09-19 確認済)**
@@ -719,7 +719,7 @@ daemon 化して session のプロセスグループを抜けるので、session
 - T28 「エディタで編集」→ overlay は出たまま、エディタに入力できる（`edit` / `search` から押した
   ときは `normal` に戻る）。エディタで保存すると overlay の一覧がその場で更新される。開いていた
   下書きは次の `wayhint edit-mode` で戻る。エディタが起動できないときはモードも変わらずエラーが出る
-  **(2026-09-19 確認済)**
+  **(2026-09-19 確認済)** **(自動テスト済: `KeysReturnToTheAppTest.test_t28_edit_in_editor_stays_shown_and_hands_back_the_keys`、check-gui)**
 - T29 出力を 90 度回転させた状態で `width: 50%` → 回転後の論理サイズ基準で配置される
   (回転できるモニタが要るため未実施)
 - T38 keybinding → `wayhint search-mode` で overlay が出て検索欄に focus が入り、日本語 IME で入力できる

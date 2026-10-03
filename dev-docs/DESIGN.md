@@ -762,7 +762,7 @@ the same item can come out differently per compositor, the record is kept in one
   (`./scripts/check-gui` checks this on a single output; on real hardware, check with a rotated or
   scaled output)
 - T6 input is received only while searching, and after finishing / Esc no grab remains and focus
-  returns to the previous view
+  returns to the previous view **(automated: `KeysReturnToTheAppTest.test_t6_leaving_search_keeps_the_filter_and_returns_the_keys`, check-gui)**
 - T7 edit in editor: the selected hint's sheet opens and jumps to that line; with nothing
   selected, the shown sheet's start
 - T8 Herdr with bash → Herdr hints; with `claude` → the Claude sheet + tagged Herdr hints
@@ -774,13 +774,13 @@ the same item can come out differently per compositor, the record is kept in one
   view. Calling `wayhint edit-mode` again also exits (if a form is open, the first call just
   closes the form). From working (hidden) via `Super+Ctrl+H` → `Super+Ctrl+H` again, the overlay
   disappears and **input goes straight through to the original app**
-  **(confirmed 2026-09-24)**
+  **(confirmed 2026-09-24)** **(automated: `KeysReturnToTheAppTest.test_t13_leaving_edit_returns_the_keys`, check-gui)**
 - T14 leaving the workspace during edit → NONE; returning re-applies the grab with input intact
-- T15 the hotkey during edit → hide / show, input intact
+- T15 the hotkey during edit → hide / show, input intact **(automated: `KeysReturnToTheAppTest.test_t15_the_toggle_hotkey_hides_and_shows_edit_with_state_intact`, check-gui)**
 - T16 quick add in a context with no sheet → a new sheet is created, and right after saving, that
   hint appears in the list (without waiting for the next hotkey). After saving, the overlay stays
   shown, back in `normal`, and input reaches the original app. To keep adding, `wayhint
-  edit-mode` → `a` again (appended to the same sheet) **(confirmed 2026-09-19)**
+  edit-mode` → `a` again (appended to the same sheet) **(confirmed 2026-09-19)** **(automated: `KeysReturnToTheAppTest.test_t16_quick_add_with_no_sheet_creates_one_and_shows_the_hint`, check-gui)**
 - T17 actions that stay in `edit` (`f` / `J` `K` etc.) → reload doesn't close the overlay and
   keeps the selection position. If the selected hint scrolls off screen, it scrolls back into
   view. The scrollbar shows when the list doesn't fit. For a form save, confirm the same in the
@@ -792,7 +792,7 @@ the same item can come out differently per compositor, the record is kept in one
   working (hidden) via `Super+Shift+H` → `Super+Shift+H` again, the overlay disappears and
   **input goes straight through to the original app** **(confirmed 2026-09-24)**
 - T20 partial `#` input + Tab → completes
-- T21 `wayhint edit-mode` during `⚠ YAML error` → refusal message, no grab
+- T21 `wayhint edit-mode` during `⚠ YAML error` → refusal message, no grab **(automated: `KeysReturnToTheAppTest.test_t21_edit_mode_is_refused_while_the_yaml_is_broken`, check-gui)**
 - T22 `d` `d` → deletes, `u` → restores
 - T22b press `f` twice in a row → favorite is set then unset. press `J` twice in a row → moves
   down two **(confirmed 2026-09-19)**
@@ -833,7 +833,7 @@ the same item can come out differently per compositor, the record is kept in one
 - T28 "Edit in editor" → the overlay stays shown, input reaches the editor (pressed from `edit` /
   `search`, it returns to `normal`). Saving in the editor updates the overlay's list in place. Any
   open draft returns on the next `wayhint edit-mode`. If the editor fails to launch, mode doesn't
-  change and an error is shown **(confirmed 2026-09-19)**
+  change and an error is shown **(confirmed 2026-09-19)** **(automated: `KeysReturnToTheAppTest.test_t28_edit_in_editor_stays_shown_and_hands_back_the_keys`, check-gui)**
 - T29 with the output rotated 90 degrees, `width: 50%` → placed based on the post-rotation logical
   size (not done — needs a monitor that can rotate)
 - T38 keybinding → `wayhint search-mode` shows the overlay with focus in the search box, and
