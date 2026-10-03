@@ -19,6 +19,9 @@ of its last command, so a failing check reads as a passing one. Run it unnarrowe
 `set -o pipefail` before it, or capture the output and print it afterwards. New checks go into
 `./scripts/check` rather than into a separate command.
 
+Each document has a Japanese version next to it, `<name>.ja.md` (DECISIONS 0044). Change both in
+the same commit: `./scripts/check` fails when one is missing or their headings differ.
+
 ## GUI tests
 
 `./scripts/check-gui` starts a compositor on a headless backend and, inside it, actually

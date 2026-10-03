@@ -17,6 +17,9 @@
 ように見える。絞らずに実行するか、前に `set -o pipefail` を置くか、出力をファイルか変数に取って後で
 出す。新しい検査は別のコマンドにせず `./scripts/check` に足す。
 
+文書には日本語版 `<name>.ja.md` が隣にある(DECISIONS 0044)。両方を同じ commit で直す。片方が無いか、
+見出しの並びが食い違うと `./scripts/check` が失敗する。
+
 ## GUI テスト
 
 `./scripts/check-gui` は compositor を headless backend で立て、その中で overlay を実際に
