@@ -2,23 +2,27 @@
 
 [English](README.md)
 
-Wayland(wlroots 系 compositor: labwc / Wayfire など)で、hotkey 一発で**いま使っているアプリの
-チートシート**を画面の決まった場所(既定: 右上)に出す。端末や Herdr の中で動いているコマンド
-(vi、Claude Code、Codex …)まで見て中身を切り替える。中身は YAML で自分で書いて育てる。
+**いま使っているアプリのショートカットやコマンドのメモを、キーひとつで画面に出すツール。**
+`Super+h` を押すと、そのアプリのヒントを画面の右上に表示する。端末や Herdr の中で使っている
+vi、Claude Code、Codex などにも対応し、表示するヒントは YAML ファイルで自分で追加・編集できる。
+
+Wayland の labwc / Wayfire など、wlroots 系のデスクトップ環境で使える。
 
 ![Herdr のウィンドウの横に、Claude Code のヒントを出したヒント画面](docs/media/overlay.ja.png)
+
+左は作業中の Herdr、右は wayhint のヒント画面。元のアプリを操作しながら参照できる。
 
 短いデモ
 
 https://github.com/user-attachments/assets/1bead252-33af-4796-b477-e48ab03284d9
 
-
-
-- 出している間も keyboard フォーカスを奪わない。元のアプリで作業を続けられる
+- ヒントを見るだけなら、表示したまま元のアプリで入力・作業を続けられる
 - 検索・追加・修正・favorite・並べ替えはヒント画面の中でできる
 - YAML に書いた command は表示とコピーだけで、実行はしない
 
-開発する人は [`dev-docs/DEVELOPMENT.md`](dev-docs/DEVELOPMENT.ja.md) から。
+最初は **インストール → キーの割り当て → `wayhintd` の起動 → `Super+h`** の順に進める。
+詳しい手順は以下の「インストール」と「compositor の設定」にある。
+開発する人は [開発手順](dev-docs/DEVELOPMENT.ja.md)から。
 
 ## やりたいこと → 読むところ
 
@@ -55,29 +59,45 @@ https://github.com/user-attachments/assets/1bead252-33af-4796-b477-e48ab03284d9
 
 ## インストール
 
-依存: Python 3.11+、GTK4 + PyGObject、gtk4-layer-shell(typelib 込み)、
-`wlr-foreign-toplevel-management` と `wlr-layer-shell` を出す Wayland compositor(labwc、または
-`foreign-toplevel` plugin を有効にした Wayfire)。任意で Herdr と gvim。Debian/sid の場合:
+使う環境に合わせて、どちらか一方の方法を選ぶ。
 
-```sh
-sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
-```
+| 環境・目的 | 方法 |
+|---|---|
+| Debian unstable / Debian 13(trixie)で使う | [Debian パッケージ](#debian-パッケージ) |
+| ソースから入れる・開発する | [clone から入れる](#clone-から入れる) |
+
+どちらも、`wlr-foreign-toplevel-management` と `wlr-layer-shell` に対応する Wayland compositor が必要。
+labwc、または `foreign-toplevel` plugin を有効にした Wayfire などで使える。
 
 ### Debian パッケージ
 
-Debian unstable と 13(trixie)では、`.deb` を入れれば上の依存も一緒に入る。release に付いていれば
-apt で入れる。clone から `./scripts/build-deb` で両方を作ることもできる(docker が要る。
-`build/deb/<dist>/` にできる)。
+必要な Python・GTK ライブラリは apt が一緒に入れる。**自分の Debian に合うコマンドだけ**を実行する。
+
+Debian unstable:
 
 ```sh
 base=https://github.com/yasuoeto/wayhint/releases/download/v1.0.0
-curl -LO $base/wayhint_1.0.0-1_all.deb && sudo apt install ./wayhint_1.0.0-1_all.deb                  # unstable
-curl -LO $base/wayhint_1.0.0-1.deb13+1_all.deb && sudo apt install ./wayhint_1.0.0-1.deb13+1_all.deb  # trixie
+curl -LO "$base/wayhint_1.0.0-1_all.deb"
+sudo apt install ./wayhint_1.0.0-1_all.deb
+```
+
+Debian 13(trixie):
+
+```sh
+base=https://github.com/yasuoeto/wayhint/releases/download/v1.0.0
+curl -LO "$base/wayhint_1.0.0-1.deb13+1_all.deb"
+sudo apt install ./wayhint_1.0.0-1.deb13+1_all.deb
+```
+
+どちらの版も、インストール後に設定とヒントの雛形をコピーする。
+
+```sh
+mkdir -p ~/.config/wayhint
 cp -r /usr/share/doc/wayhint/examples/. ~/.config/wayhint/
 ```
 
 trixie 版のファイル名の `~` は GitHub が `.` に変える。中の版数は `1.0.0-1~deb13+1` のままなので、
-Debian の次のリリースに上げると unstable 版に置き換わる。
+Debian の版数比較では unstable 版より前に並ぶ。
 
 コマンドは `/usr/bin/wayhint` と `/usr/bin/wayhintd`。下の compositor の設定で
 `~/.local/src/wayhint/.venv/bin/` と書いてあるところは、このパスにする。`setup-terminals` は
@@ -87,6 +107,13 @@ Wayfire IPC の fallback(`context.backend: wayfire`)に要る PyWayfire は Debi
 `pip install wayfire` で入れる。
 
 ### clone から入れる
+
+依存: Python 3.11+、GTK4 + PyGObject、gtk4-layer-shell(typelib 込み)。任意で Herdr と gvim。
+Debian/sid でのライブラリ導入例:
+
+```sh
+sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
+```
 
 clone する場所は自由。以下の例は `~/.local/src/wayhint` を使う。
 
@@ -100,14 +127,18 @@ git clone https://github.com/yasuoeto/wayhint.git ~/.local/src/wayhint && cd ~/.
 PATH から呼ぶ前提)。compositor の設定には絶対パスを書くので、そちらはこのリンクに頼らない。
 
 ```sh
+mkdir -p ~/.local/bin
 ln -s ~/.local/src/wayhint/.venv/bin/wayhint ~/.local/src/wayhint/.venv/bin/wayhintd ~/.local/bin/
 ```
 
 雛形をコピーすれば、そのまま始められる(`style.css` も入る。アプリ既定の配色で使うなら消す)。
 
 ```sh
+mkdir -p ~/.config/wayhint
 cp -r examples/. ~/.config/wayhint/
 ```
+
+`.deb` 自体を作りたい場合は [開発手順の Debian パッケージ](dev-docs/DEVELOPMENT.ja.md#debian-パッケージ)を参照。
 
 ## compositor の設定
 

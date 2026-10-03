@@ -1,10 +1,9 @@
 # HOTKEYS — the 3 hotkeys and the overlay's comings and goings
 [日本語](HOTKEYS.ja.md)
 
-wayhint's hotkeys arrive by having the compositor's keybind call the CLI (DECISIONS 0004). This
-page brings together, in one place, what the 3 hotkeys do in each state and when the overlay goes
-away. The spec itself is in `dev-docs/DESIGN.ja.md`, "Edit mode" §1–§2; the history is in
-DECISIONS 0012 / 0013 / 0014 D4 / 0023 / 0033 / 0035 / 0037.
+Use `Super+h` to view hints, `Super+Shift+h` to search, and `Super+Ctrl+h` to edit.
+This page explains how to switch between those modes and what changes when you close the
+overlay or temporarily hide it. `Super` is usually the key with the Windows logo.
 
 | Key (as bound in labwc / Wayfire) | Command | Meaning |
 |---|---|---|
@@ -12,67 +11,54 @@ DECISIONS 0012 / 0013 / 0014 D4 / 0023 / 0033 / 0035 / 0037.
 | `Super+Shift+h` | `wayhint search-mode` | enter / leave search |
 | `Super+Ctrl+h` | `wayhint edit-mode` | enter / leave edit mode |
 
-The binding is set up on the compositor side (README, "Setting up the compositor").
+Register these bindings using the [README setup instructions](../README.md#compositor-setup).
+You can also run the commands in the table from a terminal.
 
 ## 1. States
 
-The overlay's state is kept per workspace (0012). For a given workspace, it is always one of the
-following.
+The overlay has three modes: **normal** for viewing hints, **search** for typing a filter,
+and **edit** for changing hints. The tables below use those names.
 
-| State | Shown | Keyboard | Holds |
+| State | Shown | Keys go to | What is kept |
 |---|---|---|---|
-| closed | none | not taken | nothing |
-| normal | shown | not taken (NONE) | context, filter |
-| search | shown | taken (EXCLUSIVE) | the above plus the search box |
-| edit | shown | taken (EXCLUSIVE) | the above plus the form's draft |
-| hidden (normal / search / edit) | none | not taken | keeps whatever was shown |
+| closed | no | original app | Saved filters for each sheet; the displayed content is chosen again next time |
+| normal | yes | original app | Displayed sheet and filter |
+| search | yes | overlay | The above plus text in the search box |
+| edit | yes | overlay | Displayed sheet, filter and form draft |
+| hidden (normal / search / edit) | no | original app | Sheet, filter and edit draft; see below for search |
 
-"Hidden" is not closed, just not shown for the moment. Pressing `Super+h` (or `wayhint hide`), or
-leaving the workspace, moves into this state. Showing it again returns to the same state it was
-in.
+"Hidden" means temporarily out of view. During search or edit, `Super+h` hides the overlay
+and keeps your input. In normal mode, the same key closes it when pressed from the same window.
+Leaving the workspace also hides it, but ends search and saves the filter: returning shows
+normal mode. An edit draft returns in edit mode instead (see §4).
 
-Each mode remembers "**was the overlay shown when this mode was entered**" (0014 D4 amend).
-Pressing the mode's hotkey a second time returns to that state.
+Leaving search or edit by pressing its hotkey again restores **the visibility from before you
+entered that mode**: it closes if you entered while hidden, or returns to normal if already shown.
+If an edit form is open, the first press closes the form; the next press leaves edit mode.
 
 ## 2. State transitions
 
+Start with the common path: search or edit hints that are already shown, then return to work.
+
 ```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> closed
-    closed --> normal: Super+h
-    closed --> search: "Super+Shift+h (entered while hidden)"
-    closed --> edit: "Super+Ctrl+h (entered while hidden)"
-
-    normal --> closed: "Super+h (same window)"
-    normal --> normal: "Super+h (different window: swap)"
-    normal --> search: "Super+Shift+h / search button (entered while shown)"
-    normal --> edit: "Super+Ctrl+h / edit button (entered while shown)"
-
-    search --> normal: "Esc / Enter / c to copy / done button / 2nd press (entered while shown)"
-    search --> closed: "2nd press (entered while hidden)"
-    search --> edit: "Super+Ctrl+h (text in the box stays as the filter)"
-    search --> hiddensearch: Super+h
-    hiddensearch --> search: Super+h / Super+Shift+h
-
-    edit --> normal: "Esc / form saved / 2nd press (entered while shown)"
-    edit --> closed: "2nd press (entered while hidden)"
-    edit --> hiddenedit: "Super+h / leaving the workspace"
-    hiddenedit --> edit: "Super+h / Super+Ctrl+h / returning to the workspace"
+flowchart TD
+    N["Normal<br/>Work in the original app"]
+    N -- "Super+Shift+h" --> S["Search<br/>Type to filter hints"]
+    N -- "Super+Ctrl+h" --> E["Edit<br/>Add or change hints"]
+    S -- "Enter / Esc" --> R["Normal again<br/>Type in the original app"]
+    E -- "Save the form" --> R
 ```
 
-Routes not shown in the diagram:
-
-- From any state, the toolbar's "close" button goes to **closed**. It leaves search, saving the
-  filter. It discards edit's draft.
-- `wayhint hide` behaves the same as hiding with `Super+h` (0037). During search / edit it goes to
-  hidden search / hidden edit; from normal it goes to closed.
-- Leaving the workspace hides whatever was shown (§4).
-- `Super+Shift+h` during edit is refused (see the table below).
+- `Enter` / `Esc` ends search. **The filter stays; nothing is copied.** To copy, press `↓`
+  from the search box to enter the list, select a hint, then press `c`.
+- To leave edit without saving, press `Esc`. If a form is open, this closes the form first.
+- For entering directly from hidden, pressing a mode's hotkey again, or switching from search
+  to edit, see §3. For temporarily hiding the overlay or changing workspace, see §4.
 
 ## 3. State × key table
 
-"Re-resolve" means resolving the context again at the moment the key is pressed. If focus has
+"Context" means the current window and the command running inside it. "Re-resolve" means
+checking that information again at the moment the key is pressed. If focus has
 moved to a different window (e.g. a different Herdr tab), it swaps to that window's hints before
 entering the mode (0033 A / 0035).
 
@@ -115,24 +101,12 @@ progress isn't wiped out by another window's hints (0014 D4).
 
 ## 4. When it goes away
 
-```mermaid
-flowchart TD
-    E[Event] --> T{What happened}
-    T -- "Super+h (normal, same window)" --> C[Close]
-    T -- "Close button" --> C
-    T -- "wayhint hide (normal)" --> C
-    T -- "2nd press of a mode hotkey<br/>(entered while hidden)" --> C
-    T -- "Super+h / wayhint hide<br/>(during search / edit)" --> H[Hide<br/>state is kept]
-    T -- "Leaving the workspace" --> W[Hide<br/>search returns to normal]
-    T -- "Workspace goes away" --> D[Discard that workspace's state]
-    T -- "Esc / Enter / c / form saved /<br/>editor launched / window focus moves" --> K[Stays]
-```
-
 **Closes** (re-resolves from context on the next show):
 
 - `Super+h` from normal, from the same window. `wayhint hide` from normal.
 - The toolbar's "close" button. Search's filter is saved; edit's draft is discarded.
-- Pressing a mode's hotkey again, for a mode entered while hidden (0014 D4 amend).
+- Leaving a mode with its hotkey, after entering while hidden. If an edit form is open, close
+  it first with one press; another press leaves the mode.
 
 **Hides** (returns to the same state on the next show):
 
@@ -140,6 +114,8 @@ flowchart TD
   kept (0037).
 - Leaving the workspace (0012). Coming back shows it again automatically. Search leaves at this
   point, saving the filter, so it's back in normal when you return. Edit is kept, draft included.
+
+Deleting the workspace itself discards its displayed state and any draft.
 
 **Stays**:
 
@@ -163,7 +139,7 @@ sequenceDiagram
     U->>O: types "paste"
     U->>O: Super+Ctrl+h
     Note over O: "paste" stays as the filter<br/>edit (entered while shown)
-    U->>O: f to favorite
+    U->>O: select a hint with ↑ / ↓, then f to favorite
     U->>O: Super+Ctrl+h
     Note over O: back to normal (doesn't close)<br/>filter "paste" is kept
     U->>O: Super+h

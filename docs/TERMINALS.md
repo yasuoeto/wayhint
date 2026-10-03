@@ -1,9 +1,17 @@
 # TERMINALS — setting up terminals
 [日本語](TERMINALS.ja.md)
 
-How wayhint finds the command running inside a terminal window, and how to set up the terminal
-and the launcher for that. This page covers only the procedure (for why this approach was chosen,
-see the developer-facing `dev-docs/DECISIONS.ja.md` 0027).
+Set up hints for commands used inside a terminal, such as `vi` or `top`.
+This lets wayhint identify the command in the current window even when several terminal windows are open.
+
+Start with these steps:
+
+1. Use the [setup script](#start-by-running-the-script) to preview the changes, then apply them with `--apply`.
+2. **Open a new terminal window** from the configured launcher. Existing windows do not pick up the change.
+3. Follow [Checking that it's working](#checking-that-its-working) to confirm the hints match the command in use.
+
+For manual setup, jump to [Per-terminal support](#per-terminal-support).
+The next two sections explain how the mechanism works.
 
 ## What the problem is
 
@@ -52,6 +60,9 @@ not need to worry about it**:
 Most of the procedure is done by `./scripts/setup-terminals`. **It writes nothing unless you pass
 `--apply`** (this holds whether or not you name a terminal). You can pick terminals with
 arguments; the default is every installed terminal.
+
+The examples below run from a source checkout. With the Debian package, replace
+`./scripts/setup-terminals` with `/usr/share/wayhint/scripts/setup-terminals`.
 
 ```sh
 ./scripts/setup-terminals                        # dry run. just shows what it would do

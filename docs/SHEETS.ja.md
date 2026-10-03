@@ -3,30 +3,33 @@
 [English](SHEETS.md)
 
 ヒント画面の一覧は 1 枚のシートだけでできているとは限らない。親シート(nested)と `include` の
-2 経路で他のシートのヒントが混ざる。この文書はその規則を 1 か所にまとめる。YAML の各キーの形は
-`dev-docs/DESIGN.md`「Data model」、決めた経緯は `dev-docs/DECISIONS.md` の各 entry が正。
+2 経路で他のシートのヒントが混ざる。
+
+例えば Herdr の中で Claude Code を使う場合、Claude Code のヒントを主に表示し、Herdr のペイン操作を
+親シートから足せる。さらに `include` で、共通の Git 操作などを足せる。
+まず §1 で主役のシートを選び、§2 で一覧を組み立てる。絞り方の詳細は §3〜§4、
+YAML の書式は [シートの書き方](SHEET-FORMAT.ja.md)を参照。
 
 用語:
 
-- **desktop シート**: フォーカス中のウィンドウの app_id に `match.wayland.app_id_regex` が当たったシート。
-- **child シート**: 端末や Herdr の中の foreground process に `match.process.*` が当たったシート。
-- **active シート**: その context で主役になるシート。child があれば child、無ければ desktop。
+- **desktop シート**: ウィンドウに合うシート(例: Herdr)。ウィンドウの識別名 `app_id` を照合する。
+- **child シート**: 端末や Herdr の中で操作中のコマンドに合うシート(例: Claude Code)。
+- **active シート**: 表示の主役。child があれば child、無ければ desktop。
 - **親シート**: child が選ばれたときの desktop シート。
 
 ## 1. active シートと親シートの決まり方
 
 ```mermaid
 flowchart TD
-    A[フォーカス中のウィンドウの app_id] --> B[desktop シート = app_id_regex で当たるシート]
-    A --> C{app_id に応じる nested provider があるか<br/>Herdr / 端末の /proc}
-    C -- 無い --> D[active = desktop シート<br/>親なし]
-    C -- ある --> E[foreground process を取る]
-    E --> F{process に当たる child シートがあり<br/>desktop シートと別か}
-    F -- ある --> G[active = child シート<br/>親 = desktop シート<br/>desktop シートが無ければ親なし]
-    F -- 無い --> H[active = desktop シート<br/>そのヒントを全部出す]
+    A["app_id で desktop を選ぶ<br/>一致しなければ無し"]
+    A --> B["対応端末・Herdr なら<br/>中のコマンドも調べる"]
+    B --> C{"別の child が<br/>見つかったか"}
+    C -- "いいえ" --> D["active = desktop<br/>親なし"]
+    C -- "はい" --> E["active = child<br/>親 = desktop があれば使う"]
 ```
 
-- 複数のシートが当たったら priority → specificity(一致した regex の数)→ ファイル名順で 1 枚に
+- 図の結果が active なしなら、表示するシートは無い。共通の `include` も混ざらない。
+- 複数のシートが当たったら priority(大きい順) → 一致した正規表現の数(多い順) → ファイル名順で 1 枚に
   決める(DECISIONS 0007)。
 - nested provider を呼ぶかどうかは **app_id だけ**で決める。desktop シートの有無は関係ない
   (DECISIONS 0027)。そのため foot のように端末自身のシートが無くても、中の `vi` のシートは選ばれる。
@@ -37,12 +40,12 @@ flowchart TD
 ## 2. 一覧の組み立て
 
 ```mermaid
-flowchart LR
-    S1[active シートのヒント全部] --> J[連結]
-    S2[親シートのヒント<br/>§3 の tag で絞る] --> J
-    S3[include 先のヒント全部<br/>記述順] --> J
-    J --> U["(ファイル, id) の重複を落とす<br/>先に出たほうを残す"]
-    U --> O[並べ替え<br/>favorite 区画 → category 別]
+flowchart TD
+    S1["1. active のヒント全部"] --> J["1 → 2 → 3 の順につなぐ"]
+    S2["2. 親のヒント<br/>タグ・カテゴリで絞る §3"] --> J
+    S3["3. include のヒント<br/>要素ごとに絞る §4"] --> J
+    J --> U["同じヒントの重複を除く<br/>先に出たものを残す"]
+    U --> O["並べ替え<br/>favorite を先に<br/>残りはカテゴリ別"]
 ```
 
 1. **連結**: active → 親(絞った分)→ include(記述順)の順につなぐ。
@@ -61,49 +64,32 @@ flowchart LR
 child が選ばれ、親シートがあるときだけ働く(0034、0039)。絞りは**タグ**と **category** の 2 本で、
 それぞれ同じ規則で「どこに書いてあるものを使うか」を決める。
 
-```mermaid
-flowchart TD
-    A{child の inherit.parent_tags<br/>が書いてあるか} -- ある --> R1[その tag を使う]
-    A -- 無い --> B{config の nested.parent_tags<br/>が書いてあるか}
-    B -- ある --> R2[その tag を使う]
-    B -- 無い --> C{親の nested.export_tags<br/>が書いてあるか}
-    C -- ある --> R3[その tag を使う]
-    C -- 無い --> R4[tag では絞らない]
-```
-
-category も同じ形で、`inherit.parent_categories` → `nested.parent_categories` → `nested.export_categories`
-の順に見る。tag と category は別々に決まる(tag は子、category は親から、ということもある)。
-
-- **最初に書いてある段だけ**を使い、それより下の段は見ない。複数の段の積集合は取らない。
-- 「書いてある」はキーがあること。`null` は書いていないのと同じ。
-
-決まった tag と category で、親のヒントを次のように選ぶ。
-
-```mermaid
-flowchart TD
-    S{"tag か category の<br/>どちらかが [] か"} -- はい --> N[親のヒントは出さない]
-    S -- いいえ --> W{どちらかが<br/>書いてあるか}
-    W -- どちらも無い --> ALL[親のヒントを全部出す]
-    W -- ある --> OR[書いてある方の OR<br/>tag のどれかを持つ か<br/>category がどれかに一致する]
-```
-
-- tag と category を両方書いたときは **OR**。どちらかに当たるヒントを出す。
-- `[]` は、もう片方に何が書いてあっても **0 件**。`config.yaml` の `nested.parent_tags: []` で、どの親の
-  ヒントも子に混ぜないようにできる(親に `export_categories` があっても破れない)。
-- category は完全一致。category を書いていないヒントは、どの category 指定にも当たらない。
-
-各段の役目(tag・category 共通):
+**① どの設定を使うか。** 次の表を上から見て、最初に書いてある値だけを使う。
+タグとカテゴリは別々に選ぶので、タグは子、カテゴリは親から採る場合もある。
+省略・`null` は次の段へ進み、`[]` は空の指定としてその段で決定する。
 
 | 段 | 書く場所 | 用途 |
 |---|---|---|
 | 1 | 子シートの `inherit.parent_tags` / `parent_categories` | この子だけ例外にする(全体で止めていてもこの子には渡す、など) |
-| 2 | config.yaml の `nested.parent_tags` / `parent_categories` | **全体の opt-out(`[]`)用**。どの親のヒントも子に混ぜない |
+| 2 | config.yaml の `nested.parent_tags` / `parent_categories` | `[]` で親ヒントを既定で止める。段1の子ごとの指定があればそちらを使う |
 | 3 | 親シートの `nested.export_tags` / `export_categories` | **通常はここで絞る**。何を子に渡すかを親自身が決める |
 | 4 | (どこにも書かない) | 絞らない |
 
+**② 選ばれた設定でヒントを絞る。** 複数の段の条件を重ねるのではなく、①で選んだタグとカテゴリだけを使う。
+
+| 選ばれたタグ・カテゴリ | 表示する親ヒント |
+|---|---|
+| どちらかが `[]` | 0件。もう片方の条件では復活しない |
+| 両方とも未指定 | 全部 |
+| タグだけ指定 | 指定したタグのどれかを持つヒント |
+| カテゴリだけ指定 | 指定したカテゴリのどれかに一致するヒント |
+| 両方とも空でないリスト | タグ **または** カテゴリが一致するヒント(OR) |
+
+カテゴリは完全一致。カテゴリ未設定のヒントは、どのカテゴリ指定にも当たらない。
+
 段 2 で絞る(空でない list を書く)ことは推奨しない。段 2 は段 3 より上にあるので、書いた時点で
 全部の親の `export_*` が無視され、「Herdr だけ別の絞り」ができなくなる。段 2 が段 3 より上にある
-のは、`[]` で全体を確実に止めるためである。
+のは、子ごとの例外を除き、`[]` で親ヒントをまとめて止められるようにするためである。
 
 `export_*` は nested の親経路にだけ効く。同じシートが `include` で混ざるときは見ない(§4)。
 
@@ -119,18 +105,9 @@ nested:
 シートの `include:` に並べたシートのヒントを、そのシートの一覧に混ぜる(0026、0039)。要素は
 シートの id(全部混ぜる)か、`{sheet, tags, categories}`(一部だけ混ぜる)。
 
-```mermaid
-flowchart TD
-    A{active シートに include が<br/>書いてあるか} -- ある --> B[シートの include を使う<br/>config の include は見ない]
-    A -- 無い --> C[config.yaml の include を使う]
-    B --> D[記述順に解決する]
-    C --> D
-    D --> F{要素に tags / categories<br/>があるか}
-    F -- 無い --> G[そのシートのヒントを全部]
-    F -- ある --> H["§3 と同じ選び方で絞る<br/>OR、[] は 0 件"]
-    G --> E[include 先の include は辿らない]
-    H --> E
-```
+1. active シートに `include` があれば使う。省略・`null` なら `config.yaml` の `include` を使う。
+2. 各要素を記述順に読む。idだけなら全ヒント、`tags` / `categories` があれば §3 の②と同じ規則で絞る。
+3. include 先の `include` は辿らず、選んだヒントを §2 の一覧に足す。
 
 ```yaml
 include:

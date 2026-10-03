@@ -2,23 +2,28 @@
 
 [日本語](README.ja.md)
 
-On Wayland (wlroots-based compositors: labwc, Wayfire, etc.), one hotkey press shows a **cheat
-sheet for the app you are currently using** at a fixed spot on the screen (top-right by default).
-It looks into commands running inside a terminal or Herdr (vi, Claude Code, Codex, ...) and
-switches its contents accordingly. You write the contents yourself in YAML and grow it over time.
+**Show shortcut and command notes for the app you are using, with one hotkey.**
+Press `Super+h` to show that app's hints at the top-right of the screen. wayhint also recognizes
+commands used inside a terminal or Herdr, such as vi, Claude Code and Codex.
+You add and edit your own hints in YAML files.
+
+Runs on Wayland with wlroots-based compositors such as labwc and Wayfire.
 
 ![The overlay showing Claude Code's hints next to a Herdr window](docs/media/overlay.en.png)
 
-short demo
+Left: the Herdr window in use. Right: wayhint's hints, which you can read while working in the original app.
+
+Short demo
 
 https://github.com/user-attachments/assets/22dcb12c-858f-4ffa-888b-19843541b819
 
-
-- It does not steal keyboard focus while shown. You can keep working in the original app.
+- While viewing hints, you can keep typing and working in the original app.
 - Search, add, edit, favorite, and reorder all happen inside the overlay.
 - A `command` written in YAML is only shown and copied, never executed.
 
-If you are developing wayhint, start at [`dev-docs/DEVELOPMENT.md`](dev-docs/DEVELOPMENT.md).
+To get started: **install → assign hotkeys → start `wayhintd` → press `Super+h`**.
+The Installation and Compositor setup sections below walk through those steps.
+For development, start at the [development guide](dev-docs/DEVELOPMENT.md).
 
 ## What you want to do → where to read
 
@@ -55,29 +60,46 @@ If you are developing wayhint, start at [`dev-docs/DEVELOPMENT.md`](dev-docs/DEV
 
 ## Installation
 
-Dependencies: Python 3.11+, GTK4 + PyGObject, gtk4-layer-shell (with its typelib), a Wayland
-compositor that exposes `wlr-foreign-toplevel-management` and `wlr-layer-shell` (labwc, or
-Wayfire with the `foreign-toplevel` plugin enabled). Optionally Herdr and gvim. On Debian/sid:
+Choose one installation method for your environment.
 
-```sh
-sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
-```
+| Environment or purpose | Method |
+|---|---|
+| Use on Debian unstable / Debian 13 (trixie) | [Debian package](#debian-package) |
+| Install from source or develop wayhint | [From a clone](#from-a-clone) |
+
+Both need a Wayland compositor supporting `wlr-foreign-toplevel-management` and `wlr-layer-shell`,
+such as labwc, or Wayfire with the `foreign-toplevel` plugin enabled.
 
 ### Debian package
 
-On Debian unstable or 13 (trixie), a `.deb` pulls in every dependency above. When a release
-carries one, install it with apt; or build both from a clone with `./scripts/build-deb` (needs
-docker; the packages land in `build/deb/<dist>/`).
+apt installs the required Python and GTK libraries along with the package.
+**Run only the commands for your Debian version.**
+
+Debian unstable:
 
 ```sh
 base=https://github.com/yasuoeto/wayhint/releases/download/v1.0.0
-curl -LO $base/wayhint_1.0.0-1_all.deb && sudo apt install ./wayhint_1.0.0-1_all.deb                  # unstable
-curl -LO $base/wayhint_1.0.0-1.deb13+1_all.deb && sudo apt install ./wayhint_1.0.0-1.deb13+1_all.deb  # trixie
+curl -LO "$base/wayhint_1.0.0-1_all.deb"
+sudo apt install ./wayhint_1.0.0-1_all.deb
+```
+
+Debian 13 (trixie):
+
+```sh
+base=https://github.com/yasuoeto/wayhint/releases/download/v1.0.0
+curl -LO "$base/wayhint_1.0.0-1.deb13+1_all.deb"
+sudo apt install ./wayhint_1.0.0-1.deb13+1_all.deb
+```
+
+After installing either version, copy the example configuration and hints:
+
+```sh
+mkdir -p ~/.config/wayhint
 cp -r /usr/share/doc/wayhint/examples/. ~/.config/wayhint/
 ```
 
 GitHub turns the `~` of the trixie package's file name into `.`; the version inside is still
-`1.0.0-1~deb13+1`, so upgrading to Debian's next release replaces it with the unstable build.
+`1.0.0-1~deb13+1`, which sorts before the unstable build in Debian's version ordering.
 
 The commands are `/usr/bin/wayhint` and `/usr/bin/wayhintd`: use those paths where the
 compositor setup below says `~/.local/src/wayhint/.venv/bin/`. `setup-terminals` is
@@ -87,6 +109,13 @@ package ships no systemd unit. The Wayfire IPC fallback (`context.backend: wayfi
 PyWayfire, which Debian does not package (`pip install wayfire`).
 
 ### From a clone
+
+Dependencies: Python 3.11+, GTK4 + PyGObject, and gtk4-layer-shell (with its typelib).
+Herdr and gvim are optional. To install the libraries on Debian/sid:
+
+```sh
+sudo apt install python3-gi gir1.2-gtk-4.0 libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0
+```
 
 Clone it wherever you like; the examples below use `~/.local/src/wayhint`.
 
@@ -101,6 +130,7 @@ this README assume `wayhint` is called from PATH). The compositor config uses an
 so it does not rely on this symlink.
 
 ```sh
+mkdir -p ~/.local/bin
 ln -s ~/.local/src/wayhint/.venv/bin/wayhint ~/.local/src/wayhint/.venv/bin/wayhintd ~/.local/bin/
 ```
 
@@ -108,8 +138,11 @@ Copy the templates and you can start right away (`style.css` is included too; re
 want to use the app's default colors).
 
 ```sh
+mkdir -p ~/.config/wayhint
 cp -r examples/. ~/.config/wayhint/
 ```
+
+To build the `.deb` packages yourself, see [Debian packaging in the development guide](dev-docs/DEVELOPMENT.md#debian-packages).
 
 ## Compositor setup
 

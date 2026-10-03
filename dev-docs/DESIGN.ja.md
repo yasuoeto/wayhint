@@ -6,22 +6,27 @@
 
 ## Overview
 
-常駐 daemon(`wayhintd`)が GTK4 + gtk4-layer-shell の overlay window を1つ保持し、CLI
-(`wayhint toggle|show|hide|refresh|validate`)から Unix domain socket 経由で操作される。
-compositor の keybinding(labwc rc.xml / wayfire.ini)が `wayhint toggle` を実行する。show 時に context を1回解決し、一致した
-sheet(+ 親sheetのtag絞り込み)を描画する。
+常駐 daemon(`wayhintd`)が GTK4 + gtk4-layer-shell のヒント画面を1つ保持する。
+compositor のキー割り当てから `wayhint toggle` などを呼ぶと、Unix domain socket 経由で
+daemon に届く。表示時にウィンドウと前面のコマンドを調べ、対応するシートに親・include のヒントを
+混ぜて描画する。シート選択・合成の規則は [SHEETS](../docs/SHEETS.ja.md)を参照。
 
 ```text
-compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
-                                                        │ show/refresh
-                                                        ▼
-                                              ContextResolver
-                     WaylandContextProvider(foreign-toplevel)→ ProcAdapter / HerdrContextProvider
-                     (fallback: WayfireContextProvider)
-                                                        │ ResolvedContext
-                                                        ▼
-                                                 HintWindow(layer-shell overlay)
+compositor keybind
+  -> wayhint toggle / search-mode / edit-mode
+  -> Unix socket -> wayhintd
+                      |
+                      +-> ContextResolver
+                      |     1. ウィンドウ: WaylandContextProvider
+                      |        (fallback: WayfireContextProvider)
+                      |     2. 中のコマンド: ProcAdapter / HerdrContextProvider
+                      |     3. ResolvedContext を daemon に返す
+                      |
+                      +-> HintWindow: context + シート + 設定を表示
 ```
+
+図はキー操作から表示までの呼び出し順。`validate` や `check-sheet` はファイルを直接調べるCLIで、
+daemon やsocketを使わない。
 
 ## Architecture
 

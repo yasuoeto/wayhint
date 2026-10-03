@@ -3,7 +3,17 @@
 [English](CONFIG.md)
 
 wayhint 全体の設定は `config.yaml`、見た目は `style.css` に書く。ヒントそのものの書き方は
-README「ヒントを書く」。
+[README「ヒントを書く」](../README.ja.md#ヒントを書く)を参照。
+
+変えたい項目だけ書けばよい。例えば、ヒント画面の幅を変える設定はこれだけ。
+
+```yaml
+overlay:
+  width: 500px
+```
+
+既存の `overlay:` があれば、その中の `width` を変更する。同じ `overlay:` をもう1つ作らない。
+保存後に `wayhint validate` で確かめる。全項目の一覧は下の「既定値の全体」から。
 
 ## 置き場所
 

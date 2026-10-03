@@ -7,23 +7,28 @@ undecided is marked "undecided".
 
 ## Overview
 
-A resident daemon (`wayhintd`) holds a single GTK4 + gtk4-layer-shell overlay window and is
-operated from the CLI (`wayhint toggle|show|hide|refresh|validate`) over a Unix domain socket.
-A compositor keybinding (labwc `rc.xml` / `wayfire.ini`) runs `wayhint toggle`. On show, the
-context is resolved once, and the matching sheet (+ tag filtering from the parent sheet) is
-rendered.
+A resident daemon (`wayhintd`) holds one GTK4 + gtk4-layer-shell hint window.
+A compositor keybinding runs a command such as `wayhint toggle`, which reaches the daemon over
+a Unix domain socket. On show, it examines the window and foreground command, chooses a sheet,
+and mixes in parent and included hints before rendering. See [SHEETS](../docs/SHEETS.md) for the
+selection and composition rules.
 
 ```text
-compositor keybind ─→ wayhint toggle ─(unix socket)─→ wayhintd
-                                                        │ show/refresh
-                                                        ▼
-                                              ContextResolver
-                     WaylandContextProvider(foreign-toplevel)→ ProcAdapter / HerdrContextProvider
-                     (fallback: WayfireContextProvider)
-                                                        │ ResolvedContext
-                                                        ▼
-                                                 HintWindow(layer-shell overlay)
+compositor keybind
+  -> wayhint toggle / search-mode / edit-mode
+  -> Unix socket -> wayhintd
+                      |
+                      +-> ContextResolver
+                      |     1. Window: WaylandContextProvider
+                      |        (fallback: WayfireContextProvider)
+                      |     2. Command: ProcAdapter / HerdrContextProvider
+                      |     3. Return ResolvedContext to the daemon
+                      |
+                      +-> HintWindow: display context + sheets + config
 ```
+
+The diagram shows the call order from a hotkey to the display. `validate` and `check-sheet`
+inspect files directly; they use neither the daemon nor its socket.
 
 ## Architecture
 

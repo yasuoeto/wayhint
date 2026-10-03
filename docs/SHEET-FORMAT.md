@@ -3,7 +3,7 @@
 [日本語](SHEET-FORMAT.ja.md)
 
 A hint sheet (sheet, below) is a YAML file that collects the hints for one app or command. One
-file is one sheet. How to write your first sheet is covered in the README, "Writing hints"; how
+file is one sheet. Start with [Writing hints in the README](../README.md#writing-hints) for your first sheet; how
 sheets are chosen and mixed is covered in [`SHEETS.md`](SHEETS.md). This document collects every
 item a sheet can have, and the rules for each.
 
@@ -19,6 +19,11 @@ item a sheet can have, and the rules for each.
 - On save, the daemon reloads it automatically.
 
 ## Overall shape
+
+This reference example shows the available fields; you do not need all of them to get started.
+`match.wayland` and `match.process` are matched at separate stages, rather than requiring both
+to match. This example matches foot itself as well as Claude Code. To show it only for Claude
+Code, omit `wayland:` and its `app_id_regex` entry.
 
 ```yaml
 version: 1                      # Optional. Write 1 if you write it at all

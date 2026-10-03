@@ -1,9 +1,9 @@
 # HOTKEYS — 3 つの hotkey とヒント画面の出入り
 [English](HOTKEYS.md)
 
-wayhint の hotkey は compositor の keybind から CLI を呼ぶ形で届く(DECISIONS 0004)。この文書は
-3 つの hotkey が状態ごとに何をするか、ヒント画面がいつ消えるかを 1 か所にまとめる。仕様の本文は
-`dev-docs/DESIGN.ja.md`「編集モード」§1〜§2、経緯は DECISIONS 0012 / 0013 / 0014 D4 / 0023 / 0033 / 0035 / 0037。
+ヒントを見るときは `Super+h`、探すときは `Super+Shift+h`、書き換えるときは `Super+Ctrl+h`。
+このページでは、表示・検索・編集の切り替えと、ヒント画面を閉じる場合／一時的に隠す場合の違いを説明する。
+`Super` は通常、Windows ロゴの付いたキー。
 
 | キー(labwc / Wayfire の割り当て) | コマンド | 意味 |
 |---|---|---|
@@ -11,65 +11,54 @@ wayhint の hotkey は compositor の keybind から CLI を呼ぶ形で届く(D
 | `Super+Shift+h` | `wayhint search-mode` | 検索に入る / 抜ける |
 | `Super+Ctrl+h` | `wayhint edit-mode` | 編集モードに入る / 抜ける |
 
-割り当ては compositor 側で設定する(README「compositor の設定」)。
+この割り当てを使うには、[README の設定手順](../README.ja.md#compositor-の設定)に従って登録する。
+表のコマンドは端末からも実行できる。
 
 ## 1. 状態
 
-ヒント画面の状態は workspace ごとに持つ(0012)。1 つの workspace について、次のどれかになる。
+ヒント画面には、見るだけの「通常」、文字を入力する「検索」、ヒントを書き換える「編集」がある。
+以下の表では、それぞれ `normal`、`search`、`edit` と表記する。
 
-| 状態 | 表示 | keyboard | 持っているもの |
+| 状態 | 表示 | キー入力の送り先 | 残るもの |
 |---|---|---|---|
-| 閉 | 無し | 取らない | 何も無い |
-| normal | 表示 | 取らない(NONE) | context、絞り込み |
-| search | 表示 | 取る(EXCLUSIVE) | 上に加えて検索欄 |
-| edit | 表示 | 取る(EXCLUSIVE) | 上に加えてフォームの下書き |
-| 隠れ(normal / search / edit) | 無し | 取らない | 表示中と同じものを保持 |
+| 閉 | 無し | 元のアプリ | シートごとに保存した絞り込み。表示内容は次回選び直す |
+| 通常(normal) | あり | 元のアプリ | 表示中のシート、絞り込み |
+| 検索(search) | あり | ヒント画面 | 上に加えて検索欄の入力 |
+| 編集(edit) | あり | ヒント画面 | 表示中のシート、絞り込み、フォームの下書き |
+| 隠れ(normal / search / edit) | 無し | 元のアプリ | シートと絞り込み、編集の下書き。検索の扱いは下記 |
 
-「隠れ」は閉じたのではなく、表示を外しただけの状態。`Super+h`(か `wayhint hide`)を押す、または workspace を
-離れるとこの状態になる。もう一度出すと元の状態で戻る。
+「隠れ」は一時的に表示を外した状態。検索・編集中の `Super+h` は入力を残して隠す。
+通常表示中の `Super+h` は、同じウィンドウなら閉じる。
+ワークスペースを離れたときも隠れるが、この場合は検索を終えて絞り込みを保存する。
+戻ると通常表示になり、編集中だった場合は下書きごと戻る(詳しくは §4)。
 
-各モードは「**入ったときにヒント画面が表示されていたか**」を覚えている(0014 D4 amend)。
-モード用 hotkey を 2 度目に押すと、その状態へ戻る。
+検索・編集の hotkey をもう一度押してモードを抜けると、**そのモードに入る前の表示状態**へ戻る。
+非表示から入ったなら閉じ、表示中から入ったなら通常表示になる。
+編集フォームが開いているときは、最初の1回でフォームを閉じ、次の1回で編集モードを抜ける。
 
 ## 2. 状態遷移
 
+まずは、表示中のヒントを検索・編集して、元の作業に戻る流れ。
+
 ```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> 閉
-    閉 --> normal: Super+h
-    閉 --> search: Super+Shift+h(入場=非表示)
-    閉 --> edit: Super+Ctrl+h(入場=非表示)
-
-    normal --> 閉: Super+h(同じウィンドウ)
-    normal --> normal: Super+h(別のウィンドウなら差し替え)
-    normal --> search: Super+Shift+h / 検索ボタン(入場=表示中)
-    normal --> edit: Super+Ctrl+h / 編集ボタン(入場=表示中)
-
-    search --> normal: Esc / Enter / c でコピー / 完了ボタン / 2 度目(入場=表示中)
-    search --> 閉: 2 度目(入場=非表示)
-    search --> edit: Super+Ctrl+h(欄の文字は絞り込みに残る)
-    search --> 隠れsearch: Super+h
-    隠れsearch --> search: Super+h / Super+Shift+h
-
-    edit --> normal: Esc / フォーム保存 / 2 度目(入場=表示中)
-    edit --> 閉: 2 度目(入場=非表示)
-    edit --> 隠れedit: Super+h / workspace 離脱
-    隠れedit --> edit: Super+h / Super+Ctrl+h / workspace 復帰
+flowchart TD
+    N["通常表示<br/>元のアプリで作業できる"]
+    N -- "Super+Shift+h" --> S["検索<br/>文字を入力して絞る"]
+    N -- "Super+Ctrl+h" --> E["編集<br/>ヒントを追加・修正する"]
+    S -- "Enter / Esc" --> R["通常表示に戻る<br/>入力先は元のアプリ"]
+    E -- "フォームを保存" --> R
 ```
 
-図に入れていない経路:
-
-- どの状態からでも、toolbar の「閉じる」で**閉**になる。search は抜けて絞り込みを保存する。edit の
-  下書きは捨てる。
-- `wayhint hide` は `Super+h` で隠すときと同じ(0037)。search / edit 中なら隠れ search / 隠れ edit に、
-  normal なら閉になる。
-- workspace を離れると、表示されていたものは隠れる(§4)。
-- edit 中の `Super+Shift+h` は拒否する(下の表)。
+- 検索は `Enter` / `Esc` で終える。**絞り込みは残り、コピーはしない**。
+  コピーする場合は、検索欄から `↓` で一覧へ移り、ヒントを選んで `c` を押す。
+- 編集を保存せず終える場合は `Esc`。フォームが開いていれば、まずフォームを閉じる。
+- 非表示から検索・編集へ直接入る場合、同じ hotkey をもう一度押す場合、検索から編集へ移る場合は §3。
+  一時的に隠す場合やワークスペースを移る場合は §4。
 
 ## 3. 状態 × キーの一覧
 
-「取り直す」は、押した時点の context を解決し直すこと。フォーカスが別のウィンドウ(Herdr の別タブなど)に
+「context」は、いま使っているウィンドウと、その中で動いているコマンドの情報。
+「取り直す」は、キーを押した時点でこの情報を調べ直すこと。フォーカスが別のウィンドウ(Herdr の別タブなど)に
 移っていれば、そのウィンドウのヒントに差し替えてからモードに入る(0033 A / 0035)。
 
 ### `Super+h`(toggle)
@@ -111,30 +100,20 @@ search / edit 中の `Super+h` が差し替えではなく隠す / 出すなの�
 
 ## 4. いつ消えるか
 
-```mermaid
-flowchart TD
-    E[イベント] --> T{何が起きたか}
-    T -- "Super+h(normal、同じウィンドウ)" --> C[閉じる]
-    T -- "閉じるボタン" --> C
-    T -- "wayhint hide(normal)" --> C
-    T -- "モード用 hotkey の 2 度目<br/>(非表示から入っていた)" --> C
-    T -- "Super+h / wayhint hide<br/>(search / edit 中)" --> H[隠れる<br/>状態は残る]
-    T -- "workspace を離れる" --> W[隠れる<br/>search は normal に戻す]
-    T -- "workspace が無くなる" --> D[その workspace の状態を捨てる]
-    T -- "Esc / Enter / c / フォーム保存 /<br/>エディタ起動 / ウィンドウのフォーカス移動" --> K[消えない]
-```
-
 **閉じる**(次に出すと context から取り直す):
 
 - normal で、同じウィンドウから `Super+h`。normal での `wayhint hide`。
 - toolbar の「閉じる」ボタン。search の絞り込みは保存する。edit の下書きは捨てる。
-- 非表示から入ったモードで、そのモードの hotkey をもう一度押す(0014 D4 amend)。
+- 非表示から入ったモードで、そのモードの hotkey をもう一度押して抜ける。編集フォームが開いている
+  ときは、先にフォームを閉じるため、もう1回必要。
 
 **隠れる**(次に出すと同じ状態で戻る):
 
 - search / edit 中の `Super+h` と `wayhint hide`。keyboard だけ放し、モードは残す(0037)。
 - workspace を離れる(0012)。戻ると自動で出し直す。search はこの時点で抜けて絞り込みを保存するので、
   戻ったときは normal になっている。edit は下書きごと残る。
+
+ワークスペース自体を削除した場合は、そのワークスペースの表示状態と下書きも破棄する。
 
 **消えない**:
 
@@ -157,7 +136,7 @@ sequenceDiagram
     U->>O: 「ペースト」と入力
     U->>O: Super+Ctrl+h
     Note over O: 「ペースト」は絞り込みに残り<br/>edit(入場=表示中)
-    U->>O: f で favorite
+    U->>O: ↑ / ↓ でヒントを選び、f で favorite
     U->>O: Super+Ctrl+h
     Note over O: normal に戻る(閉じない)<br/>絞り込み「ペースト」は残る
     U->>O: Super+h

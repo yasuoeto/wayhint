@@ -3,35 +3,34 @@
 [日本語](SHEETS.ja.md)
 
 The overlay's list is not necessarily made up of a single sheet. Other sheets' hints mix in
-through two routes: the parent sheet (nested) and `include`. This document collects those rules
-in one place. The shape of each YAML key is authoritative in `dev-docs/DESIGN.md`, "Data model";
-the reasoning behind each decision is authoritative in the entries of `dev-docs/DECISIONS.md`.
+through two routes: the parent sheet (nested) and `include`.
+
+For example, when using Claude Code inside Herdr, you can show Claude Code's hints as the main
+sheet, add Herdr's pane shortcuts from the parent sheet, and add shared Git hints with `include`.
+Section 1 chooses the main sheet; §2 assembles the list. Sections 3–4 explain the filters.
+For the YAML syntax, see [Writing hint sheets](SHEET-FORMAT.md).
 
 Terms:
 
-- **desktop sheet**: the sheet matched by `match.wayland.app_id_regex` against the app_id of the
-  focused window.
-- **child sheet**: the sheet matched by `match.process.*` against the foreground process inside a
-  terminal or Herdr.
-- **active sheet**: the sheet that plays the lead role for that context. The child if there is
-  one, otherwise the desktop sheet.
+- **desktop sheet**: a sheet matching the window (for example, Herdr), using its identifier, `app_id`.
+- **child sheet**: a sheet matching the command being used inside a terminal or Herdr (for example, Claude Code).
+- **active sheet**: the main sheet on display: the child if there is one, otherwise the desktop sheet.
 - **parent sheet**: the desktop sheet, when a child has been chosen.
 
 ## 1. How the active sheet and the parent sheet are decided
 
 ```mermaid
 flowchart TD
-    A[app_id of the focused window] --> B[desktop sheet = the sheet matched by app_id_regex]
-    A --> C{Is there a nested provider for this app_id?<br/>Herdr / a terminal's /proc}
-    C -- no --> D[active = desktop sheet<br/>no parent]
-    C -- yes --> E[take the foreground process]
-    E --> F{Is there a child sheet matching the process,<br/>different from the desktop sheet?}
-    F -- yes --> G[active = child sheet<br/>parent = desktop sheet<br/>no parent if there is no desktop sheet]
-    F -- no --> H[active = desktop sheet<br/>show all of its hints]
+    A["Choose desktop by app_id<br/>None if no match"]
+    A --> B["In supported terminals<br/>or Herdr: find the command"]
+    B --> C{"A different child<br/>was found?"}
+    C -- "no" --> D["active = desktop<br/>No parent"]
+    C -- "yes" --> E["active = child<br/>parent = desktop, if present"]
 ```
 
-- When several sheets match, one is decided by priority → specificity (the number of regexes
-  matched) → filename order (DECISIONS 0007).
+- If the result has no active sheet, there is no sheet to display; shared `include` hints are not added either.
+- When several sheets match, choose by highest priority, then most matching regexes, then
+  filename order (DECISIONS 0007).
 - Whether the nested provider is called is decided by **app_id alone**; whether a desktop sheet
   exists is irrelevant (DECISIONS 0027). That is why the sheet for `vi` inside foot is chosen even
   when foot itself has no sheet — but in that case there is no parent, so no parent hints mix in.
@@ -42,12 +41,12 @@ flowchart TD
 ## 2. Assembling the list
 
 ```mermaid
-flowchart LR
-    S1[all of the active sheet's hints] --> J[concatenate]
-    S2[the parent sheet's hints<br/>restricted by the tags in §3] --> J
-    S3[all of the hints from included sheets<br/>in written order] --> J
-    J --> U["drop duplicate (file, id) pairs<br/>keeping whichever came first"]
-    U --> O[reorder<br/>the favorite section, then by category]
+flowchart TD
+    S1["1. All active hints"] --> J["Combine in this order<br/>1 → 2 → 3"]
+    S2["2. Parent hints<br/>Filter by tags / categories (§3)"] --> J
+    S3["3. Included hints<br/>Filter each entry (§4)"] --> J
+    J --> U["Remove duplicate hints<br/>Keep the first occurrence"]
+    U --> O["Sort<br/>Favorites first<br/>The rest by category"]
 ```
 
 1. **Concatenate**: connect active → parent (restricted) → include (in written order).
@@ -72,53 +71,34 @@ This only takes effect when a child has been chosen and there is a parent sheet 
 restriction has two independent axes, **tag** and **category**, each deciding "where to look" by
 the same rule.
 
-```mermaid
-flowchart TD
-    A{Is the child's inherit.parent_tags<br/>written?} -- yes --> R1[use that tag]
-    A -- no --> B{Is config's nested.parent_tags<br/>written?}
-    B -- yes --> R2[use that tag]
-    B -- no --> C{Is the parent's nested.export_tags<br/>written?}
-    C -- yes --> R3[use that tag]
-    C -- no --> R4[don't restrict by tag]
-```
-
-Category works the same way, checked in the order `inherit.parent_categories` →
-`nested.parent_categories` → `nested.export_categories`. Tag and category are decided
-independently (it can happen that tag comes from the child while category comes from the parent).
-
-- **Only the first level found is used**; levels below it are never consulted. The intersection of
-  multiple levels is never taken.
-- "Written" means the key exists. `null` counts as not written.
-
-With the tag and category decided this way, the parent's hints are chosen as follows.
-
-```mermaid
-flowchart TD
-    S{"Is either the tag or the category []?"} -- yes --> N[show none of the parent's hints]
-    S -- no --> W{Is either one written?}
-    W -- neither --> ALL[show all of the parent's hints]
-    W -- one is --> OR[OR of whichever is written<br/>has one of the tags, or<br/>the category matches one of them]
-```
-
-- If both tag and category are written, it is an **OR**: a hint matching either is shown.
-- `[]` always means **zero**, no matter what is written on the other side. `config.yaml`'s
-  `nested.parent_tags: []` can be used to stop any parent's hints from mixing into a child (even
-  if the parent has `export_categories`, it cannot break through this).
-- Category is an exact match. A hint with no category never matches any category restriction.
-
-The role of each level (shared between tag and category):
+**1. Choose the settings.** Read the table from the top, taking only the first value found.
+Tags and categories are chosen independently: tags may come from the child while categories
+come from the parent. An omitted value or `null` moves to the next level; `[]` selects an empty list.
 
 | level | where it is written | purpose |
 |---|---|---|
 | 1 | the child sheet's `inherit.parent_tags` / `parent_categories` | Makes an exception for this one child (e.g. still pass hints to it even though everything is stopped globally) |
-| 2 | `config.yaml`'s `nested.parent_tags` / `parent_categories` | **For a global opt-out (`[]`)**. Stops any parent's hints from mixing into any child |
+| 2 | `config.yaml`'s `nested.parent_tags` / `parent_categories` | `[]` disables parent hints by default; a child-specific value at level 1 takes precedence |
 | 3 | the parent sheet's `nested.export_tags` / `export_categories` | **Normally, restrict it here.** The parent itself decides what it hands to children |
 | 4 | (written nowhere) | no restriction |
 
+**2. Filter the hints.** Use only the tags and categories chosen in step 1, without combining
+conditions from multiple levels.
+
+| Selected tags and categories | Parent hints to show |
+|---|---|
+| Either is `[]` | None; the other condition cannot bring hints back |
+| Neither is specified | All |
+| Tags only | Hints with any of the specified tags |
+| Categories only | Hints in any of the specified categories |
+| Both are non-empty lists | Hints matching a tag **or** a category (OR) |
+
+Category matching is exact. A hint without a category does not match any category restriction.
+
 Restricting at level 2 (writing a non-empty list) is not recommended. Because level 2 sits above
 level 3, writing it there causes every parent's `export_*` to be ignored, making it impossible to
-give Herdr its own separate restriction. Level 2 sits above level 3 so that `[]` can reliably stop
-everything.
+give Herdr its own separate restriction. Level 2 sits above level 3 so that `[]` can disable
+parent hints across sheets, except for child-specific overrides.
 
 `export_*` only affects the nested parent route. It is not consulted when the same sheet is mixed
 in via `include` (§4).
@@ -136,18 +116,10 @@ The hints of the sheets listed in a sheet's `include:` are mixed into that sheet
 0039). An element is either a sheet id (mixes in all of it) or `{sheet, tags, categories}` (mixes
 in only part of it).
 
-```mermaid
-flowchart TD
-    A{Does the active sheet write<br/>its own include?} -- yes --> B[use the sheet's include<br/>config's include is not consulted]
-    A -- no --> C[use config.yaml's include]
-    B --> D[resolve in written order]
-    C --> D
-    D --> F{Does the element have<br/>tags / categories?}
-    F -- no --> G[all of that sheet's hints]
-    F -- yes --> H["restricted the same way as §3<br/>OR, [] means zero"]
-    G --> E[the include target's own include is not followed]
-    H --> E
-```
+1. Use the active sheet's `include`. If omitted or `null`, use `config.yaml`'s `include`.
+2. Read entries in written order. An id alone adds all hints; `tags` / `categories` filter them
+   using the rules in §3, step 2.
+3. Add the selected hints to the list in §2, without following the included sheets' own `include`.
 
 ```yaml
 include:

@@ -2,8 +2,18 @@
 
 [日本語](CONFIG.ja.md)
 
-wayhint's overall settings go in `config.yaml`, and its look in `style.css`. How to write hints
-themselves is covered in the README, "Writing hints".
+wayhint's overall settings go in `config.yaml`, and its look in `style.css`.
+For hints themselves, see [Writing hints in the README](../README.md#writing-hints).
+
+Write only the settings you want to change. For example, this is enough to change the overlay's width:
+
+```yaml
+overlay:
+  width: 500px
+```
+
+If `overlay:` already exists, change its `width` entry instead of adding a second `overlay:` section.
+Save and run `wayhint validate`. The full list of settings starts under "The defaults, in full" below.
 
 ## Where the files live
 

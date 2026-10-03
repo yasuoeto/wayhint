@@ -19,7 +19,7 @@ accumulate. In a nested environment like Herdr, you need hints for the app runni
 
 - There is exactly one user: yourself. This is your own **context-aware personal cheatsheet**,
   not a general shortcut list.
-- How it is used: the moment you forget an operation, press the hotkey (default `Super+?`) →
+- How it is used: the moment you forget an operation, press the hotkey (`Super+h` in the README bindings) →
   information for the current context appears, for you, always in the same place (default: top
   right of the screen) → press the same hotkey again once you are done reading, to dismiss it.
 - Operations you look up get appended to YAML and the sheet grows over time. Additions, edits,

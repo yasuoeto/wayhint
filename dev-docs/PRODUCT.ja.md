@@ -17,7 +17,7 @@ Wayland環境で操作方法を忘れたとき、Web検索やマニュアル検�
 
 - 利用者は自分1人。自分専用の **context-aware personal cheatsheet** であり、一般的な
   ショートカット一覧ではない。
-- 使い方: 操作を忘れた瞬間にhotkey(既定 `Super+?`)を押す → いつも同じ場所(既定: 画面右上)に、
+- 使い方: 操作を忘れた瞬間にhotkey(README の割り当てでは `Super+h`)を押す → いつも同じ場所(既定: 画面右上)に、
   現在のcontextに応じた自分用の情報が出る → 見終わったら同じhotkeyで消す。
 - 調べた操作はYAMLに追記して育てる。追加・修正・削除はoverlayの編集モードで完結し、sheet全体を
   見直すときはoverlayの「Edit in editor」から外部editor(gvim)で該当ファイル・該当行を直接開ける。
