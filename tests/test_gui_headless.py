@@ -232,23 +232,34 @@ class FocusFollowTest(unittest.TestCase):
             time.sleep(0.2)
         self.fail(f"{stub} never became the active context\n{session.wayhint('context')}")
 
+    def labels_once_shown(self, session: HeadlessSession, title: str) -> list[str]:
+        """The overlay's labels once ``title`` is among them, or as they were after 15 s.
+
+        GTK publishes the tree a moment after the overlay maps (about 0.5 s on GTK 4.24), so a
+        read straight after the hotkey can see nothing at all.
+        """
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            labels = session.a11y_names("label")
+            if title in labels:
+                break
+            time.sleep(0.2)
+        return labels
+
     def test_the_sheet_follows_the_focus_without_the_overlay_closing(self) -> None:
         root = config_root(self, self.OVERLAY, PROCESS_SHEETS)
         with HeadlessSession(root, keybind=("W-h", "toggle")) as session:
             self.terminal(session, "claude", "claude-code")
             session.press("win", "h")
-            self.assertIn("Claude Code", session.a11y_names("label"), session.log_tail())
+            self.assertIn(
+                "Claude Code", self.labels_once_shown(session, "Claude Code"), session.log_tail()
+            )
 
             self.terminal(session, "vi", "vi")  # the new window takes the focus
             self.assertTrue(session.a11y_nodes(), "the overlay closed when the focus moved")
 
             session.press("win", "h")
-            deadline = time.monotonic() + 15
-            while time.monotonic() < deadline:
-                labels = session.a11y_names("label")
-                if "Vi" in labels:
-                    break
-                time.sleep(0.2)
+            labels = self.labels_once_shown(session, "Vi")
             self.assertIn("Vi", labels, session.log_tail())
             self.assertNotIn("Claude Code", labels)
             # Replaced, not closed and re-opened: the daemon says which of the two it did.
@@ -508,6 +519,9 @@ class SearchChecklistTest(unittest.TestCase):
         with HeadlessSession(root, width=WIDTH, height=HEIGHT) as session:
             session.toplevel("wayhint-probe")
             self.assertIn("mode=search", session.wayhint("search-mode"), session.log_tail())
+            # Keys typed before the first frame are dropped (all of them on GTK 4.24 with a
+            # GPU renderer), so wait for the list before typing.
+            self.until(session, "the list never showed", lambda: "Quit" in self.showing(session))
             session.press("x")  # the first key of a session can be lost; BackSpace evens it out
             session.press("BackSpace")
             session.type_text("quit")
@@ -589,7 +603,9 @@ class KeysReturnToTheAppTest(unittest.TestCase):
         )
 
     def assert_keys_reach_the_app(self, session: HeadlessSession, typed: Path, word: str) -> None:
-        session.type_text(word)
+        # The first key after the keyboard comes back can be lost, as at the start of a
+        # session; a space ahead of the word takes that loss, and ``in`` ignores it.
+        session.type_text(" " + word)
         self.until(
             session,
             "the keys did not come back to the application",
