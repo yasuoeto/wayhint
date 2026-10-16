@@ -95,7 +95,9 @@ class Issue:
     def __str__(self) -> str:
         where = f"{self.file}:{self.line}" if self.line else str(self.file)
         prefix = "" if self.severity == "error" else f"{self.severity}: "
-        return f"{where}: {prefix}{self.message}"
+        # The message can name a sheet's keys, and a quoted key can hold any character: written
+        # out, so a terminal printing it shows an escape sequence rather than obeying it.
+        return f"{where}: {prefix}{visible(self.message)}"
 
 
 @dataclass

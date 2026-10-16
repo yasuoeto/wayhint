@@ -43,6 +43,16 @@ class CheckSheetTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("does not match the file name", err)
 
+    def test_a_key_name_cannot_put_control_characters_on_the_terminal(self) -> None:
+        """Fails if a sheet's key name reaches the terminal raw, so escapes rewrite the verdict."""
+        path = self.write(
+            self.drafts, "app.yaml", 'id: app\ntitle: App\n"\\e[1A\\e]52;c;eA==\\a": 1\n'
+        )
+        code, _out, err = self.run_cli(str(path))
+        self.assertEqual(code, 1)
+        self.assertNotIn("\x1b", err)
+        self.assertIn("unknown top-level key(s): \\x1b[1A\\x1b]52;c;eA==\\x07", err)
+
     def test_warnings_pass_unless_strict(self) -> None:
         path = self.write(
             self.drafts,

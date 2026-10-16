@@ -229,6 +229,17 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertTrue(self.sheet.read_text().startswith("# yaml-language-server: $schema="))
 
+    def test_format_cannot_put_a_key_names_control_characters_on_the_terminal(self) -> None:
+        """Fails if ``format`` on a sheet not yet installed prints its key names to stderr raw."""
+        draft = self.config_home / "draft.yaml"
+        draft.write_text(
+            'id: draft\ntitle: Draft\nhints:\n  - {id: a, title: A, "\\e]52;c;eA==\\a": 1}\n'
+        )
+        code, _out, err = self.run_cli("format", str(draft))
+        self.assertEqual(code, 1)
+        self.assertNotIn("\x1b", err)
+        self.assertIn("hints[0]: unknown key(s): \\x1b]52;c;eA==\\x07", err)
+
     def test_schema_to_stdout_and_to_a_file(self) -> None:
         code, out, err = self.run_cli("schema")
         self.assertEqual(code, 0, err)

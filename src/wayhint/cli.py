@@ -28,7 +28,7 @@ from pathlib import Path
 
 from wayhint import __version__, ipc
 from wayhint.config import GlobalConfig, config_dir
-from wayhint.models import HINT_KINDS, Hint, HintSheet
+from wayhint.models import HINT_KINDS, Hint, HintSheet, visible
 from wayhint.schema import json_schema
 from wayhint.selection import explain_filters, same_group, sort_hints
 from wayhint.sheet_check import check_sheet
@@ -446,7 +446,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return args.func(args)
     except (CommandError, SheetWriteError) as e:
-        print(f"wayhint: {e}", file=sys.stderr)
+        # The text can carry a sheet's key names (``format`` on a file not yet installed).
+        print(f"wayhint: {visible(str(e))}", file=sys.stderr)
         for issue in getattr(e, "issues", []):
             print(f"  {issue}", file=sys.stderr)
         return 1
