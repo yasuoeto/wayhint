@@ -240,6 +240,22 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(), before)
 
+    def test_a_backup_is_readable_by_its_owner_only(self) -> None:
+        """Fails if the copy of a launcher (which can hold a token) is created with the umask's
+        default mode, or with the original's group bits, which its group or ACL may not mean."""
+        waybar = self.config / "waybar/config.jsonc"
+        old_umask = os.umask(0o022)
+        self.addCleanup(os.umask, old_umask)
+        for mode in (0o600, 0o640, 0o644):
+            with self.subTest(mode=oct(mode)):
+                waybar.write_text(WAYBAR)
+                waybar.chmod(mode)
+                for old in waybar.parent.glob("config.jsonc.wayhint-backup-*"):
+                    old.unlink()
+                self.run_script("--apply", "foot")
+                (backup,) = waybar.parent.glob("config.jsonc.wayhint-backup-*")
+                self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o600)
+
     def test_a_second_apply_changes_nothing(self) -> None:
         self.run_script("--apply", "foot")
         waybar = self.config / "waybar/config.jsonc"

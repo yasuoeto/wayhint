@@ -368,11 +368,20 @@ def edit_lines(path: Path, replacements: dict[int, str], stamp: str) -> Path:
 
     The backup is what makes this safe to run on a configuration somebody has been maintaining by
     hand: one copy per file per run, named so that several runs do not overwrite each other.
+    The copy is readable by its owner only: a launcher can hold a token, and permission bits
+    copied from the original would not carry its group or its ACL, so they could let in someone
+    the original keeps out. Created exclusively, so a name already there -- a file or a link --
+    is left alone rather than written through.
     """
     backup = path.with_name(f"{path.name}.wayhint-backup-{stamp}")
     original = path.read_text()
-    if not backup.exists():
-        backup.write_text(original)
+    try:
+        fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(original)
     ends_with_newline = original.endswith("\n")
     lines = original.splitlines()
     for number, replacement in replacements.items():
