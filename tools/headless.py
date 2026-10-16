@@ -33,7 +33,7 @@ from xml.sax.saxutils import quoteattr
 
 REPO = Path(__file__).resolve().parent.parent
 COMPOSITORS = ("labwc", "sway", "cage")
-TOOLS = ("grim", "magick")
+TOOLS = ("grim", "magick", "dbus-daemon", "foot")  # foot: the window toplevel() opens
 INJECT = "wtype"
 HEADLESS_OUTPUT = "HEADLESS-1"
 START_TIMEOUT = 15.0
@@ -129,7 +129,12 @@ class HeadlessSession:
         tag: str | None = None,
     ) -> None:
         self.config_dir = config_dir
+        if (width, height) != (1280, 720):
+            # The headless backend's output comes up at its own default size, and nothing here
+            # changes it: another size would be measured against the wrong numbers, silently.
+            raise ValueError(f"only 1280x720 is supported, not {width}x{height}")
         self.width, self.height = width, height
+        self.kept_directories = False  # set when tear-down left them for someone to look at
         # ``(key, wayhint command)``: what the person's own compositor config does, so the path
         # from a key press to the daemon can be driven end to end.
         self.keybind = keybind
@@ -244,26 +249,28 @@ class HeadlessSession:
         # reverse of it below. The bus went up first because the two after it are given its
         # address, so it is the last thing that may go down: taking it out from under a live
         # compositor is what makes AT-SPI clients hang on the way out.
-        started = [*filter(None, [self._bus]), *self._procs]
         left: list[str] = []
-        for proc in reversed(started):
-            try:
-                self._signal_group(proc, signal.SIGTERM)
-            except (ValueError, OSError) as e:  # a bad pgid is a bug; keep taking the rest down
-                left.append(f"SIGTERM: {type(e).__name__}: {e}")
-        for proc in reversed(started):
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                with contextlib.suppress(ValueError, OSError, subprocess.TimeoutExpired):
-                    self._signal_group(proc, signal.SIGKILL)
+        # Everything but the bus first, and waited for; the bus only once they are gone.
+        for batch in ([*reversed(self._procs)], [*filter(None, [self._bus])]):
+            for proc in batch:
+                try:
+                    self._signal_group(proc, signal.SIGTERM)
+                except (ValueError, OSError) as e:  # a bad pgid is a bug; take the rest down
+                    left.append(f"SIGTERM: {type(e).__name__}: {e}")
+            for proc in batch:
+                try:
                     proc.wait(timeout=5)
-            try:
-                if not self._wait_group_gone(proc):
-                    left.append("a process group was not seen to empty out (timed out)")
-            except (ValueError, OSError) as e:
-                left.append(f"waiting for a process group: {type(e).__name__}: {e}")
+                except subprocess.TimeoutExpired:
+                    with contextlib.suppress(ValueError, OSError, subprocess.TimeoutExpired):
+                        self._signal_group(proc, signal.SIGKILL)
+                        proc.wait(timeout=5)
+                try:
+                    if not self._wait_group_gone(proc):
+                        left.append("a process group was not seen to empty out (timed out)")
+                except (ValueError, OSError) as e:
+                    left.append(f"waiting for a process group: {type(e).__name__}: {e}")
         if left:
+            self.kept_directories = True
             self._keep_directories(left)
         if self.log is not None:
             self.log.close()

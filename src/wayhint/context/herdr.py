@@ -96,7 +96,8 @@ class HerdrContextProvider:
         argv = [self.executable, *args]
         try:
             out = self._run(argv, timeout)
-        except (OSError, subprocess.SubprocessError) as e:
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as e:
+            # UnicodeDecodeError: the runner decodes the output as text, and herdr's is not.
             log.warning("herdr %s failed: %s", " ".join(args), e.__class__.__name__)
             return None
         try:

@@ -150,6 +150,16 @@ class CliTest(unittest.TestCase):
         self.assertFalse(added.favorite)
         self.assertTrue(added.learned, "learned is stamped with the day it was captured")
 
+    def test_a_warning_elsewhere_does_not_stop_an_edit(self) -> None:
+        """Fails if an edit command refuses to write because some sheet only has a warning,
+        which validate itself does not count as a failure."""
+        other = self.sheet.parent / "other.yaml"
+        other.write_text("id: other\ntitle: O\ninclude: [nope]\nhints:\n  - {id: o, title: O}\n")
+        code, _out, err = self.run_cli("add", "New pane", "--key", "x", "--sheet", "demo")
+        self.assertEqual(code, 0, err)
+        self.assertIn("no sheet with id 'nope'", err)
+        self.assertIn("new-pane", self.ids())
+
     def test_add_gives_a_colliding_slug_a_number(self) -> None:
         self.run_cli("add", "Alpha", "--sheet", "demo")
         self.assertIn("alpha-2", self.ids())

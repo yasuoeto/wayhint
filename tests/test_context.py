@@ -69,10 +69,13 @@ class FakeDesktop:
 
 
 class FakeHerdr:
-    def __init__(self, proc, applies="herdr", raise_=False):
+    def __init__(self, proc, applies="herdr", raise_=False, raise_in_applies=False):
         self.proc, self.applies, self.raise_ = proc, applies, raise_
+        self.raise_in_applies = raise_in_applies
 
     def applies_to(self, app_id):
+        if self.raise_in_applies:
+            raise RuntimeError("boom")
         return app_id == self.applies
 
     def foreground_process(self, app_id=None):
@@ -148,7 +151,11 @@ class ResolverTest(unittest.TestCase):
         self.assertEqual(ctx.parent_context, "herdr")
 
     def test_nested_provider_failure_is_contained(self) -> None:
-        for prov in (FakeHerdr(None), FakeHerdr(None, raise_=True)):
+        for prov in (
+            FakeHerdr(None),
+            FakeHerdr(None, raise_=True),
+            FakeHerdr(None, raise_in_applies=True),
+        ):
             ctx = ContextResolver(FakeDesktop(snap("herdr")), [prov]).resolve(SHEETS, self.cfg)
             self.assertEqual(ctx.active_sheet, "herdr")
             self.assertIsNone(ctx.foreground_process)
@@ -351,6 +358,7 @@ class HerdrAdapterTest(unittest.TestCase):
             "timeout": {"pane current": subprocess.TimeoutExpired("herdr", 3)},
             "nonzero": {"pane current": subprocess.CalledProcessError(1, "herdr")},
             "garbage": {"pane current": "not json"},
+            "not utf-8": {"pane current": UnicodeDecodeError("utf-8", b"\xe9", 0, 1, "bad")},
             "no procs": {"pane current": PANE, "pane process-info": info([])},
             "no pane": {"pane current": {"result": {"pane": {}}}},
         }

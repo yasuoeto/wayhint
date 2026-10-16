@@ -89,8 +89,10 @@ class SearchKeysTest(unittest.TestCase):
     def test_c_on_the_list_copies_and_leaves(self):
         self.assertEqual(em.search_action("c"), em.COPY_AND_LEAVE)
 
-    def test_enter_on_the_list_only_leaves(self):
-        for key in ("Return", "KP_Enter"):
+    def test_enter_and_escape_on_the_list_only_leave(self):
+        """Fails if a key that ends search in the box does nothing once the list has the keys
+        (Esc on the list used to leave the keyboard grabbed)."""
+        for key in ("Return", "KP_Enter", "Escape"):
             with self.subTest(key=key):
                 self.assertEqual(em.search_action(key), em.END_SEARCH)
 
@@ -108,6 +110,7 @@ class SearchKeysTest(unittest.TestCase):
     def test_nothing_else_is_taken_from_the_search_box_or_with_a_modifier(self):
         self.assertIsNone(em.search_action("c", editable=True))
         self.assertIsNone(em.search_action("Return", editable=True))  # the IME's first
+        self.assertIsNone(em.search_action("Escape", editable=True))  # the entry's stop-search
         self.assertIsNone(em.search_action("Up", editable=True))
         self.assertIsNone(em.search_action("c", ctrl=True))
         self.assertIsNone(em.search_action("x"))
@@ -207,7 +210,7 @@ class DaemonSearchTest(DaemonCase):
     def test_a_failed_write_keeps_the_filter_and_logs_without_it(self):
         with (
             mock.patch.object(daemon_module, "save_state", side_effect=OSError(28, "No space")),
-            self.assertLogs("wayhintd", level="WARNING") as logs,
+            self.assertLogs("wayhint.daemon", level="WARNING") as logs,
         ):
             self.search("secret words")
             self.daemon.on_edit_action(em.END_SEARCH, None)
@@ -220,7 +223,7 @@ class DaemonSearchTest(DaemonCase):
     def test_a_broken_file_starts_without_filters_and_is_written_over(self):
         self.state.parent.mkdir(parents=True)
         self.state.write_text("foo: [")
-        with self.assertLogs("wayhintd", level="WARNING") as logs:
+        with self.assertLogs("wayhint.daemon", level="WARNING") as logs:
             daemon = self.make_daemon()
         self.assertEqual(len(logs.output), 1)
         self.assertEqual(daemon.filters, {})
@@ -296,6 +299,21 @@ class DaemonSearchTest(DaemonCase):
         self.daemon._open = {"A": self.view}
         self.daemon._shown_key = "A"
         self.search("pane")
+        workspace.key = "B"
+        workspace.known = lambda: {"A", "B"}
+        self.daemon._apply_workspace()
+        self.assertEqual(self.view.mode, "normal")
+        self.assertEqual(self.daemon.filters, {"b": "pane"})
+
+    def test_leaving_the_workspace_ends_a_hidden_search_too(self):
+        """Fails if a search hidden with the toggle hotkey survives leaving its workspace, so the
+        next workspace's search overwrites the shared box and the typed text is lost."""
+        workspace = Workspace()
+        self.daemon._watcher = workspace
+        self.daemon._open = {"A": self.view}
+        self.daemon._shown_key = "A"
+        self.search("pane")
+        self.daemon.dispatch("hide")  # hidden, the search kept
         workspace.key = "B"
         workspace.known = lambda: {"A", "B"}
         self.daemon._apply_workspace()

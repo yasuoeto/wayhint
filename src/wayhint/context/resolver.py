@@ -50,7 +50,12 @@ class ContextResolver:
         proc = None
         chain: tuple[str, ...] = ()
         for provider in self.nested:
-            if not provider.applies_to(snap.app_id):
+            try:
+                applies = provider.applies_to(snap.app_id)
+            except Exception:  # adapter bug must not take the overlay down
+                log.exception("nested provider failed")
+                continue
+            if not applies:
                 continue
             # Recorded before the call: the chain says which provider was asked, which is the
             # thing to look at when the answer is not the expected one.

@@ -358,6 +358,18 @@ class FormDraftTest(unittest.TestCase):
         self.assertIsNone(fields["command"], "kind shortcut has no command")
         self.assertIsNone(fields["category"])
 
+    def test_editing_keeps_a_field_the_form_does_not_show(self) -> None:
+        """Fails if saving an existing hint deletes the key or command its kind does not carry,
+        which the form never showed (a hand-written shortcut may have a command)."""
+        for kind, hidden in (("shortcut", ("command",)), ("note", ("key", "command"))):
+            with self.subTest(kind=kind):
+                draft = em.FormDraft(
+                    hint_id="h", fields={"title": "T", "kind": kind, "key": "x", "command": "y"}
+                )
+                fields = em.draft_fields(draft)
+                for name in hidden:
+                    self.assertNotIn(name, fields)
+
     def test_note_has_neither(self) -> None:
         draft = em.FormDraft(fields={"title": "T", "kind": "note", "key": "x", "command": "y"})
         fields = em.draft_fields(draft)

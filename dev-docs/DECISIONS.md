@@ -2000,6 +2000,34 @@ failure distinction, and others)
   launcher is no longer group-readable. File names in messages and `inspect`'s tag values are
   still printed as they are.
 
+## 0050 — Sheet validation is stricter about types, and edits keep what they did not touch
+
+- **Date**: 2026-10-16
+- **Status**: accepted
+- **Context**: A bug review (review/bugs.md) found sheets read in ways the user would not expect,
+  and edits that changed parts of a file nobody asked them to: a number like `key: 1.10` shown
+  as `1.1`; `match.wayland: []` taken for no rule; `version: true` taken for 1; an id ending in
+  a newline accepted; both `wayland` and `wayfire` written with one silently ignored; a form
+  save deleting a `command` its kind did not show; a hint edit moving the neighbour's heading
+  comment; quick add replacing a sheet file that did not load.
+- **Decision**:
+  - In `key`, `command` and the other text fields, only a plain decimal integer is taken as
+    text; any other unquoted number is a mistake that says to quote it. `match.wayland` /
+    `match.wayfire` / `match.process` must be a mapping or absent; writing both desktop
+    spellings is a mistake; `version` must be the integer 1; ids are matched in full.
+  - A comment between two hints belongs to the hint below it: rebuilding, swapping and deleting
+    a hint carry that comment, and no other. The first hint's heading counts too.
+  - Saving an existing hint from the form leaves the fields its kind does not show as they are
+    on disk. Quick add never takes the name of a file in the hints directory, loaded or not,
+    and creates the new sheet exclusively.
+  - A name in config.yaml's `include` that no sheet has is one warning, against config.yaml.
+- **Alternatives**: keeping the original text of a number (ruamel keeps no text for most
+  numbers, and the rule would differ by YAML number syntax); widening the JSON Schema instead
+  of tightening validation (it would keep accepting what was never meant).
+- **Consequences**: A sheet that relied on one of the loose readings no longer loads until it is
+  fixed; `wayhint validate` names the line. A hand-written `command` on a `shortcut` survives a
+  form save, and stays hidden in the form.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

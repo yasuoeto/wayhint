@@ -2,7 +2,7 @@ import struct
 import unittest
 
 from wayhint.config import ConfigError, parse_global_config
-from wayhint.context.base import ContextError, DesktopSnapshot
+from wayhint.context.base import ContextError, DesktopSnapshot, ProviderUnavailable
 from wayhint.context.select import AutoDesktopProvider, select_desktop_provider
 from wayhint.context.wayland import (
     _Output,
@@ -88,22 +88,47 @@ class OutputSizeTest(unittest.TestCase):
 
 
 class Fake:
-    def __init__(self, error=None):
-        self.error, self.focused = error, []
+    def __init__(self, error=None, kind=ProviderUnavailable):
+        self.error, self.kind, self.focused = error, kind, []
 
     def snapshot(self):
         if self.error:
-            raise ContextError(self.error)
+            raise self.kind(self.error)
         return DesktopSnapshot("foot", "t", "foot\tt", OUT, OUT)
 
     def find_output(self, name):
         if self.error:
-            raise ContextError(self.error)
+            raise self.kind(self.error)
         return OUT if name == OUT.name else None
 
     def focus_view(self, ref):
         self.focused.append(ref)
         return not self.error
+
+
+class OldOutputTest(unittest.TestCase):
+    def test_outputs_without_names_are_said_once(self) -> None:
+        """Fails if a compositor offering wl_output below version 4 (no output names) leaves
+        the overlay on the default output without a word in the log."""
+        from unittest import mock
+
+        from wayhint.context import wayland
+
+        class Proxy:
+            def __init__(self) -> None:
+                self.dispatcher: dict = {}
+
+        class Registry:
+            def bind(self, name, cls, version):
+                return Proxy()
+
+        provider = wayland._Session.__new__(wayland._Session)
+        provider.outputs, provider._WlOutput = {}, object
+        with mock.patch.object(wayland, "_warned_old_output", False):
+            with self.assertLogs("wayhint.context.wayland", "WARNING") as logs:
+                provider._on_global(Registry(), 1, "wl_output", 3)
+                provider._on_global(Registry(), 2, "wl_output", 3)
+        self.assertEqual(len(logs.records), 1)
 
 
 class AutoProviderTest(unittest.TestCase):
@@ -123,6 +148,18 @@ class AutoProviderTest(unittest.TestCase):
         auto = AutoDesktopProvider(lambda: primary, lambda: fallback, lambda: True)
         self.assertEqual(auto.snapshot().app_id, "foot")
         self.assertEqual(auto.find_output("eDP-1"), OUT)
+
+    def test_a_passing_failure_does_not_switch_to_the_fallback(self) -> None:
+        """Fails if one broken round trip (or a display not up yet) moves the daemon to the
+        fallback backend for good, when only a missing protocol should."""
+        primary, fallback = Fake(error="round trip failed", kind=ContextError), Fake()
+        auto = AutoDesktopProvider(lambda: primary, lambda: fallback, lambda: True)
+        with self.assertRaises(ContextError):
+            auto.snapshot()
+        primary.error = None
+        auto.snapshot()
+        self.assertTrue(auto.focus_view("ref"))
+        self.assertEqual((primary.focused, fallback.focused), (["ref"], []))
 
     def test_error_surfaces_when_no_fallback(self) -> None:
         auto = AutoDesktopProvider(lambda: Fake(error="no protocol"), Fake, lambda: False)

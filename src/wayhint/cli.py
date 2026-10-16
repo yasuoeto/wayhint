@@ -190,9 +190,10 @@ def _narrowing(values: Sequence[str] | None, source: str | None) -> str:
 def _load() -> tuple[Path, LoadResult, GlobalConfig]:
     root = config_dir()
     result = load_all(root)
-    if result.issues:
-        for issue in result.issues:
-            print(str(issue), file=sys.stderr)
+    for issue in result.issues:
+        print(str(issue), file=sys.stderr)
+    # Warnings (an include naming nothing, say) do not stop validate either (DECISIONS 0026).
+    if result.errors:
         raise CommandError("fix the problems above first; nothing was written")
     return root, result, result.config or GlobalConfig()
 

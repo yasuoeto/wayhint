@@ -2,9 +2,10 @@
 
 Keyboard: the mode is ``normal`` / ``search`` / ``edit`` and the grab follows from it and from
 visibility, in :meth:`_sync_keyboard_mode` and nowhere else (DESIGN 編集モード §1). ``normal`` is
-NONE, so the app underneath keeps receiving input; ``search`` and ``edit`` are ON_DEMAND while the
-overlay is visible. Hiding, or leaving the workspace, keeps the mode but drops the grab, so a
-failed refocus can never leave the keyboard captured.
+NONE, so the app underneath keeps receiving input; ``search`` and ``edit`` are EXCLUSIVE while the
+overlay is visible (why not ON_DEMAND: :meth:`_sync_keyboard_mode`). Hiding, or leaving the
+workspace, keeps the mode but drops the grab, so a failed refocus can never leave the keyboard
+captured.
 
 Decisions about *what* a key means live in :mod:`wayhint.ui.editmode` (pure, tested headless);
 this module only turns them into widget changes and callbacks. Writing YAML is the daemon's job:
@@ -171,6 +172,7 @@ class HintWindow(Gtk.Window):
         self._hints: list[Hint] = []
         self._mode = "normal"
         self._issues: list[Issue] = []  # what the error line falls back to (see _show_standing)
+        self._message: str | None = None  # a one-off answer, held until the mode changes
         self._form: FormDraft | None = None
         self._included: list[HintSheet] = []
         self._preedit = False  # an input method conversion is open in one of the fields
@@ -397,6 +399,10 @@ class HintWindow(Gtk.Window):
             self._search_btn.set_label(tr("Done"))  # the fixed label above said "Search"
         if self._mode in ("edit", "search"):
             self._help.set_label(self._help_text())
+        if self._form is not None:  # built for the draft when it opened, in the old language
+            self._form_title.set_label(self._form_title_text(self._form))
+            if self._form.warning:
+                self._form_note.set_label(f"⚠ {tr(self._form.warning)}")
         self._show_chip()
 
     @property
@@ -451,13 +457,17 @@ class HintWindow(Gtk.Window):
         The line is shared: YAML errors and a failed context stay for as long as they are true,
         while :meth:`show_message` answers one action. A mode change ends what that answer was
         about ("finish editing before searching" is wrong once editing is over), so it comes
-        back here.
+        back here. A re-render does not: the reload that follows a save would otherwise wipe
+        "saved" / "deleted" a moment after they appear. A YAML error still comes first.
         """
         if self._issues:
             lines = [f"⚠ {self._tr('YAML error')}: {i}" for i in self._issues[:3]]
             if len(self._issues) > 3:
                 lines.append(self._tr("… and {n} more").format(n=len(self._issues) - 3))
             self._error.set_label("\n".join(lines))
+            self._error.set_visible(True)
+        elif self._message is not None:
+            self._error.set_label(self._message)
             self._error.set_visible(True)
         elif self._ctx and self._ctx.error:
             self._error.set_label(f"⚠ {self._ctx.error}")
@@ -466,9 +476,14 @@ class HintWindow(Gtk.Window):
             self._error.set_visible(False)
 
     def show_message(self, text: str) -> None:
-        """A one-off answer to an action. It lasts until the next mode change."""
+        """A one-off answer to an action. It lasts until the next mode change or hide."""
+        self._message = text
         self._error.set_label(text)
         self._error.set_visible(True)
+
+    def _end_message(self) -> None:
+        self._message = None
+        self._show_standing()
 
     def hide_overlay(self) -> None:
         """Put the surface away without deciding anything: the daemon owns "is it open here?".
@@ -478,6 +493,7 @@ class HintWindow(Gtk.Window):
         """
         self.set_visible(False)
         self._delete_pending = None
+        self._message = None
         self._sync_keyboard_mode()
 
     def is_shown(self) -> bool:
@@ -544,7 +560,7 @@ class HintWindow(Gtk.Window):
         self._mode = mode
         self._delete_pending = None
         if mode != leaving:
-            self._show_standing()
+            self._end_message()
         self._search_btn.set_sensitive(mode != "edit")
         if mode != "search":
             # The box is hidden but the filter stays: leaving search only lets go of the keyboard
@@ -722,7 +738,7 @@ class HintWindow(Gtk.Window):
             return False  # let the input method have it; :meth:`_on_key_late` picks up the rest
         if editmode.cancels_delete(action) and self._delete_pending is not None:
             self._delete_pending = None
-            self._show_standing()  # the "press d again" prompt, not a YAML error under it
+            self._end_message()  # the "press d again" prompt, not a YAML error under it
         if action is None:
             return False
         if action == editmode.FORM_NEXT or action == editmode.FORM_PREVIOUS:
@@ -815,8 +831,9 @@ class HintWindow(Gtk.Window):
             LayerShell.set_anchor(self, edge, on)
             LayerShell.set_margin(self, edge, getattr(place.margins, name) if on else 0)
         self.set_default_size(place.width or -1, place.height or -1)
-        if place.width:
-            self.set_size_request(place.width, place.height or -1)
+        # Always, -1 included: a size not known here (a % of an unknown output) must not keep
+        # the previous context's minimum.
+        self.set_size_request(place.width or -1, place.height or -1)
         self._edges = place.edges
         self._place_grip(place.edges)
         monitor = self._find_monitor(out.name) if out else None
@@ -1109,6 +1126,7 @@ class HintWindow(Gtk.Window):
         self._selected_id = selected if selected is not None else self._selected_id
         if self._delete_pending is not None and selected != self._delete_pending:
             self._delete_pending = None  # moving the selection calls off a pending delete
+            self._end_message()  # and its "press d again" prompt with it
         if hint is None:
             self._detail.set_visible(False)
             self._copy_btn.set_sensitive(False)

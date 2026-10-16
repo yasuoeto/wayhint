@@ -13,7 +13,7 @@ class SizeTest(unittest.TestCase):
         self.assertEqual(Size.parse("12.5%"), Size(12.5, "%"))
 
     def test_invalid(self) -> None:
-        for raw in ("abc", "-1px", "120%", True, None, "10em", []):
+        for raw in ("abc", "-1px", "120%", True, None, "10em", [], float("nan"), float("inf")):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 Size.parse(raw)
 

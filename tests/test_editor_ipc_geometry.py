@@ -128,6 +128,30 @@ class IpcTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ipc.send_command("rm", path)
 
+    def test_a_daemon_that_does_not_answer_is_unavailable(self) -> None:
+        """Fails if a timeout or a reset while waiting for the reply escapes as a raw OSError,
+        which callers do not take for "no daemon" (a second wayhintd then crashed its start)."""
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "s.sock"
+            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            srv.bind(str(path))
+            srv.listen(1)
+            try:
+                with self.assertRaises(ipc.DaemonUnavailable):
+                    ipc.send_command("ping", path, timeout=0.2)
+            finally:
+                srv.close()
+
+    def test_a_daemon_that_never_listened_leaves_the_socket_alone(self) -> None:
+        """Fails if a wayhintd whose start failed removes the socket of the one already running."""
+        from wayhint.daemon import Daemon
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "wayhint.sock"
+            path.write_text("")  # stands for the running daemon's socket
+            Daemon(Path(d), path).stop()
+            self.assertTrue(path.exists())
+
     def test_socket_path_uses_runtime_dir(self) -> None:
         with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": "/run/user/1"}):
             self.assertEqual(ipc.socket_path(), Path("/run/user/1/wayhint.sock"))

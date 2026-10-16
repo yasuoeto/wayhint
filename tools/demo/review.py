@@ -10,8 +10,9 @@ cut-off line stops being visible; a crop of the changed rows keeps every pixel o
 A step with no counterpart in the adopted take is written whole: there is nothing to compare
 it to, so all of it is new.
 
-The captions are not in the stills (``encode`` burns them in afterwards), so a caption that
-changed shows up here only if the picture under it changed too.
+The stills compared are the captioned ones when both takes have them, so a changed caption
+shows up as a changed step; a take recorded before captioned stills existed is compared bare,
+and there a caption that changed shows up only if the picture under it changed too.
 """
 
 from __future__ import annotations

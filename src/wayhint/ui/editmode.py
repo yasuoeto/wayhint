@@ -96,7 +96,7 @@ class WorkspaceView:
 
 
 def keyboard_grab(mode: str, visible: bool) -> bool:
-    """Whether the layer surface should take the keyboard (ON_DEMAND) or not (NONE).
+    """Whether the layer surface should take the keyboard (EXCLUSIVE) or not (NONE).
 
     One rule, one place: hiding or leaving the workspace keeps the mode but drops the grab, so a
     failed refocus or a missed event can never leave the keyboard captured (DESIGN §1).
@@ -196,7 +196,8 @@ def search_action(
 
     In the box only ``↓`` is taken, to reach the list: every other key is text, and ``Enter``
     arrives as the entry's ``activate`` -- after the input method is done with it -- which
-    leaves without copying. On the list ``c`` copies and leaves, ``Enter`` only leaves, and the
+    leaves without copying. On the list ``c`` copies and leaves, ``Enter`` and ``Esc`` only
+    leave, and the
     arrows move the selection; ``↑`` on the first row (``at_top``) goes back to the box.
     """
     if ctrl:
@@ -209,6 +210,7 @@ def search_action(
         "c": COPY_AND_LEAVE,
         "Return": END_SEARCH,
         "KP_Enter": END_SEARCH,
+        "Escape": END_SEARCH,  # in the box it is the entry's ``stop-search``; here nobody's
         "Down": SELECT_NEXT,
         "KP_Down": SELECT_NEXT,
     }
@@ -441,12 +443,20 @@ def draft_from_hint(hint: Hint, sheet_id: str | None) -> FormDraft:
 
 
 def draft_fields(draft: FormDraft) -> dict[str, object]:
-    """The form's values as hint fields: fields the kind does not carry are dropped, blanks null."""
+    """The form's values as hint fields, blanks null.
+
+    A field the kind does not carry is not on the form. A new hint does not get one; an existing
+    hint keeps what its file says, because the form never showed it -- a hand-written
+    ``shortcut`` may carry a ``command`` too, and saving a new title must not delete it.
+    """
     kind = draft.value("kind") or "shortcut"
     wanted = kind_fields(kind)
     out: dict[str, object] = {"title": draft.value("title").strip(), "kind": kind}
     for name in ("category", "remark"):
         out[name] = draft.value(name).strip() or None
     for name in ("key", "command"):
-        out[name] = draft.value(name).strip() or None if name in wanted else None
+        if name in wanted:
+            out[name] = draft.value(name).strip() or None
+        elif draft.hint_id is None:
+            out[name] = None
     return out

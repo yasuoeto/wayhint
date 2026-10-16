@@ -15,7 +15,7 @@ import os
 import struct
 from dataclasses import dataclass, field
 
-from wayhint.context.base import ContextError, DesktopSnapshot
+from wayhint.context.base import ContextError, DesktopSnapshot, ProviderUnavailable
 from wayhint.models import OutputInfo
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,20 @@ class _Output:
             width, height = height, width
         s = max(self.scale, 1)
         return OutputInfo(name=self.name, width=width // s, height=height // s)
+
+
+_warned_old_output = False
+
+
+def _note_old_output(version: int) -> None:
+    """Say once that outputs have no names here: placement then falls back to the default."""
+    global _warned_old_output
+    _warned_old_output = True
+    log.warning(
+        "the compositor offers wl_output version %d; output names need version 4, so the "
+        "overlay is placed on the default output",
+        version,
+    )
 
 
 def apply_mode(out: _Output, flags: int, width: int, height: int) -> None:
@@ -122,7 +136,7 @@ class _Session:
 
             from wayhint.context._wlr_foreign_toplevel import ZwlrForeignToplevelManagerV1
         except ImportError as e:  # pragma: no cover - depends on the environment
-            raise ContextError("pywayland is not installed") from e
+            raise ProviderUnavailable("pywayland is not installed") from e
         self._WlOutput, self._WlSeat, self._Manager = WlOutput, WlSeat, ZwlrForeignToplevelManagerV1
         self.outputs: dict[int, _Output] = {}
         self.toplevels: list[_Toplevel] = []
@@ -144,7 +158,7 @@ class _Session:
             raise ContextError(f"Wayland registry scan failed: {e.__class__.__name__}") from e
         if self.manager is None:
             self.close()
-            raise ContextError("compositor does not provide wlr-foreign-toplevel-management")
+            raise ProviderUnavailable("compositor does not provide wlr-foreign-toplevel-management")
 
     def close(self) -> None:
         # Destroy every proxy before disconnecting: pywayland proxies that are garbage
@@ -171,6 +185,8 @@ class _Session:
             self.manager.dispatcher["toplevel"] = self._on_toplevel
             self.manager.dispatcher["finished"] = _ignore
         elif iface == "wl_output":
+            if version < 4 and not _warned_old_output:
+                _note_old_output(version)
             proxy = reg.bind(name, self._WlOutput, min(version, 4))
             out = self.outputs[id(proxy)] = _Output(proxy)
             proxy.dispatcher["mode"] = lambda p, flags, w, h, refresh: apply_mode(out, flags, w, h)

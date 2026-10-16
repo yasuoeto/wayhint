@@ -31,7 +31,7 @@ def _scalar() -> dict[str, Any]:
     keep this file's rule -- what validation accepts, the schema accepts -- without making an
     unquoted digit an error in the editor while the daemon loads it happily.
     """
-    return _nullable("string", "number")
+    return _nullable("string", "integer")
 
 
 def _regex_list(title: str) -> dict[str, Any]:
@@ -115,8 +115,8 @@ def json_schema() -> dict[str, Any]:
             "type": ["object", "null"],
             "properties": {
                 "anchor": {"enum": list(ANCHORS)},
-                "width": {"type": ["integer", "string"]},
-                "height": {"type": ["integer", "string"]},
+                "width": {"type": ["number", "string"]},
+                "height": {"type": ["number", "string"]},
                 "margin": {"type": ["integer", "object"]},
                 "output": _nullable("string"),
             },

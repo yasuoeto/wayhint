@@ -465,6 +465,45 @@ class HintOpsTest(TmpSheetTest):
                 call()
 
 
+class HeadingCommentTest(TmpSheetTest):
+    SHEET = (
+        "id: s\ntitle: S\nhints:\n"
+        "  # about a\n  - id: a\n    title: A\n    key: x\n"
+        "  # about b\n  - id: b\n    title: B\n    key: y   # end of line\n"
+        "\n  # about c\n  - id: c\n    title: C\n    key: z\n"
+        "  # end of the list\n"
+    )
+
+    def test_each_hint_keeps_its_own_heading(self) -> None:
+        """Fails if rebuilding, swapping or deleting a hint leaves a neighbour's heading comment
+        inside it, moves the heading to another hint, or deletes the wrong one."""
+        cases = [
+            ("update", lambda d: update_hint(d, "a", {"title": "A2"}), "abc"),
+            ("favorite", lambda d: set_favorite(d, "b", True), "abc"),
+            ("swap first", lambda d: swap_hints(d, "a", "b"), "bac"),
+            ("swap last", lambda d: swap_hints(d, "b", "c"), "acb"),
+            ("delete first", lambda d: delete_hint(d, "a"), "bc"),
+            ("delete middle", lambda d: delete_hint(d, "b"), "ac"),
+            ("delete last", lambda d: delete_hint(d, "c"), "ab"),
+            ("format", lambda d: normalize_sheet(d), "abc"),
+        ]
+        for name, op, order in cases:
+            with self.subTest(name):
+                path = self.dir / "s.yaml"
+                path.write_text(self.SHEET)
+                doc = self.doc(path)
+                op(doc)
+                write_document(path, doc)
+                lines = path.read_text().splitlines()
+                ids = [line.split("id: ")[1] for line in lines if line.startswith("  - id: ")]
+                self.assertEqual(ids, list(order))
+                for hint_id in order:
+                    at = lines.index(f"  - id: {hint_id}")
+                    self.assertEqual(lines[at - 1], f"  # about {hint_id}")
+                self.assertEqual(sum("# about" in line for line in lines), len(order))
+                self.assertEqual(lines[-1], "  # end of the list")
+
+
 class NormalizeTest(TmpSheetTest):
     def test_idempotent_and_parse_preserving(self) -> None:
         path = self.copy(DIRTY / "messy.yaml")
@@ -558,6 +597,38 @@ class CreateSheetTest(TmpSheetTest):
         loaded, issues = read_document(path)
         self.assertEqual(issues, [])
         self.assertNotIn("nested", loaded)
+
+    def test_a_file_that_does_not_load_keeps_its_name(self) -> None:
+        """Fails if a new sheet takes the name of a file on disk that is not among the loaded
+        sheets (a syntax error, an id that does not match), and so writes over its hints."""
+        broken = self.dir / "foot.yaml"
+        broken.write_text("id: foot\nhints: [unclosed\n")
+        path, doc = create_sheet(
+            ctx(desktop_app="foot"),
+            build_hint({"id": "h", "title": "T"}),
+            self.config(),
+            hints_dir=self.dir,
+            existing_ids=[],
+            now=NOW,
+        )
+        self.assertEqual(path.name, "foot-2.yaml")
+        write_document(path, doc, new=True)
+        self.assertEqual(broken.read_text(), "id: foot\nhints: [unclosed\n")
+
+    def test_a_new_sheet_never_replaces_a_file(self) -> None:
+        """Fails if creating a sheet replaces a file that appeared at its name meanwhile."""
+        path, doc = create_sheet(
+            ctx(desktop_app="foot"),
+            build_hint({"id": "h", "title": "T"}),
+            self.config(),
+            hints_dir=self.dir,
+            now=NOW,
+        )
+        path.write_text("someone else's\n")
+        with self.assertRaises(SheetWriteError):
+            write_document(path, doc, new=True)
+        self.assertEqual(path.read_text(), "someone else's\n")
+        self.assertEqual([p.name for p in self.dir.iterdir()], [path.name])
 
     def test_process_context(self) -> None:
         path, doc = create_sheet(
@@ -722,6 +793,7 @@ class SchemaTest(unittest.TestCase):
         doc = {
             "id": "s",
             "title": "S",
+            "display": {"width": 420.5},
             "hints": [{"id": "h", "title": "T", "key": 5, "command": 3, "category": 2026}],
         }
         _sheet, issues = parse_sheet(doc, Path("s.yaml"))

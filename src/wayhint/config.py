@@ -99,6 +99,8 @@ def _mapping(node: object, key: str, allowed: Collection[str] | None = None) -> 
 
 
 SHEET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+"""Used with ``fullmatch``: ``$`` alone also matches before a final newline, so ``"a\\n"`` would
+pass. The anchors stay for the JSON Schema, which takes the same pattern."""
 
 
 def _include_refs(node: object, key: str) -> tuple[IncludeRef, ...]:
@@ -111,13 +113,13 @@ def _include_refs(node: object, key: str) -> tuple[IncludeRef, ...]:
     for i, item in enumerate(node):
         where = f"{key}[{i}]"
         if isinstance(item, str):
-            if not SHEET_ID_RE.match(item):
+            if not SHEET_ID_RE.fullmatch(item):
                 raise ConfigError(where, f"must match {SHEET_ID_RE.pattern}")
             out.append(IncludeRef(item))
             continue
         m = _mapping(item, where, ("sheet", "tags", "categories"))
         sheet = m.get("sheet")
-        if not isinstance(sheet, str) or not SHEET_ID_RE.match(sheet):
+        if not isinstance(sheet, str) or not SHEET_ID_RE.fullmatch(sheet):
             raise ConfigError(f"{where}.sheet", f"must match {SHEET_ID_RE.pattern}")
         out.append(
             IncludeRef(

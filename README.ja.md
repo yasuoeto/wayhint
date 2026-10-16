@@ -504,9 +504,9 @@ exec /usr/bin/foot --app-id "foot.p$$" "$@"
 | `toggle` | 出す / しまう(`Super+h`) |
 | `search-mode` | 検索に入る / 抜ける(`Super+Shift+h`)。編集モード中は断る |
 | `edit-mode` | 編集モードに入る / 抜ける(`Super+Ctrl+h`) |
-| `show` | 出す |
+| `show` | 出す。編集中ならそれを差し替えずにそのまま出す |
 | `hide` | しまう。検索中・編集中は `toggle` と同じく、モードと下書きを残して隠すだけ |
-| `refresh` | 出ているなら、いまのウィンドウで中身を取り直す |
+| `refresh` | 出ているなら、いまのウィンドウで中身を取り直す。編集中ならそのまま残す |
 | `reload` | `config.yaml` とヒントを読み直す |
 | `ping` | daemon の生死確認。pid とシート数を返す |
 | `validate` | YAML を検証する。daemon が無くても動く。問題があれば exit 1 |

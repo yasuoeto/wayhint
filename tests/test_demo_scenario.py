@@ -342,6 +342,26 @@ class OutputDirTest(unittest.TestCase):
         """What ``_record`` does: the default root, then the directory under it."""
         return cli._output_dir(cli._out_root(show, None), language, variant)
 
+    def test_a_recording_that_cannot_start_keeps_the_previous_take(self) -> None:
+        """Fails if ``--record`` empties the take already adopted and only then finds that it
+        cannot start (a work directory left by a crashed run)."""
+        show = self.showcase()
+        script = parse(MINIMAL)
+        variant = script.variants[0]
+        taken = self.out(show, "ja", variant.name)
+        taken.mkdir(parents=True)
+        (taken / "take.mp4").write_text("adopted")
+        args = unittest.mock.Mock(out_dir=None, fixtures=scratch(self))
+        with (
+            unittest.mock.patch.object(cli.sess, "check_requirements"),
+            unittest.mock.patch.object(
+                cli.sess, "workspace", side_effect=sess.DemoError("left behind")
+            ),
+            self.assertRaises(sess.DemoError),
+        ):
+            cli._record(args, show, script, variant, "ja")
+        self.assertEqual((taken / "take.mp4").read_text(), "adopted")
+
     def test_it_prepares_a_directory_under_out(self) -> None:
         show = self.showcase()
         out = self.out(show, "ja", "short")
@@ -1500,6 +1520,51 @@ class KeepDirectoriesTest(unittest.TestCase):
         rmtree, err = self.tear_down(PermissionError(1, "not yours"))
         rmtree.assert_not_called()
         self.assertIn("leaving", err)
+
+    def test_the_bus_is_signalled_only_after_the_rest_are_gone(self) -> None:
+        """Fails if the session bus is terminated while the compositor and its clients are still
+        exiting, which is what makes AT-SPI clients hang on the way out."""
+        events: list[str] = []
+
+        class Proc(WaitGroupGoneTest.Proc):
+            def __init__(self, name: str, pid: int) -> None:
+                super().__init__(pid)
+                self.name = name
+
+            def wait(self, timeout=None):
+                events.append(f"waited {self.name}")
+                return 0
+
+        session = self.session()
+        session._bus = Proc("bus", os.getpgrp() + 1)
+        session._procs = [Proc("labwc", os.getpgrp() + 2), Proc("wayhintd", os.getpgrp() + 3)]
+        original = session._signal_group
+
+        def signal_group(proc, sig):
+            events.append(f"signalled {proc.name}")
+            return original(proc, sig)
+
+        session._signal_group = signal_group
+        self.tear_down_with(session, ProcessLookupError())
+        self.assertLess(events.index("waited labwc"), events.index("signalled bus"))
+        self.assertLess(events.index("waited wayhintd"), events.index("signalled bus"))
+
+    def test_a_kept_home_is_not_removed_by_the_demo(self) -> None:
+        """Fails if the demo deletes the HOME the session deliberately kept because something
+        of it may still be running."""
+        home = scratch(self)
+        demo = sess.DemoSession.__new__(sess.DemoSession)
+        demo.wants_herdr = False
+        demo.session = unittest.mock.MagicMock(home=home, kept_directories=True)
+        demo.__exit__(None, None, None)
+        self.assertTrue(home.exists())
+
+    def tear_down_with(self, session, killpg_effect):
+        self.patch("GROUP_GONE_TIMEOUT", headless_mod, new=0.1)
+        self.patch("killpg", headless_mod.os).side_effect = killpg_effect
+        self.patch("rmtree", headless_mod.shutil)
+        with contextlib.redirect_stderr(io.StringIO()):
+            session._tear_down()
 
     def test_a_group_seen_to_go_lets_the_directories_be_removed(self) -> None:
         rmtree, err = self.tear_down(ProcessLookupError())

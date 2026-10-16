@@ -3,7 +3,9 @@
 ``wayland`` is the generic wlr-foreign-toplevel adapter and works on labwc and Wayfire alike.
 ``wayfire`` is the compositor-specific IPC adapter. ``auto`` uses ``wayland`` and falls back to
 ``wayfire`` only when the compositor lacks the foreign-toplevel protocol and ``WAYFIRE_SOCKET``
-is set. The choice is made on the first successful call and then kept.
+is set. The choice is made on the first successful call and then kept. A failure that is not
+"this cannot work here" (``ProviderUnavailable``) -- a round trip that broke, a display not up
+yet at autostart -- is that one call's failure, and does not move the choice.
 """
 
 from __future__ import annotations
@@ -12,7 +14,12 @@ import logging
 import os
 from collections.abc import Callable
 
-from wayhint.context.base import ContextError, DesktopContextProvider, DesktopSnapshot
+from wayhint.context.base import (
+    ContextError,
+    DesktopContextProvider,
+    DesktopSnapshot,
+    ProviderUnavailable,
+)
 from wayhint.models import OutputInfo
 
 log = logging.getLogger(__name__)
@@ -57,7 +64,7 @@ class AutoDesktopProvider:
         for p in self._candidates():
             try:
                 snap = p.snapshot()
-            except ContextError as e:
+            except ProviderUnavailable as e:
                 last = e
                 continue
             if self._chosen is None:
@@ -70,12 +77,15 @@ class AutoDesktopProvider:
         for p in self._candidates():
             try:
                 return p.find_output(name)
-            except ContextError:
+            except ProviderUnavailable:
                 continue
+            except ContextError:
+                return None
         return None
 
     def focus_view(self, view_ref: str) -> bool:
-        return any(p.focus_view(view_ref) for p in self._candidates())
+        # A view ref names a window in the backend that reported it: the chosen one.
+        return (self._chosen or self._primary).focus_view(view_ref)
 
 
 def select_desktop_provider(backend: str) -> DesktopContextProvider:

@@ -139,6 +139,7 @@ class PureTest(unittest.TestCase):
             ): f'    <action name="Execute" command="{WRAPPER}" />',
             ("command_terminal = foot", "ini"): f"command_terminal = {WRAPPER}",
             ("terminal=foot -e sh", "ini"): f"terminal={WRAPPER} -e sh",
+            ("foot -e sh -c 'echo  x'", "shell"): f"{WRAPPER} -e sh -c 'echo  x'",
         }
         for (line, kind), expect in cases.items():
             with self.subTest(line):
@@ -255,6 +256,37 @@ class EndToEndTest(unittest.TestCase):
                 self.run_script("--apply", "foot")
                 (backup,) = waybar.parent.glob("config.jsonc.wayhint-backup-*")
                 self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o600)
+
+    def test_two_terminals_on_one_line_are_both_rewritten(self) -> None:
+        """Fails if one terminal's rewrite of a line replaces another's, leaving a direct launch
+        that no later run finds again."""
+        waybar = self.config / "waybar/config.jsonc"
+        waybar.write_text('{"on-click": "foot", "on-click-right": "kitty"}\n')
+        self.run_script("--apply", "foot", "kitty")
+        line = waybar.read_text()
+        self.assertIn(f'"on-click": "{self.wrapper}"', line)
+        self.assertIn(
+            '"on-click-right": "' + str(self.root / "home/.local/bin/kitty-wayhint"), line
+        )
+
+    def test_a_launcher_keeps_its_line_endings(self) -> None:
+        """Fails if rewriting a line turns the file's CRLF line endings into LF."""
+        waybar = self.config / "waybar/config.jsonc"
+        waybar.write_bytes(WAYBAR.replace("\n", "\r\n").encode())
+        self.run_script("--apply", "foot")
+        self.assertEqual(waybar.read_bytes().count(b"\r\n"), WAYBAR.count("\n"))
+
+    def test_a_launcher_that_is_not_utf8_is_skipped_before_anything_is_written(self) -> None:
+        """Fails if a file the scan reads leniently makes --apply crash halfway, after the
+        wrappers are already written."""
+        menu = self.config / "labwc/menu.xml"
+        menu.write_bytes(MENU_XML.encode().replace(b"native", b"\xe9"))
+        with unittest.mock.patch("sys.stdout") as out:
+            status = setup_terminals.main(["--apply", "foot"])
+        self.assertEqual(status, 0)
+        self.assertIn(b"\xe9", menu.read_bytes())
+        printed = "".join(call.args[0] for call in out.write.call_args_list if call.args)
+        self.assertIn(f"launcher  {menu}: ", printed)  # said to be skipped, in either language
 
     def test_a_second_apply_changes_nothing(self) -> None:
         self.run_script("--apply", "foot")

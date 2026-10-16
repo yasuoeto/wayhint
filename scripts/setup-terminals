@@ -65,6 +65,9 @@ JA = {
         "  .desktop  {path}: 内容が古いので更新します"
     ),
     "  .desktop  {path}: up to date": ("  .desktop  {path}: 最新です"),
+    "  launcher  {path}: not valid UTF-8, skipped": (
+        "  launcher  {path}: UTF-8 として読めないので飛ばします"
+    ),
     "{terminal}: not installed, skipped": ("{terminal}: 入っていないので飛ばします"),
     "{terminal}: unknown terminal; supported: {known}": (
         "{terminal}: 知らない端末です。対象は {known}"
@@ -339,28 +342,58 @@ def point_at(line: str, kind: str, term: Terminal, wrapper: Path) -> str | None:
     for command, start, end in reversed(commands_in(line, kind)):
         if not launches(command, term):
             continue
-        parts = command.split()
-        replaced = " ".join([str(wrapper), *parts[1:]])
-        out = out[:start] + replaced + out[end:]
+        word = FIRST_WORD.match(command)
+        assert word is not None  # launches() found a first word
+        first = start + word.start(1)
+        out = out[:first] + str(wrapper) + out[start + word.end(1) :]
     return out if out != line else None
 
 
-def launcher_hits(term: Terminal, wrapper: Path) -> list[tuple[Path, int, str, str]]:
-    """Lines that still launch the terminal directly, with what they should say instead."""
+FIRST_WORD = re.compile(r"\s*(\S+)")
+
+
+def read_lines(path: Path) -> list[str]:
+    """``path`` as lines, each with its own line ending, exactly as stored.
+
+    The scan and the edit read a file the same way, so a line found is the line written: no
+    decoding the scan forgives and the edit then fails on, and no ``\\r\\n`` turned into ``\\n``.
+    """
+    with open(path, encoding="utf-8", newline="") as fh:
+        return fh.read().splitlines(keepends=True)
+
+
+def body_of(line: str) -> str:
+    """A line without its line ending."""
+    return line.splitlines()[0] if line.splitlines() else ""
+
+
+def launcher_hits(term: Terminal, wrapper: Path) -> tuple[list[tuple[Path, int, str, str]], list[Path]]:
+    """Lines that still launch the terminal directly, with what they should say instead, and
+    the launcher files that could not be read as text.
+
+    A line that already points at a wrapper for one terminal can still start another directly;
+    whether a command needs the wrapper is decided per command (:func:`launches`).
+    """
     hits = []
+    unreadable = []
     for launcher in LAUNCHERS:
         path = config_home() / launcher.path
         try:
-            lines = path.read_text(errors="replace").splitlines()
+            lines = read_lines(path)
+        except UnicodeDecodeError:
+            unreadable.append(path)
+            continue
         except OSError:
             continue
         for number, line in enumerate(lines, start=1):
-            if "-wayhint" in line:
-                continue
-            replaced = point_at(line, launcher.kind, term, wrapper)
+            replaced = point_at(body_of(line), launcher.kind, term, wrapper)
             if replaced is not None:
-                hits.append((path, number, line, replaced))
-    return hits
+                hits.append((path, number, body_of(line), replaced))
+    return hits, unreadable
+
+
+def launcher_kind(path: Path) -> str:
+    return next(la.kind for la in LAUNCHERS if config_home() / la.path == path)
 
 
 def edit_lines(path: Path, replacements: dict[int, str], stamp: str) -> Path:
@@ -374,19 +407,20 @@ def edit_lines(path: Path, replacements: dict[int, str], stamp: str) -> Path:
     is left alone rather than written through.
     """
     backup = path.with_name(f"{path.name}.wayhint-backup-{stamp}")
-    original = path.read_text()
+    lines = read_lines(path)
+    original = "".join(lines)
     try:
         fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:
         pass
     else:
-        with os.fdopen(fd, "w") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(original)
-    ends_with_newline = original.endswith("\n")
-    lines = original.splitlines()
     for number, replacement in replacements.items():
-        lines[number - 1] = replacement
-    path.write_text("\n".join(lines) + ("\n" if ends_with_newline else ""))
+        line = lines[number - 1]
+        lines[number - 1] = replacement + line[len(body_of(line)) :]  # its own line ending
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write("".join(lines))
     return backup
 
 
@@ -453,7 +487,10 @@ def plan_terminal(term: Terminal, binary: str) -> Plan:
         else:
             notes.append(say("  .desktop  {path}: up to date", path=override))
 
-    for path, number, line, replacement in launcher_hits(term, target):
+    hits, unreadable = launcher_hits(term, target)
+    for path in unreadable:
+        notes.append(say("  launcher  {path}: not valid UTF-8, skipped", path=path))
+    for path, number, line, replacement in hits:
         notes.append(f"  launcher  {path}:{number}")
         notes.append(f"              - {line.strip()}")
         notes.append(f"              + {replacement.strip()}")
@@ -557,8 +594,16 @@ def main(argv: list[str] | None = None) -> int:
                 write(path, content, executable)
         generated += len(plan.writes)
         # One file can host several terminals, so the edits are merged before anything is written.
+        # Each plan rewrote the line as it is on disk; where two terminals share one line, this
+        # one's rewrite is applied on top of the other's, or the first would be lost.
         for path, lines in plan.edits.items():
-            edits.setdefault(path, {}).update(lines)
+            merged = edits.setdefault(path, {})
+            for number, replacement in lines.items():
+                if number in merged:
+                    wrapper = wrapper_path(term)
+                    kind = launcher_kind(path)
+                    replacement = point_at(merged[number], kind, term, wrapper) or merged[number]
+                merged[number] = replacement
     edited = sum(len(lines) for lines in edits.values())
     if not dry_run:
         backups = [edit_lines(path, lines, stamp) for path, lines in edits.items()]

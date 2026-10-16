@@ -94,6 +94,9 @@ class WorkspaceWatcher:
         self._handles: dict[int, object] = {}
         self._state: dict[str, int] = {}
         self._keys: dict[int, str] = {}
+        self._ids: dict[int, str] = {}
+        self._names: dict[int, str] = {}
+        self._renames: list[tuple[str, str]] = []
         self._active: str | None = None
         self._ready = False  # suppress the notification for the initial state
 
@@ -143,6 +146,9 @@ class WorkspaceWatcher:
         self._groups.clear()
         self._state.clear()
         self._keys.clear()
+        self._ids.clear()
+        self._names.clear()
+        self._renames.clear()
         self._manager = None
         self._active = None
         self._ready = False
@@ -193,6 +199,15 @@ class WorkspaceWatcher:
         """Every workspace the compositor currently reports."""
         return set(self._state)
 
+    def take_renames(self) -> list[tuple[str, str]]:
+        """``(old, new)`` keys of the workspaces renamed since the last call, in order.
+
+        A renamed workspace is the same workspace: whoever keeps something under its key moves
+        it, rather than taking the old key for a workspace that went away.
+        """
+        renames, self._renames = self._renames, []
+        return renames
+
     # --- protocol --------------------------------------------------------------------------
 
     def _on_global(self, registry, name: int, iface: str, version: int) -> None:
@@ -223,16 +238,32 @@ class WorkspaceWatcher:
         handle.dispatcher["removed"] = lambda h: self._remove(oid)
 
     def _rekey(self, oid: int, ws_id: str | None = None, name: str | None = None) -> None:
+        # Each event carries one field; the key is worked out from both, so ``id`` wins
+        # whichever arrives last (``workspace_key``), and a later ``name`` does not undo it.
+        if ws_id is not None:
+            self._ids[oid] = ws_id
+        if name is not None:
+            self._names[oid] = name
         old = self._keys.get(oid)
-        new = workspace_key(ws_id, name, oid)
+        new = workspace_key(self._ids.get(oid), self._names.get(oid), oid)
+        if any(key == new for other, key in self._keys.items() if other != oid):
+            # Two groups (one per output) can both have a "1": the name alone would make them
+            # one workspace and let each overwrite the other's state.
+            new = f"{new}#{oid}"
+        if new == old:
+            return
         self._keys[oid] = new
         if old is not None and old in self._state:
             self._state[new] = self._state.pop(old)
+            if self._ready:
+                self._renames.append((old, new))
 
     def _set_state(self, oid: int, state: int) -> None:
         self._state[self._keys[oid]] = state
 
     def _remove(self, oid: int) -> None:
+        self._ids.pop(oid, None)
+        self._names.pop(oid, None)
         key = self._keys.pop(oid, None)
         if key is not None:
             self._state.pop(key, None)

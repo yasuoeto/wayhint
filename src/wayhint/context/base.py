@@ -12,6 +12,11 @@ class ContextError(RuntimeError):
     """A provider could not answer. Message is safe to show in the overlay."""
 
 
+class ProviderUnavailable(ContextError):
+    """This provider cannot work here at all (its protocol is missing, its library is not
+    installed), as opposed to failing this once. Another provider may be tried instead."""
+
+
 @dataclass(frozen=True)
 class DesktopSnapshot:
     app_id: str | None

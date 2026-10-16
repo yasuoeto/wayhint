@@ -185,7 +185,7 @@ include:
 
 | key | 値 | 既定 | 意味 |
 |---|---|---|---|
-| `level` | `debug` `info` `warning` `error` | `warning` | daemon のログの細かさ。`wayhintd -v` で起動すると info が前景に出る |
+| `level` | `debug` `info` `warning` `error` | `warning` | daemon のログの細かさ。`wayhintd -v` で起動すると、ここの値によらず info 以上が前景に出る |
 
 ## style.css — 見た目
 

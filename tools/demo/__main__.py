@@ -333,12 +333,15 @@ def _record(
         if typed is not None and "wtype" in str(e):
             raise sess.DemoError(f"{e}\n  step {typed!r} sends a key, which needs wtype") from e
         raise
-    out = _output_dir(_out_root(show, args.out_dir), language, variant.name)
-    out.mkdir(parents=True)
-    print(f"demo: recording {show.name} {variant.name} in {language} -> {out}")
+    # Everything that can refuse comes before the previous take is cleared: a recording that
+    # cannot start must not cost the one already adopted.
     work = sess.workspace(show.name, language)
+    out: Path | None = None
     try:
         config = sess.prepare_config(args.fixtures, language, work)
+        out = _output_dir(_out_root(show, args.out_dir), language, variant.name)
+        out.mkdir(parents=True)
+        print(f"demo: recording {show.name} {variant.name} in {language} -> {out}")
         with sess.DemoSession(script, config, work / sess.WORK_DIR, args.bin_dir) as demo:
             run = actions.Run(
                 session=demo, language=language, demo_bin=args.bin_dir.resolve(), windows={}
@@ -351,7 +354,7 @@ def _record(
         sess.release(work)
         # A run that failed before it captured anything leaves a directory where a recording
         # should be; that reads as "it recorded nothing", which is worse than saying nothing.
-        if out.is_dir() and not any(path.is_file() for path in out.rglob("*")):
+        if out is not None and out.is_dir() and not any(p.is_file() for p in out.rglob("*")):
             shutil.rmtree(out)
 
 

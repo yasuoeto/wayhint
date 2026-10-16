@@ -4,7 +4,8 @@
 # These start a compositor on the wlroots headless backend, run wayhintd inside it and read the
 # result back with grim and AT-SPI. They take seconds rather than milliseconds and need binaries
 # the default check must not depend on, so they are not part of it. Nothing appears on the
-# screen and the session you are sitting in is not touched; see tests/headless.py.
+# screen and the session you are sitting in is not touched; see tools/headless.py (and
+# tests/headless.py for when the tests skip).
 set -eu
 CDPATH=''
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)

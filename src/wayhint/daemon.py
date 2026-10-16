@@ -66,7 +66,7 @@ from wayhint.yaml_store import (  # noqa: E402
     write_document,
 )
 
-log = logging.getLogger("wayhintd")
+log = logging.getLogger("wayhint.daemon")  # under "wayhint": logging.level applies
 DEBOUNCE_MS = 200
 
 
@@ -111,6 +111,7 @@ class Daemon:
     def __init__(self, root: Path, socket_file: Path, state_file: Path | None = None) -> None:
         self.root = root
         self.socket_file = socket_file
+        self.verbose = False  # ``wayhintd -v``
         # Sheet id -> filter, kept in state.yaml (0033 D). ``None`` keeps them in memory only,
         # which is what a test wants: nothing here may write to the real home directory.
         self.state_file = state_file
@@ -125,7 +126,9 @@ class Daemon:
             self._written_filters = dict(self.filters)
         self.config = GlobalConfig()
         self.config_issues: list[Issue] = []
-        self.store = SheetStore(hints_dir(root, self.config.language), self.config.include)
+        self.store = SheetStore(
+            hints_dir(root, self.config.language), self.config.include, root / "config.yaml"
+        )
         self.desktop = select_desktop_provider(self.config.context_backend)
         self.resolver = ContextResolver(self.desktop, _nested_providers())
         self._backend = self.config.context_backend
@@ -165,9 +168,12 @@ class Daemon:
         log.info("wayhintd ready: config=%s socket=%s", self.root, self.socket_file)
 
     def stop(self) -> None:
-        if self._server is not None:
-            self._server.close()
-            self._server = None
+        # Only the daemon that bound the socket removes it: a start that failed (a second
+        # wayhintd, say) must not take the running one's socket away from every client.
+        if self._server is None:
+            return
+        self._server.close()
+        self._server = None
         try:
             self.socket_file.unlink()
         except OSError:
@@ -194,7 +200,10 @@ class Daemon:
         self.config_issues = result.issues
         if result.config is not None:
             self.config = result.config  # else keep last-known-good config
-        logging.getLogger("wayhint").setLevel(self.config.log_level.upper())
+        level = logging.getLevelName(self.config.log_level.upper())
+        if self.verbose:  # ``-v`` asks for at least info, whatever config.yaml says
+            level = min(level, logging.INFO)
+        logging.getLogger("wayhint").setLevel(level)
         if self.config.context_backend != self._backend:
             self._backend = self.config.context_backend
             self.desktop = select_desktop_provider(self._backend)
@@ -290,6 +299,22 @@ class Daemon:
     # --- commands --------------------------------------------------------------------------
 
     def show(self) -> dict:
+        """``wayhint show`` (and ``refresh``): the hints for the window in front.
+
+        An edit on this workspace is work in progress, held the way ``toggle`` holds it
+        (0014 D4): it is brought back as it was, not replaced by a fresh view, which would drop
+        the draft without a word. A search may be replaced: its text is kept as the filter of
+        the view it leaves (0033 C).
+        """
+        assert self.window is not None
+        view = self._current_view()
+        if view is not None and view.mode == "edit":
+            if not self.window.is_shown():
+                self._present(self._workspace_key(), view)
+            return {"visible": True, "sheet": view.context.active_sheet, "mode": view.mode}
+        return self._show()
+
+    def _show(self) -> dict:
         assert self.window is not None
         self._start_workspace_watch()
         ctx = self.resolver.resolve(self.store.sheets, self.config)
@@ -384,6 +409,10 @@ class Daemon:
         # Apply absence as well as presence; an edit list must not inherit the previous form.
         self.window.close_form()
         self.window.set_filter(view.filter_query, render=False)  # present_context renders
+        if view.mode == "normal":
+            # Before the surface is mapped: present_context syncs the grab with the mode the
+            # window has, and a view left in edit or search would take the keyboard for a moment.
+            self.window.set_mode("normal", refocus=False)
         self.window.present_context(
             view.context, self.store.sheets, self.config, self._includes_for(view.context)
         )
@@ -496,7 +525,7 @@ class Daemon:
             self._leave_search(view, refocus=False)
         hidden = view is None or not self.window.is_shown()
         if hidden:
-            self.show()
+            self._show()
         elif view.form is None:
             self._follow_focus(view, "edit-mode")
         view = self._current_view()
@@ -546,7 +575,7 @@ class Daemon:
             return {"visible": True, "mode": "normal", "sheet": view.context.active_sheet}
         hidden = view is None or not self.window.is_shown()
         if hidden:
-            self.show()
+            self._show()
         else:
             self._follow_focus(view, "search-mode")
         view = self._current_view()
@@ -856,7 +885,7 @@ class Daemon:
             hints_dir=self.store.hints_dir,
             existing_ids=[s.id for s in self.store.sheets],
         )
-        write_document(path, doc)
+        write_document(path, doc, new=True)
         # The context was resolved before this sheet existed, so it still says "no sheet" and
         # the reload the monitor is about to trigger would render nothing. Naming the sheet here
         # puts the hint on screen as soon as it is loaded, and lets the next quick add append to
@@ -1117,19 +1146,26 @@ class Daemon:
     def _apply_workspace(self) -> bool:
         if self.window is None or self._watcher is None:
             return False
+        for old, new in self._watcher.take_renames():  # the same workspace under a new name
+            if old in self._open:
+                self._open[new] = self._open.pop(old)
+            if self._shown_key == old:
+                self._shown_key = new
         known = self._watcher.known()
         for gone in set(self._open) - known:  # a workspace the compositor dropped
             del self._open[gone]
         active = self._watcher.active()
-        if workspace_action(active, self._open) == "restore":
-            log.info("workspace %s: restoring the overlay", active)
+        if self._shown_key is not None and self._shown_key != active:
+            # Leaving the workspace the window last showed. Its search ends here and its text
+            # becomes the filter (0033 C) -- also when the overlay was hidden with the search
+            # kept: the box is shared, and the next workspace's search would overwrite it.
             self._sync_shown()  # the workspace being left keeps its mode and draft
             self._leave_shown_search()
+        if workspace_action(active, self._open) == "restore":
+            log.info("workspace %s: restoring the overlay", active)
             self._present(active or "", self._open[active])
         elif self.window.is_shown():
             log.info("workspace %s: hiding the overlay", active)
-            self._sync_shown()
-            self._leave_shown_search()
             self.window.hide_overlay()
         return False
 
@@ -1155,7 +1191,13 @@ class Daemon:
                 raise SystemExit(f"wayhintd already running on {self.socket_file}")
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         srv.setblocking(False)
-        srv.bind(str(self.socket_file))
+        try:
+            srv.bind(str(self.socket_file))
+        except OSError as e:  # another wayhintd bound it between the check and here
+            srv.close()
+            raise SystemExit(
+                f"wayhintd: cannot listen on {self.socket_file}: {e.strerror or e}"
+            ) from e
         os.chmod(self.socket_file, 0o600)
         srv.listen(8)
         self._server = srv
@@ -1221,11 +1263,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"wayhintd: {e}", file=sys.stderr)
         return 1
     daemon = Daemon(root, sock, state_path())
+    daemon.verbose = args.verbose
     app = Gtk.Application(
         application_id="dev.wayhint.daemon", flags=Gio.ApplicationFlags.NON_UNIQUE
     )
     for sig in (signal.SIGINT, signal.SIGTERM):
         GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, lambda *_: (app.quit(), False)[1])
+
+    failed: list[BaseException] = []
 
     def on_activate(a: Gtk.Application) -> None:
         try:
@@ -1234,14 +1279,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(e, file=sys.stderr)
             a.quit()
             raise
+        except Exception as e:  # noqa: BLE001 - reported, and the exit status says so
+            # PyGObject only prints an exception from a signal handler, and run() would still
+            # return 0 as if the daemon had started and stopped cleanly.
+            log.exception("wayhintd could not start")
+            failed.append(e)
+            a.quit()
+            return
         a.hold()  # stay alive with the window hidden
 
     app.connect("activate", on_activate)
     app.connect("shutdown", lambda *_: daemon.stop())
     try:
-        return app.run(None)
+        status = app.run(None)
     except SystemExit as e:
         return 1 if e.code else 0
+    return 1 if failed else status
 
 
 if __name__ == "__main__":

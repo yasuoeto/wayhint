@@ -1642,6 +1642,31 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   行の YAML syntax error として報告される。グループが読める launcher のコピーは、グループからは読めなく
   なる。メッセージ中のファイル名と `inspect` のタグの値は、今もそのまま出る。
 
+## 0050 — シートの検証は型に厳しくし、編集は触らなかった部分を残す
+
+- **Date**: 2026-10-16
+- **Status**: accepted
+- **Context**: バグレビュー(review/bugs.md)で、ユーザーの思わない読み方をする箇所と、頼んでいない
+  部分を変える編集が見つかった。`key: 1.10` が `1.1` と表示される。`match.wayland: []` が規則なしと
+  みなされる。`version: true` が 1 とみなされる。改行で終わる id が通る。`wayland` と `wayfire` を
+  両方書くと片方が黙って無視される。フォームの保存で、kind が表示しない `command` が消える。ヒントの
+  編集で隣のヒントの見出しコメントが動く。quick add が読めなかったシートファイルを置き換える。
+- **Decision**:
+  - `key`、`command` などの文字列の項目では、素の十進整数だけを文字列とみなす。引用符のない
+    それ以外の数は、引用符で囲むよう求める間違いにする。`match.wayland` / `match.wayfire` /
+    `match.process` はマッピングか省略。デスクトップの 2 つの書き方を両方書くのは間違い。
+    `version` は整数の 1。id は全体で照合する。
+  - 2 つのヒントの間のコメントは下のヒントのものとする。ヒントの作り直し・入れ替え・削除はその
+    コメントだけを一緒に運ぶ。先頭のヒントの見出しも同じ。
+  - 既存ヒントをフォームで保存するとき、kind が表示しない項目はファイルの値のまま残す。quick add は、
+    読めたかどうかに関係なく hints ディレクトリにあるファイルの名前を使わず、新しいシートを排他的に作る。
+  - config.yaml の `include` にあってどのシートにも無い名前は、config.yaml に対する警告 1 件にする。
+- **Alternatives**: 数の元の文字列を残す(ruamel は多くの数について文字列を残さず、YAML の数の書き方
+  ごとに規則が変わる)。検証を厳しくする代わりに JSON Schema を広げる(意図しなかったものを受け入れ
+  続ける)。
+- **Consequences**: 緩い読み方に頼っていたシートは、直すまで読み込まれない。`wayhint validate` が行を
+  示す。`shortcut` に手で書いた `command` はフォームで保存しても残り、フォームには出ないまま。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

@@ -156,6 +156,32 @@ class SheetValidationTest(unittest.TestCase):
             line=4,
         )
 
+    def test_a_number_that_would_not_read_back_as_written_is_a_mistake(self) -> None:
+        """Fails if ``key: 010`` (or a hex, underscored or decimal-point number) is taken and
+        shown as ``10`` instead of being reported."""
+        for raw in ("010", "0x1F", "1_000", "1.10", "1e3", ".inf"):
+            with self.subTest(raw=raw):
+                body = f"id: x\ntitle: X\nhints:\n  - id: h\n    title: T\n    key: {raw}\n"
+                self.assert_issue(body, "hints[0].key: write it in quotes", line=6)
+
+    def test_a_value_of_the_wrong_type_is_not_taken_for_a_blank_or_a_match(self) -> None:
+        """Fails if an id with a trailing newline, ``version: true``, a list where a match
+        mapping belongs, or both spellings of the desktop rule load without a word."""
+        head = "id: x\ntitle: X\n"
+        cases = [
+            (head + 'hints:\n  - {id: "a\\n", title: T}\n', "hints[0].id must match"),
+            (head + "version: true\n", "version must be 1"),
+            (head + "match:\n  wayland: []\n", "match.wayland must be a mapping"),
+            (head + 'match:\n  process: ""\n', "match.process must be a mapping"),
+            (
+                head + "match:\n  wayland: {app_id_regex: [a]}\n  wayfire: {app_id_regex: [b]}\n",
+                "not both",
+            ),
+        ]
+        for body, fragment in cases:
+            with self.subTest(fragment):
+                self.assert_issue(body, fragment)
+
     def test_duplicate_hint_id(self) -> None:
         self.assert_issue(
             """
@@ -306,6 +332,14 @@ class IncludeTest(unittest.TestCase):
         result = self.load(include=["wm"])
         sheet = next(s for s in result.sheets if s.id == "a")
         self.assertEqual([s.id for s in result.includes_for(sheet)], ["wm"])
+
+    def test_a_missing_default_is_reported_once_against_config(self) -> None:
+        """Fails if a name in config.yaml's include that no sheet has is reported once per
+        sheet, against sheet files that do not contain it."""
+        self.write("a", "id: a\ntitle: A\nhints:\n  - {id: x, title: X}\n")
+        result = self.load(include=["nope"])
+        missing = [i for i in result.issues if "nope" in i.message]
+        self.assertEqual([i.file for i in missing], [Path("config.yaml")])
 
     def test_a_sheet_with_include_replaces_the_global_default(self) -> None:
         self.write("a", "id: a\ntitle: A\ninclude: []\nhints:\n  - {id: x, title: X}\n")
@@ -501,6 +535,21 @@ class SheetStoreTest(unittest.TestCase):
             p.unlink()
             self.assertTrue(store.reload(p))
             self.assertEqual(store.sheets, [])
+
+    def test_a_deleted_sheet_is_no_longer_mixed_in(self) -> None:
+        """Fails if the hints of a sheet whose file was deleted keep being included elsewhere."""
+        with tempfile.TemporaryDirectory() as d:
+            hints = Path(d)
+            a, b = hints / "a.yaml", hints / "b.yaml"
+            a.write_text("id: a\ntitle: A\ninclude: [b]\nhints:\n  - {id: x, title: X}\n")
+            b.write_text("id: b\ntitle: B\nhints:\n  - {id: y, title: Y}\n")
+            store = SheetStore(hints)
+            store.load_all()
+            b.unlink()
+            store.reload(b)
+            sheet_a = next(s for s in store.sheets if s.id == "a")
+            self.assertEqual(store.includes_for(sheet_a), [])
+            self.assertIn("no sheet with id 'b'", " ".join(i.message for i in store.issues))
 
     def test_loading_everything_again_forgets_a_file_that_is_gone(self) -> None:
         # An explicit reload is the way out when a delete event was missed, so what the store

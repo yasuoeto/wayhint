@@ -550,9 +550,9 @@ The conditions for each terminal, and how to confirm it's working, are in
 | `toggle` | Show / hide (`Super+h`) |
 | `search-mode` | Enter / leave search (`Super+Shift+h`). Refuses while in edit mode |
 | `edit-mode` | Enter / leave edit mode (`Super+Ctrl+h`) |
-| `show` | Show |
+| `show` | Show. An edit under way is brought back as it is, not replaced |
 | `hide` | Hide. While searching or editing, same as `toggle`: just hides, keeping the mode and any draft |
-| `refresh` | If shown, re-fetch contents for the current window |
+| `refresh` | If shown, re-fetch contents for the current window. An edit under way is kept as it is |
 | `reload` | Reload `config.yaml` and hints |
 | `ping` | Check if the daemon is alive. Returns its pid and sheet count |
 | `validate` | Validate the YAML. Works without the daemon running. Exits 1 if there is a problem |

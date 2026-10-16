@@ -108,6 +108,31 @@ class RenderTest(unittest.TestCase):
         self.assertIn("pane", self.rows(win))  # the tagged parent hint is mixed in
         self.assertNotIn("theme", self.rows(win))  # the untagged one is not
 
+    def test_a_message_outlasts_the_reload_that_follows_a_save(self) -> None:
+        """Fails if "saved" / "deleted" is wiped by the re-render the file monitor's reload
+        does a moment later, instead of lasting until the mode changes."""
+        child = sheet("claude", [hint("one", "claude.yaml")])
+        ctx = ResolvedContext(active_sheet="claude", output=OUT)
+        win = self.window()
+        win.lay_out(ctx, [child], GlobalConfig())
+        win.show_message("deleted one")
+        win.lay_out(ctx, [child], GlobalConfig())  # what _after_reload does
+        win.show_issues([])
+        self.assertEqual((win._error.get_visible(), win._error.get_label()), (True, "deleted one"))
+        win.set_mode("edit")
+        self.assertFalse(win._error.get_visible())
+
+    def test_an_open_form_follows_a_change_of_language(self) -> None:
+        """Fails if a form open when the language changes keeps its title in the old language."""
+        from wayhint.i18n import translator
+        from wayhint.ui.editmode import FormDraft
+
+        win = self.window()
+        win.lay_out(ResolvedContext(output=OUT), [], GlobalConfig())
+        win.open_form(FormDraft(hint_id="h", fields={"title": "T"}))
+        win.set_language(translator("ja"))
+        self.assertEqual(win._form_title.get_label(), f"{translator('ja')('Edit')}: h")
+
     def test_the_breadcrumb_and_the_context_line_say_where_the_hints_came_from(self) -> None:
         child = sheet("claude", [hint("one", "claude.yaml")])
         parent = sheet("herdr", [hint("pane", "herdr.yaml")])

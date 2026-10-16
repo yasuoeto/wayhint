@@ -124,16 +124,19 @@ def send_command(
             s.connect(str(path))
         except OSError as e:
             raise DaemonUnavailable(f"wayhintd is not running ({path}): {e.strerror or e}") from e
-        s.sendall(encode({"cmd": cmd}))
-        s.shutdown(socket.SHUT_WR)
         chunks = []
-        while True:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            if sum(map(len, chunks)) > MAX_MESSAGE:
-                raise DaemonUnavailable("reply too large")
+        try:
+            s.sendall(encode({"cmd": cmd}))
+            s.shutdown(socket.SHUT_WR)
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                if sum(map(len, chunks)) > MAX_MESSAGE:
+                    raise DaemonUnavailable("reply too large")
+        except OSError as e:  # a timeout or a reset: the daemon did not answer, as above
+            raise DaemonUnavailable(f"wayhintd did not answer ({path}): {e.strerror or e}") from e
     try:
         return decode(b"".join(chunks))
     except ValueError as e:

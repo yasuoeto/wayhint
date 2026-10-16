@@ -95,7 +95,7 @@ How it treats existing files:
 Launcher settings are **backed up before being rewritten**. One run makes at most one backup per
 file, named `<filename>.wayhint-backup-<timestamp>`, placed in the same directory. The backup is
 readable by you only (mode 0600), whatever the original's permissions: a launcher can hold a
-token.
+token. A launcher file that is not valid UTF-8 is not touched; the run says it was skipped.
 
 If the path of `~/.local/bin` has a space or a shell character (`"`, `&`, `<`, `$` and so on) in
 it, the script stops with exit 2 and writes nothing: the launchers would have to name the wrapper

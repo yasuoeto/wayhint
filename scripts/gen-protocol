@@ -36,6 +36,13 @@ if proxies:
     text = text[:cut] + block + text[cut:]
 sys.stdout.write(re.sub(r"\((Resource|Global)\[\w+\]\):$", r"(\1):", text, flags=re.M))
 ' <"$tmp/wlr_foreign_toplevel_management_unstable_v1.py"
-} > src/wayhint/context/_wlr_foreign_toplevel.py
+} > "$tmp/generated.py"
 # The committed file is formatted like the rest of the tree; without this, ./scripts/check fails.
-if command -v ruff >/dev/null 2>&1; then ruff format -q src/wayhint/context/_wlr_foreign_toplevel.py; fi
+# --stdin-filename makes ruff read the repository's settings, which a file in $tmp would miss.
+if command -v ruff >/dev/null 2>&1; then
+  ruff format -q --stdin-filename src/wayhint/context/_wlr_foreign_toplevel.py \
+    <"$tmp/generated.py" >"$tmp/formatted.py"
+  mv "$tmp/formatted.py" "$tmp/generated.py"
+fi
+# Only now, with every step above done: a failure on the way leaves the committed file as it was.
+mv "$tmp/generated.py" src/wayhint/context/_wlr_foreign_toplevel.py

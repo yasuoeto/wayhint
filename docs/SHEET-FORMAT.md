@@ -74,7 +74,7 @@ regardless of the other side. How `include`, `inherit`, and `nested` relate is d
 
 | key | what it matches against |
 |---|---|
-| `wayland.app_id_regex` | The focused window's app_id (writing `wayfire.app_id_regex` has the same effect) |
+| `wayland.app_id_regex` | The focused window's app_id (writing `wayfire.app_id_regex` has the same effect; writing both is a mistake) |
 | `process.argv_regex` | The name of the command running inside a terminal or Herdr, each of its arguments, and the filename part of a path argument |
 | `process.cmdline_regex` | That command's whole line |
 
@@ -121,7 +121,9 @@ match:
 | `source` | | string | Where it came from (e.g. a URL to official documentation) |
 | `learned` | | a date | The date it was learned. Written like `2026-09-24` |
 
-- Writing only digits in `key` or `command` (e.g. `key: 5`) still treats it as a string.
+- Writing only digits in `key` or `command` (e.g. `key: 5`) still treats it as a string. Any
+  other number (`010`, `0x1F`, `1.10`, `1e3`) has to be in quotes, or it is a mistake: YAML
+  would read it as a number and it would not show as written.
 - What gets copied is `copy`, or `command` if there is no `copy`. A hint that has only `key` is not
   copied (a key is pressed, not pasted).
 - Two hints with the same `id` inside the same sheet is an error. The same `id` can be reused

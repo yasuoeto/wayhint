@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,7 +50,7 @@ class Size:
         if isinstance(raw, bool):
             raise ValueError(f"invalid size: {raw!r}")
         if isinstance(raw, (int, float)):
-            if raw < 0:
+            if not math.isfinite(raw) or raw < 0:  # ``.nan`` is not < 0, and cannot be placed
                 raise ValueError(f"invalid size: {raw!r}")
             return cls(float(raw), "px")
         if isinstance(raw, str):

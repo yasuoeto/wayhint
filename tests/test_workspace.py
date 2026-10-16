@@ -138,6 +138,32 @@ class WatcherBookkeepingTest(unittest.TestCase):
         self.watcher._on_done(None)
         self.assertEqual(self.watcher.active(), "late")
 
+    def test_an_id_is_the_key_whichever_event_comes_last(self) -> None:
+        """Fails if a ``name`` arriving after ``id`` replaces the key the id gave."""
+        handle = FakeHandle()
+        self.watcher._on_workspace(None, handle)
+        handle.emit("id", "ws-1")
+        handle.emit("name", "one")
+        handle.emit("state", STATE_ACTIVE)
+        self.watcher._on_done(None)
+        self.assertEqual(self.watcher.active(), "ws-1")
+
+    def test_two_workspaces_with_one_name_stay_two(self) -> None:
+        """Fails if same-named workspaces in two groups share a key and overwrite each other."""
+        self.add("1", STATE_ACTIVE)
+        second = self.add("1", 0)
+        self.assertEqual(len(self.watcher.known()), 2)
+        second.emit("removed")
+        self.watcher._on_done(None)
+        self.assertEqual(self.watcher.active(), "1")
+
+    def test_a_rename_is_reported_as_the_same_workspace(self) -> None:
+        """Fails if renaming a workspace looks like one going away and another appearing."""
+        handle = self.add("one", STATE_ACTIVE)
+        handle.emit("name", "renamed")
+        self.assertEqual(self.watcher.take_renames(), [("one", "renamed")])
+        self.assertEqual(self.watcher.known(), {"renamed"})
+
     def test_initial_state_is_not_reported_as_a_change(self) -> None:
         quiet = WorkspaceWatcher(self.changes.append)  # _ready is False until start() finishes
         handle = FakeHandle()

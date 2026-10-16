@@ -13,6 +13,7 @@ Two levels of API:
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import io
 import os
@@ -32,6 +33,7 @@ from ruamel.yaml.nodes import MappingNode, ScalarNode
 from ruamel.yaml.tokens import CommentToken
 
 from wayhint.config import (
+    SHEET_ID_RE,
     ConfigError,
     GlobalConfig,
     config_dir,
@@ -53,7 +55,7 @@ from wayhint.models import (
 )
 
 SHEET_VERSION = 1
-_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ID_RE = SHEET_ID_RE  # one rule for sheet and hint ids, config.yaml's and the sheets'
 _SHEET_KEYS = {
     "version",
     "id",
@@ -357,9 +359,16 @@ def _match_rule(ctx: _Ctx, root: Mapping) -> MatchRule:
     unknown = set(map(str, node)) - {"wayland", "wayfire", "process"}
     if unknown:
         ctx.error(f"match: unknown key(s): {', '.join(sorted(unknown))}", root, "match")
-    desktop_key = "wayland" if "wayland" in node else "wayfire"  # wayfire: pre-0010 spelling
-    desktop = node.get(desktop_key) or {}
-    process = node.get("process") or {}
+    if "wayland" in node and "wayfire" in node:
+        # The same rule under two names (wayfire: pre-0010 spelling); one would be ignored.
+        ctx.error("match: write wayland or wayfire, not both", node, "wayfire")
+    desktop_key = "wayland" if "wayland" in node else "wayfire"
+    desktop = node.get(desktop_key)
+    process = node.get("process")
+    # Absent and ``null`` are "no rule"; anything else has to be a mapping, ``[]`` and ``""``
+    # included -- the schema says so, and a wrong type is a mistake to report, not a blank.
+    desktop = {} if desktop is None else desktop
+    process = {} if process is None else process
     if not isinstance(desktop, Mapping):
         ctx.error(f"match.{desktop_key} must be a mapping", node, desktop_key)
         desktop = {}
@@ -383,8 +392,13 @@ def _opt_str(ctx: _Ctx, node: Mapping, key: str, where: str) -> str | None:
         return None
     if isinstance(value, (_dt.date, _dt.datetime)):
         return value.isoformat()  # ``learned: 2026-09-16`` is a YAML timestamp scalar
+    if type(value) is int:
+        return str(value)  # e.g. ``key: 5``: a plain decimal reads back as it was written
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)  # e.g. ``key: 5``
+        # ``010``, ``0x1F``, ``1_000``, ``1.10``, ``1e3`` are numbers to YAML, and printing the
+        # number back gives ``10``, ``31``, ``1000``, ``1.1``, ``1000.0`` -- not what was written.
+        ctx.error(f"{where}.{key}: write it in quotes, so it stays as written", node, key)
+        return None
     if not isinstance(value, str):
         ctx.error(f"{where}.{key} must be a string", node, key)
         return None
@@ -396,7 +410,7 @@ def _req_id(ctx: _Ctx, node: Mapping, where: str) -> str | None:
         ctx.error(f"{where}: required field 'id' is missing", node)
         return None
     value = node["id"]
-    if not isinstance(value, str) or not _ID_RE.match(value):
+    if not isinstance(value, str) or not _ID_RE.fullmatch(value):
         ctx.error(f"{where}.id must match {_ID_RE.pattern}", node, "id")
         return None
     return value
@@ -445,7 +459,7 @@ def _include_refs(ctx: _Ctx, node: Mapping) -> tuple[IncludeRef, ...] | None:
     for i, item in enumerate(value):
         where = f"include[{i}]"
         if isinstance(item, str):
-            if not _ID_RE.match(item):
+            if not _ID_RE.fullmatch(item):
                 ctx.error(f"{where} must match {_ID_RE.pattern}", value, i)
                 continue
             out.append(IncludeRef(item))
@@ -457,7 +471,7 @@ def _include_refs(ctx: _Ctx, node: Mapping) -> tuple[IncludeRef, ...] | None:
         if unknown:
             ctx.error(f"{where}: unknown key(s): {', '.join(sorted(unknown))}", value, i)
         sheet = item.get("sheet")
-        if not isinstance(sheet, str) or not _ID_RE.match(sheet):
+        if not isinstance(sheet, str) or not _ID_RE.fullmatch(sheet):
             ctx.error(f"{where}.sheet must match {_ID_RE.pattern}", value, i)
             continue
         tags = _tags(ctx, item, "tags", where)
@@ -512,7 +526,7 @@ def parse_sheet(data: object, path: Path) -> tuple[HintSheet | None, list[Issue]
         ctx.error(f"unknown top-level key(s): {', '.join(sorted(unknown))}", data)
 
     version = data.get("version", SHEET_VERSION)
-    if version != SHEET_VERSION:
+    if isinstance(version, bool) or version != SHEET_VERSION:  # ``true == 1`` in Python
         ctx.error(f"version must be {SHEET_VERSION}", data, "version")
     sheet_id = _req_id(ctx, data, "sheet")
     title = _req_title(ctx, data, "sheet")
@@ -667,7 +681,9 @@ def unique_sheet_ids(sheets: Sequence[HintSheet]) -> tuple[list[HintSheet], list
 
 
 def resolve_includes(
-    sheets: Sequence[HintSheet], global_include: Sequence[IncludeRef | str] = ()
+    sheets: Sequence[HintSheet],
+    global_include: Sequence[IncludeRef | str] = (),
+    config_file: Path = Path("config.yaml"),
 ) -> tuple[dict[Path, list[HintSheet]], list[Issue]]:
     """Turn every sheet's ``include`` into the sheets it names (DECISIONS 0026).
 
@@ -680,10 +696,19 @@ def resolve_includes(
     replaces ``nested.parent_tags``. A name that is not there, and a sheet naming itself, are
     warnings: the sheet is still shown, only that one name is dropped. The second level is not
     followed -- what a sheet includes is what it says, not what its includes say.
+
+    A name in ``global_include`` that is not there is said once, against ``config_file`` where it
+    is written, not once for every sheet that falls back on it.
     """
     by_id = {sheet.id: sheet for sheet in sheets}
     resolved: dict[Path, list[HintSheet]] = {}
     issues: list[Issue] = []
+    for ref in global_include:
+        name = ref.sheet if isinstance(ref, IncludeRef) else ref
+        if name not in by_id:
+            issues.append(
+                Issue(config_file, None, f"include: no sheet with id {name!r}", "warning")
+            )
     for sheet in sheets:
         own = sheet.include is not None
         wanted = sheet.include if own else tuple(global_include)
@@ -701,9 +726,10 @@ def resolve_includes(
                 continue
             other = by_id.get(name)
             if other is None:
-                issues.append(
-                    Issue(sheet.path, 1, f"include: no sheet with id {name!r}", "warning")
-                )
+                if own:  # a missing default was reported above, against config.yaml
+                    issues.append(
+                        Issue(sheet.path, 1, f"include: no sheet with id {name!r}", "warning")
+                    )
                 continue
             if not ref.filter.is_everything():
                 other = replace(other, hints=tuple(h for h in other.hints if ref.filter.allows(h)))
@@ -712,7 +738,11 @@ def resolve_includes(
     return resolved, issues
 
 
-def load_sheets(hints_dir: Path, global_include: Sequence[IncludeRef | str] = ()) -> LoadResult:
+def load_sheets(
+    hints_dir: Path,
+    global_include: Sequence[IncludeRef | str] = (),
+    config_file: Path = Path("config.yaml"),
+) -> LoadResult:
     result = LoadResult()
     for path in sheet_files(hints_dir):
         sheet, issues = load_sheet(path)
@@ -721,7 +751,7 @@ def load_sheets(hints_dir: Path, global_include: Sequence[IncludeRef | str] = ()
             result.sheets.append(sheet)
     result.sheets, duplicates = unique_sheet_ids(result.sheets)
     result.issues.extend(duplicates)
-    result.includes, include_issues = resolve_includes(result.sheets, global_include)
+    result.includes, include_issues = resolve_includes(result.sheets, global_include, config_file)
     result.issues.extend(include_issues)
     return result
 
@@ -731,7 +761,7 @@ def load_all(config_root: Path) -> LoadResult:
     result = load_config(config_root / "config.yaml")
     language = result.config.language if result.config is not None else "auto"
     include = result.config.include if result.config is not None else ()
-    sheets = load_sheets(hints_dir(config_root, language), include)
+    sheets = load_sheets(hints_dir(config_root, language), include, config_root / "config.yaml")
     result.sheets = sheets.sheets
     result.includes = sheets.includes
     result.issues.extend(sheets.issues)
@@ -749,9 +779,15 @@ class SheetStore:
     succeeds (or the file is removed).
     """
 
-    def __init__(self, hints_dir: Path, global_include: Sequence[IncludeRef | str] = ()) -> None:
+    def __init__(
+        self,
+        hints_dir: Path,
+        global_include: Sequence[IncludeRef | str] = (),
+        config_file: Path = Path("config.yaml"),
+    ) -> None:
         self.hints_dir = hints_dir
         self.global_include = tuple(global_include)
+        self.config_file = config_file
         self._sheets: dict[Path, HintSheet] = {}
         self.errors: dict[Path, list[Issue]] = {}
         self._includes: dict[Path, list[HintSheet]] = {}
@@ -777,6 +813,7 @@ class SheetStore:
         if not path.exists():
             self._sheets.pop(path, None)
             self.errors.pop(path, None)
+            self.resolve()  # other sheets may have included it
             return True
         sheet, issues = load_sheet(path)
         if sheet is None:
@@ -789,7 +826,9 @@ class SheetStore:
 
     def resolve(self) -> None:
         """Re-resolve every sheet's ``include``; called after the sheets change (0026)."""
-        self._includes, self._include_issues = resolve_includes(self.sheets, self.global_include)
+        self._includes, self._include_issues = resolve_includes(
+            self.sheets, self.global_include, self.config_file
+        )
 
     def includes_for(self, sheet: HintSheet | None) -> list[HintSheet]:
         return self._includes.get(sheet.path, []) if sheet is not None else []
@@ -847,13 +886,17 @@ class HintNotFoundError(SheetWriteError):
     """
 
 
-def write_document(path: Path, doc: object) -> None:
-    """Write a sheet over ``path``, atomically, and only if the result still validates."""
+def write_document(path: Path, doc: object, new: bool = False) -> None:
+    """Write a sheet over ``path``, atomically, and only if the result still validates.
+
+    ``new`` is for a sheet that is being created: it must not replace a file already at
+    ``path`` -- one that does not load is still somebody's sheet.
+    """
 
     def check(data: object) -> list[Issue]:
         return parse_sheet(data, path)[1]
 
-    _write_checked(path, doc, check)
+    _write_checked(path, doc, check, new=new)
 
 
 def write_config(path: Path, doc: object) -> None:
@@ -869,7 +912,9 @@ def write_config(path: Path, doc: object) -> None:
     _write_checked(path, doc, check)
 
 
-def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue]]) -> None:
+def _write_checked(
+    path: Path, doc: object, check: Callable[[object], list[Issue]], new: bool = False
+) -> None:
     """Dump, validate, then replace. Nothing is written when the result would not load.
 
     What is validated is the dumped text itself, parsed in memory, so the temporary file is only
@@ -889,7 +934,12 @@ def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue
     is touched afterwards: that is the change the overlay sees and reloads on. The new content
     is on disk before it replaces the old (``fsync``), so a crash leaves one or the other, never
     an empty sheet.
+
+    With ``new``, the finished file is linked into place instead of replacing: ``link`` fails
+    when the name is taken, so a file that appeared since the name was chosen is left alone.
     """
+    if new and (path.is_symlink() or path.exists()):
+        raise SheetWriteError(f"{path.name} already exists; nothing was written")
     link = path if path.is_symlink() else None
     path = path.resolve() if link is not None else path
     if not path.parent.is_dir():
@@ -911,7 +961,15 @@ def _write_checked(path: Path, doc: object, check: Callable[[object], list[Issue
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        if new:
+            try:
+                os.link(tmp, path)
+            except FileExistsError:
+                raise SheetWriteError(f"{path.name} already exists; nothing was written") from None
+            with contextlib.suppress(OSError):
+                tmp.unlink()  # the sheet is in place; a leftover .tmp is not a failed write
+        else:
+            os.replace(tmp, path)
     except BaseException:
         try:
             tmp.unlink()
@@ -999,6 +1057,83 @@ def _carry_comments(old: Mapping, new: CommentedMap) -> CommentedMap:
     return new
 
 
+def _comment_lines(text: str) -> list[CommentToken]:
+    """``text`` (whole lines, each ending in ``\\n``) as one token per line, at its column."""
+    tokens = []
+    for line in text.splitlines(keepends=True):
+        body = line.lstrip(" ")
+        column = len(line) - len(body) if body.strip() else 0
+        tokens.append(CommentToken(body if body.strip() else "\n", CommentMark(column)))
+    return tokens
+
+
+def _take_following_lines(node: object) -> list[CommentToken]:
+    """Cut the comment lines that follow ``node`` in the file out of it, and return them.
+
+    ruamel keeps the lines between one hint and the next on whatever came last in the first
+    one: the post-comment of its last key (or, when that value is itself a block list or
+    mapping, of the last thing inside it), behind that line's own end-of-line comment if it has
+    one. The end-of-line comment stays where it is; only the lines after it are taken.
+    """
+    if isinstance(node, CommentedMap) and node:
+        last, index = list(node)[-1], 2
+        value = node[last]
+    elif isinstance(node, CommentedSeq) and node:
+        last, index = len(node) - 1, 0
+        value = node[last]
+    else:
+        return []
+    if isinstance(value, (CommentedMap, CommentedSeq)) and value and not value.fa.flow_style():
+        return _take_following_lines(value)
+    entry = node.ca.items.get(last)
+    token = entry[index] if entry is not None and len(entry) > index else None
+    if token is None or not getattr(token, "value", ""):
+        return []
+    text: str = token.value
+    if text.startswith("#"):
+        eol, _, rest = text.partition("\n")
+        token.value = eol + "\n"
+    else:
+        rest = text[1:] if text.startswith("\n") else text
+        entry[index] = None
+        if not any(entry):
+            del node.ca.items[last]
+    return _comment_lines(rest)
+
+
+def _settle_comments(doc: object, hints: Sequence) -> None:
+    """Give every comment between hints one owner: the hint below it.
+
+    What sits between hint ``i - 1`` and hint ``i`` describes hint ``i``, and is stored as the
+    sequence's comment before item ``i``; what follows the last hint is the list's end comment.
+    ruamel moves those with the items when one is deleted or inserted, so after this a rebuilt,
+    swapped or deleted hint takes its own comment along and leaves its neighbours' alone.
+    """
+    if not isinstance(hints, CommentedSeq):
+        return  # built in memory: no comments to place
+    items = hints.ca.items
+    # Above the first hint, ruamel keeps the lines as the list's own start comment (and the
+    # parent key's copy of it); they describe that hint as much as any other heading does.
+    start = hints.ca.comment
+    if hints and start is not None and len(start) > 1 and start[1]:
+        entry = items.setdefault(0, [None, None, None, None])
+        entry[1] = list(start[1]) + list(entry[1] or [])
+        start[1] = None  # left as a list: ruamel only writes the end comment next to one
+        parent = getattr(doc, "ca", None)
+        parent_entry = parent.items.get("hints") if parent is not None else None
+        if parent_entry is not None and len(parent_entry) > 3:
+            parent_entry[3] = None
+    for i in range(len(hints)):
+        lines = _take_following_lines(hints[i])
+        if not lines:
+            continue
+        if i + 1 < len(hints):
+            entry = items.setdefault(i + 1, [None, None, None, None])
+            entry[1] = lines + list(entry[1] or [])
+        else:
+            hints.ca.end = lines + list(hints.ca.end or [])
+
+
 def _hints_of(doc: object) -> CommentedSeq:
     if not isinstance(doc, Mapping):
         raise SheetWriteError("sheet must be a mapping at top level")
@@ -1026,6 +1161,7 @@ def update_hint(doc: object, hint_id: str, fields: Mapping[str, object]) -> Comm
     """Rebuild one hint from its current values plus ``fields``. Other hints are not touched."""
     hints = _hints_of(doc)
     index = _index_of(hints, hint_id)
+    _settle_comments(doc, hints)
     current = hints[index]
     base: dict[str, object] = {k: current.get(k) for k in CANONICAL_HINT_KEYS}
     base.update(fields)
@@ -1053,10 +1189,11 @@ def delete_hint(doc: object, hint_id: str) -> CommentedMap:
     """Remove a hint and return the node, so ``u`` can put it back.
 
     ruamel drops the block comment stored at that index with it, which is what we want: the
-    comment above a hint describes that hint.
+    comment above a hint describes that hint (:func:`_settle_comments` puts it there).
     """
     hints = _hints_of(doc)
     index = _index_of(hints, hint_id)
+    _settle_comments(doc, hints)
     node = hints[index]
     del hints[index]
     return node
@@ -1068,6 +1205,7 @@ def swap_hints(doc: object, id_a: str, id_b: str) -> None:
     i, j = _index_of(hints, id_a), _index_of(hints, id_b)
     if i == j:
         return
+    _settle_comments(doc, hints)
     hints[i], hints[j] = hints[j], hints[i]
     items = getattr(getattr(hints, "ca", None), "items", None)
     if items is None:
@@ -1101,6 +1239,7 @@ def ensure_modeline(doc: object, schema_path: Path | str) -> None:
 def normalize_sheet(doc: object, modeline_path: Path | str | None = None) -> None:
     """``wayhint format``: every hint canonical, 12 keys. Sheet metadata and comments stay."""
     hints = _hints_of(doc)
+    _settle_comments(doc, hints)
     for index, item in enumerate(hints):
         if not isinstance(item, Mapping):
             raise SheetWriteError(f"hints[{index}] must be a mapping")
@@ -1189,7 +1328,13 @@ def create_sheet(
     hints_dir = hints_dir if hints_dir is not None else config_dir() / "hints"
     proc = ctx.foreground_process
     source = proc.name if proc is not None else strip_pid_suffix(ctx.desktop_app)[0]
-    sheet_id = slug(source or "", existing_ids, now)
+    # A file that does not load is not among the loaded sheets' ids, and its name is still taken.
+    on_disk = (
+        [p.stem for p in hints_dir.iterdir() if p.suffix in (".yaml", ".yml")]
+        if hints_dir.is_dir()
+        else []
+    )
+    sheet_id = slug(source or "", [*existing_ids, *on_disk], now)
     match, _warning = match_rule_for_context(ctx)
 
     doc = CommentedMap()

@@ -191,7 +191,7 @@ The full rules are in [`SHEETS.md`](SHEETS.md) §4.
 
 | key | value | default | meaning |
 |---|---|---|---|
-| `level` | `debug` `info` `warning` `error` | `warning` | How detailed the daemon's log is. Starting `wayhintd -v` prints info-level logs to the foreground |
+| `level` | `debug` `info` `warning` `error` | `warning` | How detailed the daemon's log is. Starting `wayhintd -v` prints at least info-level logs to the foreground, whatever this says |
 
 ## style.css — the look
 

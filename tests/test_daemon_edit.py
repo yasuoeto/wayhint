@@ -1,5 +1,6 @@
 """Controller integration tests with a window boundary fake; no GUI or compositor imports."""
 
+import logging
 import tempfile
 import unittest
 from dataclasses import replace
@@ -85,6 +86,10 @@ class Workspace:
 
     def known(self):
         return {self.key}
+
+    def take_renames(self):
+        renames, self.renames = getattr(self, "renames", []), []
+        return renames
 
     def dispatch(self):
         return self.alive
@@ -185,6 +190,20 @@ class DaemonEditTest(unittest.TestCase):
         self.daemon.toggle()
         self.assertEqual(self.window.form.value("title"), "unsaved A")
 
+    def test_renaming_the_workspace_keeps_what_is_open_on_it(self):
+        """Fails if renaming the workspace an edit is open on drops the view and its draft as
+        though the workspace had been deleted."""
+        self.action(em.OPEN_FORM)
+        self.window.form.fields["title"] = "unsaved"
+        workspace = Workspace()
+        self.daemon._watcher = workspace
+        self.daemon._open = {"A": self.view}
+        self.daemon._shown_key = "A"
+        workspace.key, workspace.renames = "renamed", [("A", "renamed")]
+        self.daemon._apply_workspace()
+        self.assertIs(self.daemon._open.get("renamed"), self.view)
+        self.assertEqual(self.window.form_draft().value("title"), "unsaved")
+
     def test_search_actions_keep_controller_and_window_modes_in_sync(self):
         self.view.mode = "normal"
         self.window.set_mode("normal")
@@ -234,6 +253,26 @@ class DaemonEditTest(unittest.TestCase):
         self.assertEqual((view.mode, self.window.mode), ("edit", "edit"))
         self.assertEqual(self.window.context.active_sheet, "a")
 
+    def test_show_and_refresh_keep_an_edit_under_way(self):
+        """Fails if ``wayhint show`` / ``refresh`` replaces an edit with a fresh view, dropping
+        the open form's draft and leaving edit mode without a word."""
+
+        class OtherContext:
+            def resolve(self, sheets, config):
+                return ResolvedContext(active_sheet="a")
+
+        for command in ("show", "refresh"):
+            with self.subTest(command=command):
+                self.daemon._open[""] = self.view
+                self.view.mode = "edit"
+                self.action(em.OPEN_FORM)
+                self.window.form.fields["title"] = "unsaved"
+                self.window.visible = True
+                self.daemon.resolver = OtherContext()
+                self.daemon.dispatch(command)
+                self.assertIs(self.daemon._current_view(), self.view)
+                self.assertEqual(self.window.form_draft().value("title"), "unsaved")
+
     def test_edit_mode_keeps_a_view_holding_a_draft_from_an_editor_start(self):
         class OtherContext:
             def resolve(self, sheets, config):
@@ -254,7 +293,7 @@ class DaemonEditTest(unittest.TestCase):
         self.daemon._watcher = watcher
         self.daemon._open = {"A": self.view}
         self.daemon._shown_key = "A"
-        with self.assertLogs("wayhintd", level="WARNING"):  # and it says so in the log
+        with self.assertLogs("wayhint.daemon", level="WARNING"):  # and it says so in the log
             self.daemon._on_watch_fd(0, None)
         return watcher
 
@@ -440,7 +479,7 @@ class DaemonEditTest(unittest.TestCase):
             mock.patch.object(
                 daemon_module, "write_document", side_effect=SheetWriteError("would not validate")
             ),
-            self.assertLogs("wayhintd", level="WARNING"),
+            self.assertLogs("wayhint.daemon", level="WARNING"),
         ):
             self.save_form(title="edited")
         self.assertEqual((self.view.mode, self.window.mode), ("edit", "edit"))
@@ -619,3 +658,20 @@ class DaemonHintsDirTest(unittest.TestCase):
         (self.root / "hints" / "y.yaml").write_text("id: y\ntitle: Flat\n")
         self.set_language("ja")
         self.assertEqual(self.titles(), ["Flat"])
+
+
+class LogLevelTest(unittest.TestCase):
+    def test_config_level_and_verbose_both_reach_every_logger(self) -> None:
+        """Fails if logging.level in config.yaml misses the daemon's own logger, or if the
+        default level silences the info logs ``wayhintd -v`` asked for."""
+        top = logging.getLogger("wayhint")
+        self.addCleanup(top.setLevel, top.level)
+        cases = [("info", False, "wayhint.daemon"), ("warning", True, "wayhint.context.resolver")]
+        for level, verbose, name in cases:
+            with self.subTest(level=level, verbose=verbose), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                (root / "config.yaml").write_text(f"logging:\n  level: {level}\n")
+                daemon = Daemon(root, root / "unused.sock")
+                daemon.verbose = verbose
+                daemon.reload_all()
+                self.assertTrue(logging.getLogger(name).isEnabledFor(logging.INFO))
