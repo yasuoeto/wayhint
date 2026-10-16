@@ -40,6 +40,7 @@ https://github.com/user-attachments/assets/1bead252-33af-4796-b477-e48ab03284d9
 | 共通のヒントを混ぜる、親子のシートを組む | [どのシートが選ばれるか](#どのシートが選ばれるか)、[`docs/SHEETS.md`](docs/SHEETS.ja.md) |
 | 位置・大きさ・言語・エディタ・見た目を変える | [設定ファイル](#設定ファイル)、[`docs/CONFIG.md`](docs/CONFIG.ja.md) |
 | hotkey がどの状態で何をするか知る | [`docs/HOTKEYS.md`](docs/HOTKEYS.ja.md) |
+| コードを読む前に全体の構成を知る | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.ja.md) |
 | うまく動かない | [困ったとき](#困ったとき) |
 | 新しい版にする、やめる | [アップデート](#アップデート)、[アンインストール](#アンインストール) |
 

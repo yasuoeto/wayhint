@@ -41,6 +41,7 @@ For development, start at the [development guide](dev-docs/DEVELOPMENT.md).
 | Mix in shared hints, build parent/child sheets | [Which sheet gets picked](#which-sheet-gets-picked), [`docs/SHEETS.md`](docs/SHEETS.md) |
 | Change position, size, language, editor, or appearance | [Config file](#config-file), [`docs/CONFIG.md`](docs/CONFIG.md) |
 | Know what a hotkey does in each state | [`docs/HOTKEYS.md`](docs/HOTKEYS.md) |
+| See how it is built before reading the code | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | It's not working | [Troubleshooting](#troubleshooting) |
 | Update to a new version, uninstall | [Update](#update), [Uninstall](#uninstall) |
 
