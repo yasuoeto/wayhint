@@ -1972,6 +1972,34 @@ failure distinction, and others)
   first entry closes no ITP bug: the package is attached to releases, not uploaded to Debian. The `.deb` is not published anywhere
   yet.
 
+## 0049 — Aliases are bounded by the text they stand for, error text is escaped, launcher backups are private
+
+- **Date**: 2026-10-16
+- **Status**: accepted
+- **Context**: A second security scan, on the way to a shared sheet (0046, 0047), found three
+  places where a file wayhint does not control could still hurt: YAML aliases made a sheet of a
+  few hundred bytes stand for gigabytes once anything printed it (an error message's repr, or
+  ruamel's own duplicate-key message); key names from a sheet reached the terminal with their
+  escape sequences through `check-sheet`, `validate` and `format PATH`; and `setup-terminals`
+  copied a launcher, which can hold a token, to a backup with the umask's mode.
+- **Decision**:
+  - The YAML loader composes with a composer that adds up what every alias stands for -- the
+    characters of each scalar it reaches, one for each list or mapping, nested aliases included
+    -- and refuses the document at the alias that takes the total past 1,048,576, or at an alias
+    inside the node it names. Ordinary aliases and merge keys still read.
+  - `Issue` text and the `wayhint:` error line pass through `visible()`, so a control character
+    from a file prints as an escape.
+  - A launcher backup is created `0600`, exclusively, whatever the original's mode.
+- **Alternatives**: refusing every alias (refuses `<<: *d` and the like that read before);
+  bounding aliases by node count (one long scalar aliased many times stays under it); giving the
+  backup the original's mode bits, then also its group (an ACL on the original still let the
+  backup's group in, since the group bits are then the ACL mask); escaping each key name where
+  a message is built (every message builder would have to remember).
+- **Consequences**: A document is composed with one more check per alias, and an alias refused
+  there is reported as a YAML syntax error with the alias's line. A backup of a group-readable
+  launcher is no longer group-readable. File names in messages and `inspect`'s tag values are
+  still printed as they are.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

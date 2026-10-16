@@ -168,6 +168,50 @@ class WriteDocumentTest(TmpSheetTest):
         self.assertIn('duplicate key "title"', issues[0].message)
         self.assertNotIn("PRIVATE", issues[0].message)
 
+    def test_an_alias_of_an_ordinary_size_still_reads(self) -> None:
+        """Fails if the bound on aliases refuses an alias that stands for little text."""
+        cases = [
+            ("a scalar", "id: x\ntitle: &t T\nremark: *t\n", ["remark"], "T"),
+            ("a merge key", "base: &d {a: 1}\nother:\n  <<: *d\n  b: 2\n", ["other", "a"], 1),
+            ("a list item", "h: &h h\nl: [*h, *h]\n", ["l"], ["h", "h"]),
+        ]
+        for name, text, keys, expected in cases:
+            with self.subTest(name):
+                doc = self.dir / "alias.yaml"
+                doc.write_text(text)
+                data, issues = read_document(doc)
+                self.assertEqual(issues, [])
+                for key in keys:
+                    data = data[key]
+                self.assertEqual(data, expected)
+
+    def test_aliases_that_stand_for_too_much_text_are_a_mistake_at_their_line(self) -> None:
+        """Fails if aliases that expand past the bound are read (and later printed in full), or
+        are reported away from the alias that crossed it."""
+        nested = ["id: x", "title: x", "a: &a [" + ", ".join(["x"] * 10) + "]"]
+        for name, prev in zip("bcdef", "abcde", strict=True):
+            nested.append(f"{name}: &{name} [" + ", ".join([f"*{prev}"] * 10) + "]")
+        long_scalar = ["id: x", "title: &s " + "A" * 100_000, "a: [" + ", ".join(["*s"] * 11) + "]"]
+        # Nested: the aliases on lines 4-7 stand for 123,450 characters; the ninth *e on
+        # line 8 is the one that crosses. Long scalar: the eleventh *s crosses.
+        for name, lines, line in [("nested", nested, 8), ("one long scalar", long_scalar, 3)]:
+            with self.subTest(name):
+                doc = self.dir / "bomb.yaml"
+                doc.write_text("\n".join(lines) + "\n")
+                data, issues = read_document(doc)
+                self.assertIsNone(data)
+                self.assertEqual([i.line for i in issues], [line])
+                self.assertIn("aliases stand for more than", issues[0].message)
+
+    def test_an_alias_inside_the_node_it_names_is_a_mistake(self) -> None:
+        """Fails if a value that contains itself is read: what it stands for has no end."""
+        doc = self.dir / "cycle.yaml"
+        doc.write_text("id: x\ntitle: x\nhints: &h [*h]\n")
+        data, issues = read_document(doc)
+        self.assertIsNone(data)
+        self.assertEqual([i.line for i in issues], [3])
+        self.assertIn("inside the node it refers to", issues[0].message)
+
     def test_a_link_at_a_temporary_name_is_not_followed(self) -> None:
         """The temporary is created exclusively (a7607f4): a symlink at the exact name the
         writer tries next must make the write fail rather than being written through, no

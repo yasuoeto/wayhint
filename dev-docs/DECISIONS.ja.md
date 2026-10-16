@@ -1618,6 +1618,30 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
   lintian が指摘するのは、unstable 版で最初の entry が ITP のバグを閉じていないことだけ。Debian に
   upload するのではなく release に付けるパッケージなので。`.deb` はまだどこにも公開していない。
 
+## 0049 — エイリアスは指す文字の量で制限し、エラー文はエスケープし、launcher のコピーは自分だけが読める
+
+- **Date**: 2026-10-16
+- **Status**: accepted
+- **Context**: シートを共有する日(0046、0047)に向けた 2 回目のセキュリティスキャンで、wayhint が
+  制御しないファイルがまだ害になりうる箇所が 3 つ見つかった。YAML のエイリアスで、数百バイトのシートが
+  表示されたとたん(エラーメッセージの repr や ruamel 自身の重複キーメッセージ)数 GB 分になる。シートの
+  キー名が、エスケープシーケンスを含んだまま `check-sheet`、`validate`、`format PATH` から端末に届く。
+  `setup-terminals` が、トークンを含みうる launcher を umask の既定の mode でコピーする。
+- **Decision**:
+  - YAML の読み込みは、各エイリアスが指す量(たどり着くスカラーの文字数、リストやマッピングごとに 1、
+    入れ子のエイリアスも含む)を足していく composer で組み立て、合計が 1,048,576 を超えたエイリアス、
+    または自分の指すノードの中にあるエイリアスの位置で、その文書を拒否する。普通のエイリアスや
+    マージキーはこれまでどおり読める。
+  - `Issue` の文と `wayhint:` のエラー行は `visible()` を通し、ファイル由来の制御文字はエスケープで出す。
+  - launcher のコピーは、元の mode によらず `0600` で、排他的に作る。
+- **Alternatives**: エイリアスを全面的に拒否する(これまで読めた `<<: *d` などまで拒否する)。ノード数で
+  制限する(長いスカラー 1 つを何度も参照すると上限内に収まる)。コピーに元の mode のビットを、さらに
+  グループも写す(元に ACL があるとグループのビットは ACL の mask なので、コピーのグループが読めてしまう)。
+  メッセージを組み立てる箇所ごとにキー名をエスケープする(組み立てる側がみな覚えていなければならない)。
+- **Consequences**: 文書の組み立てにエイリアスごとの確認が 1 つ増え、そこで拒否されたエイリアスは、その
+  行の YAML syntax error として報告される。グループが読める launcher のコピーは、グループからは読めなく
+  なる。メッセージ中のファイル名と `inspect` のタグの値は、今もそのまま出る。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

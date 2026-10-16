@@ -21,11 +21,14 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 import regex
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.composer import Composer, ComposerError
 from ruamel.yaml.error import CommentMark, MarkedYAMLError, YAMLError
+from ruamel.yaml.nodes import MappingNode, ScalarNode
 from ruamel.yaml.tokens import CommentToken
 
 from wayhint.config import (
@@ -151,6 +154,7 @@ trailing space behind). Long lines in hint sheets are normal: a ``remark`` is a 
 
 def _yaml() -> YAML:
     y = YAML(typ="rt")
+    y.Composer = _BoundedAliasComposer
     y.preserve_quotes = True
     # Without this, ``hints:`` items lose their two-space indent on dump; with it, every sheet in
     # the repository round-trips byte for byte (DECISIONS 0014 D2).
@@ -163,6 +167,65 @@ MAX_DOCUMENT_BYTES = 1024 * 1024
 """The largest sheet or config.yaml read. A hand-written sheet is a few kilobytes; one far past
 this is a mistake (or a file from elsewhere), and parsing it would stall the overlay's main
 loop on every reload."""
+
+MAX_ALIAS_EXPANSION = MAX_DOCUMENT_BYTES
+"""How much text all the aliases in one document may stand for together, counted as the
+characters of every scalar they reach (and one for each list or mapping), nested aliases
+included. An alias costs nothing to parse but everything to print: anything that turns the
+value into text -- an error message, a repr -- copies what it stands for every time it appears,
+so a few hundred bytes of nested aliases, or one long scalar aliased many times, would stand for
+gigabytes. With this bound, aliases add at most what a document of the largest size read
+already holds."""
+
+
+class _BoundedAliasComposer(Composer):
+    """ruamel's composer, refusing a document whose aliases stand for more than
+    ``MAX_ALIAS_EXPANSION``. The document is composed whole before any value is built, so it is
+    refused before anything could copy what the aliases stand for."""
+
+    def compose_document(self) -> object:
+        self._expansion = 0
+        self._sizes: dict[int, int] = {}
+        return super().compose_document()
+
+    def return_alias(self, a: Any) -> Any:
+        # The alias event has just been read; its mark is where the alias is written.
+        event = getattr(self.parser, "last_event", None)
+        mark = getattr(event, "start_mark", None) or a.start_mark
+        if a.end_mark is None:
+            # A list or mapping gets its end mark when it is closed: this alias is inside the
+            # node it names, and what it stands for has no end.
+            raise ComposerError(None, None, "found an alias inside the node it refers to", mark)
+        self._expansion += self._size(a)
+        if self._expansion > MAX_ALIAS_EXPANSION:
+            raise ComposerError(
+                None, None, f"aliases stand for more than {MAX_ALIAS_EXPANSION} characters", mark
+            )
+        return a
+
+    def _size(self, root: Any) -> int:
+        """How much text ``root`` stands for, aliases inside it included. Without recursion, so
+        a deep node is not a second way to exhaust the stack; each node is counted once, so the
+        cost stays in proportion to the document however many times it is aliased."""
+        sizes = self._sizes
+        stack: list[tuple[Any, bool]] = [(root, False)]
+        while stack:
+            node, children_done = stack.pop()
+            if id(node) in sizes:
+                continue
+            if isinstance(node, ScalarNode):
+                sizes[id(node)] = max(1, len(node.value))
+                continue
+            if isinstance(node, MappingNode):
+                children = [child for pair in node.value for child in pair]
+            else:
+                children = node.value
+            if children_done:
+                sizes[id(node)] = 1 + sum(sizes[id(child)] for child in children)
+            else:
+                stack.append((node, True))
+                stack.extend((child, False) for child in children if id(child) not in sizes)
+        return sizes[id(root)]
 
 
 def read_document(path: Path) -> tuple[object, list[Issue]]:

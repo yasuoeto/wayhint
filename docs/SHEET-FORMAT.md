@@ -163,6 +163,9 @@ where hints mixed in from a parent sheet or `include` land, see [`SHEETS.md`](SH
 - While the sheet being shown is broken, you cannot enter edit mode (so the broken file is not
   overwritten).
 - A sheet or `config.yaml` larger than 1 MiB is not read; it is reported as a mistake.
+- YAML aliases (`*name`) can be used, but a file whose aliases together stand for more than
+  1,048,576 characters, or that has an alias inside the node it names, is reported as a mistake at the
+  alias's line.
 
 ## Checking one sheet
 
