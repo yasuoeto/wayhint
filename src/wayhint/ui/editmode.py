@@ -22,7 +22,7 @@ MODES = ("normal", "search", "edit")
 PSEUDO_CATEGORY = "\x00inbox"
 """Stands for "no category" inside the filter. Never written to YAML: the label is i18n'd, and
 the value the user sees must not end up in a file (0014 D5)."""
-PSEUDO_TOKEN = "-"
+PSEUDO_TOKEN = "-"  # noqa: S105 表示用の記号で秘密ではない
 """How the pseudo category is spelled in the search box (``#-``), and so in state.yaml. Not the
 label: a filter written in one language keeps its meaning after switching to the other (0033)."""
 FORM_FIELDS = ("title", "kind", "key", "command", "category", "remark")
