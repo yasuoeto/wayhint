@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import json
 import os
 import shutil
 import tempfile
@@ -139,6 +140,37 @@ class InspectCommandTest(unittest.TestCase):
         self.assertIn("  tags: pane -- nested.export_tags (herdr.yaml)", out)
         self.assertIn("  categories: not narrowed", out)
 
+    def test_sheet_filter_controls_are_printed_as_text(self) -> None:
+        hints = Path(os.environ["XDG_CONFIG_HOME"]) / "wayhint" / "hints"
+        value = "\x1b[2J\x1b[H分類\t\r\n"
+        quoted = json.dumps(value, ensure_ascii=False)
+        for section, field in (
+            ("include", "tags"),
+            ("include", "categories"),
+            ("inherit", "parent_tags"),
+            ("inherit", "parent_categories"),
+            ("nested", "export_tags"),
+            ("nested", "export_categories"),
+        ):
+            with self.subTest(section=section, field=field):
+                child = "id: claude\ntitle: Claude\n"
+                parent = "id: herdr\ntitle: Herdr\n"
+                if section == "include":
+                    child += f"include: [{{sheet: git, {field}: [{quoted}]}}]\n"
+                elif section == "inherit":
+                    child += f"inherit: {{{field}: [{quoted}]}}\n"
+                else:
+                    parent += f"nested: {{{field}: [{quoted}]}}\n"
+                (hints / "claude.yaml").write_text(child)
+                (hints / "herdr.yaml").write_text(parent)
+                code, out, err = self.run_cli("inspect", "claude", "--parent", "herdr")
+                self.assertEqual(code, 0, err)
+                self.assertEqual(err, "")
+                self.assertNotIn("\x1b", out)
+                self.assertIn("\\x1b[2J\\x1b[H分類\\t\\r\\n", out)
+                owner = "herdr.yaml" if section == "nested" else "claude.yaml"
+                self.assertIn(quoted, (hints / owner).read_text())
+
     def test_a_sheet_without_include_says_so(self) -> None:
         code, out, err = self.run_cli("inspect", "git")
         self.assertEqual(code, 0, err)
@@ -226,6 +258,47 @@ class ShownQueryTest(unittest.TestCase):
         self.assertIn(
             "[] (lets nothing through) -- nested.parent_tags (config.yaml)", out.getvalue()
         )
+
+    def test_shown_filters_escape_osc_and_c1_controls_after_json_decoding(self) -> None:
+        value = "\x1b]52;c;ZHVtbXk=\x07"
+        reply = {
+            "ok": True,
+            "filters": {
+                "sheet": "claude",
+                "parent": {
+                    "sheet": "herdr",
+                    "tags": [value],
+                    "tags_from": "nested.export_tags (\x1b[2Jherdr.yaml)",
+                    "categories": None,
+                    "categories_from": None,
+                    "shown": 0,
+                    "total": 0,
+                },
+                "include": [
+                    {
+                        "sheet": "git",
+                        "from": "claude.yaml",
+                        "tags": None,
+                        "categories": ["\x9b31m分類"],
+                        "shown": 0,
+                        "total": 0,
+                    }
+                ],
+            },
+        }
+        out = io.StringIO()
+        with (
+            mock.patch.object(ipc, "send_command", return_value=ipc.decode(ipc.encode(reply))),
+            contextlib.redirect_stdout(out),
+        ):
+            code = main(["context", "--shown"])
+        self.assertEqual(code, 0)
+        for control in ("\x1b", "\x07", "\x9b"):
+            self.assertNotIn(control, out.getvalue())
+        self.assertIn("\\x1b]52;c;ZHVtbXk=\\x07", out.getvalue())
+        self.assertIn("\\x1b[2Jherdr.yaml", out.getvalue())
+        self.assertIn("\\x9b31m分類", out.getvalue())
+        self.assertEqual(reply["filters"]["parent"]["tags"], [value])
 
 
 if __name__ == "__main__":

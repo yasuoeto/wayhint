@@ -7,7 +7,9 @@ is: with no arguments this only reads what is there and prints it.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -237,6 +239,71 @@ def _check_lengths(script: Scenario, variants: list[Variant], *, whole: bool) ->
         raise ScenarioError("a variant is not the length the storyboard asked for:\n" + lines)
 
 
+def _checked_output_path(path: Path, *, create: bool = False) -> Path:
+    """Keep recording, writes and cleanup below directories another uid cannot replace.
+
+    Source/home ancestry is already trusted by this developer tool. The fixed system /tmp
+    is an OS anchor too (not an arbitrary TMPDIR); sticky permissions protect owned children.
+    Below an anchor we inspect directory inodes opened without following symlinks. Private
+    parents then keep subsequent pathname operations bound to the checked tree.
+    """
+    path = path.expanduser().absolute()
+    if ".." in path.parts:
+        raise sess.DemoError(f"refusing to write outside the output path: {path}; name it directly")
+    anchors = [REPO, Path.home().absolute(), Path("/tmp")]
+    anchor = max(
+        (a for a in anchors if path.is_relative_to(a)),
+        key=lambda a: len(a.parts),
+        default=Path("/"),
+    )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    current = anchor
+    fd = None
+    protected = False
+    try:
+        fd = os.open(anchor, flags)
+        info = os.fstat(fd)
+        if anchor == Path("/tmp") and path != anchor:
+            if info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
+                raise sess.DemoError(f"{anchor} is not a private or sticky output ancestor")
+        elif anchor != Path("/") or path == anchor:
+            _require_private_output(info, anchor)
+            protected = not info.st_mode & 0o011
+        for part in path.relative_to(anchor).parts:
+            current = current / part
+            try:
+                child = os.open(part, flags, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    return path
+                try:
+                    os.mkdir(part, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass  # a competing creator's inode must pass the same checks
+                child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+            info = os.fstat(fd)
+            _require_private_output(info, current, protected=protected)
+            protected = protected or not info.st_mode & 0o011
+    except OSError as e:
+        if current.is_symlink():
+            raise sess.DemoError(f"{current} is a symlink to another path; name it directly") from e
+        raise sess.DemoError(f"{current} is not a directory usable for output: {e.strerror}") from e
+    finally:
+        if fd is not None:
+            os.close(fd)
+    return path
+
+
+def _require_private_output(info: os.stat_result, path: Path, *, protected: bool = False) -> None:
+    if info.st_uid not in (0, os.geteuid()) or (not protected and info.st_mode & 0o022):
+        raise sess.DemoError(
+            f"{path} is not a private output directory: it must be owned by this user or root "
+            "and protected from other users' writes; choose a private output path"
+        )
+
+
 def _out_root(show: shc.Showcase, out_dir: Path | None) -> Path:
     """The directory the results go under: the showcase's own ``out/``, or the one asked for.
 
@@ -248,16 +315,8 @@ def _out_root(show: shc.Showcase, out_dir: Path | None) -> Path:
     ``~/Videos/ja/3min`` a plausible directory to lose.
     """
     if out_dir is None:
-        return show.root / shc.OUT
-    root = out_dir.expanduser()
-    if root.is_symlink():
-        raise sess.DemoError(
-            f"--out-dir {root} is a symlink to {root.readlink()}; name the directory itself.\n"
-            "  A recording deletes <out-dir>/<language>/<variant> before it starts, and "
-            "following a link would move that delete somewhere this cannot check."
-        )
-    if root.exists() and not root.is_dir():
-        raise sess.DemoError(f"--out-dir {root} is not a directory")
+        return _checked_output_path(show.root / shc.OUT, create=True)
+    root = _checked_output_path(out_dir, create=True)
     if root.is_dir() and any(root.iterdir()) and not (root / OUT_MARKER).is_file():
         raise sess.DemoError(
             f"--out-dir {root} is not empty and has no {OUT_MARKER} in it.\n"
@@ -265,8 +324,14 @@ def _out_root(show: shc.Showcase, out_dir: Path | None) -> Path:
             "directory of its own: an empty one, or one it has written before.\n"
             f"  Name a new directory, or put {OUT_MARKER} in that one if it really is for this."
         )
-    root.mkdir(parents=True, exist_ok=True)
-    (root / OUT_MARKER).touch()
+    marker = root / OUT_MARKER
+    try:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        if not stat.S_ISREG(marker.lstat().st_mode):
+            raise sess.DemoError(f"{marker} is not a regular output marker") from None
+    else:
+        os.close(fd)
     return root
 
 
@@ -292,9 +357,10 @@ def _output_dir(root: Path, language: str, variant: str) -> Path:
                 "  To write somewhere else, name that directory with --out-dir instead of "
                 "pointing at it with a link."
             )
-    root, out = root.resolve(), out.resolve()
-    if not out.is_relative_to(root) or out == root:
+    if ".." in out.parts or not out.is_relative_to(root) or out == root:
         raise sess.DemoError(f"refusing to write outside {root}: {out}")
+    _checked_output_path(out.parent, create=True)
+    out = _checked_output_path(out)
     if out.exists():
         shutil.rmtree(out)
     return out
@@ -340,7 +406,7 @@ def _record(
     try:
         config = sess.prepare_config(args.fixtures, language, work)
         out = _output_dir(_out_root(show, args.out_dir), language, variant.name)
-        out.mkdir(parents=True)
+        out.mkdir(mode=0o700)
         print(f"demo: recording {show.name} {variant.name} in {language} -> {out}")
         with sess.DemoSession(script, config, work / sess.WORK_DIR, args.bin_dir) as demo:
             run = actions.Run(
@@ -360,8 +426,8 @@ def _record(
 
 def _review(args: argparse.Namespace, show: shc.Showcase, variant: Variant, language: str) -> None:
     """The steps of the new take that differ from the adopted one, cropped to the change."""
-    base = show.root / shc.OUT / language / variant.name
-    new = args.out_dir.expanduser() / language / variant.name
+    base = _checked_output_path(show.root / shc.OUT / language / variant.name)
+    new = _checked_output_path(args.out_dir / language / variant.name)
     for label, folder in (("adopted take", base), ("new take", new)):
         if not (folder / "steps").is_dir():
             raise sess.DemoError(f"no {label} to compare: {folder / 'steps'} does not exist")
@@ -377,7 +443,7 @@ def _review(args: argparse.Namespace, show: shc.Showcase, variant: Variant, lang
     changes = review.compare(
         review.steps_by_id(base / kind), review.steps_by_id(new / kind), review.magick_diff
     )
-    written = review.write(changes, new / review.REVIEW_DIR)
+    written = review.write(changes, _checked_output_path(new / review.REVIEW_DIR))
     print(f"demo: {show.name} {variant.name} in {language}, against {base}:")
     print("\n".join(review.report(changes)))
     where = new / review.REVIEW_DIR

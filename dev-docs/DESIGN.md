@@ -574,6 +574,10 @@ DECISIONS 0038) argument list is in the README's "CLI" section. `wayhint schema`
 omitted, uses `editor.schema_path`; without `--write`, prints to stdout. `wayhint format
 --modeline`'s path is `editor.schema_path`.
 
+`cli._filter_lines` escapes non-printable characters with `models.visible` after formatting
+each explanation line. Both `inspect` and `context --shown` use this boundary; the sheet values
+and the daemon's JSON response keep their original strings.
+
 ### 11. config additions
 
 Adds `editor.schema_modeline`. Default and meaning are in Data model, "config.yaml".
@@ -715,6 +719,14 @@ fixtures, isolated startup/stop of Herdr), actions (running an action and judgin
 capture (frame-stepping and the contact sheet), encode (ffmpeg and SRT). Duration is decided by
 rounding the scenario's `hold` to a number of frames, capturing 1 frame per step and duplicating
 it. How to write a scenario is in `demo/README.md`.
+
+Demo output paths are checked for recording and standalone review by
+`tools/demo/__main__._checked_output_path` (DECISIONS 0051). It opens components with directory
+fds and `O_NOFOLLOW`, checks owners and effective access, and creates output roots and
+language/variant directories with `0700`; review creates its own directory with the same mode.
+A private ancestor may protect owned group-writable descendants. Source/home ancestry and the
+fixed OS `/tmp` are trusted starting points; same-uid/root changes and existing descriptors or
+mounts bypassing a private ancestor are outside this boundary. See `demo/README.md` for refusals.
 
 ### Showcase and variant (DECISIONS 0032)
 

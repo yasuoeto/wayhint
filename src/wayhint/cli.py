@@ -156,7 +156,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def _filter_lines(filters: Mapping) -> list[str]:
-    """The ``explain_filters`` result as text. Tags and categories are ORed; ``[]`` is nothing."""
+    """The filter explanation as terminal-safe lines; its values remain unchanged in the data."""
     lines = []
     parent = filters.get("parent")
     if parent:
@@ -174,7 +174,7 @@ def _filter_lines(filters: Mapping) -> list[str]:
         if entry["tags"] is not None or entry["categories"] is not None:
             lines.append("  tags: " + _narrowing(entry["tags"], None))
             lines.append("  categories: " + _narrowing(entry["categories"], None))
-    return lines
+    return [visible(line) for line in lines]
 
 
 def _narrowing(values: Sequence[str] | None, source: str | None) -> str:

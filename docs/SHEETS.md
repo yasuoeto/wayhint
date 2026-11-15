@@ -158,6 +158,10 @@ include:
   recompute, so it can be run from inside a terminal too). The parent is whichever was decided by
   the actual window.
 
+Both commands show control characters in filter values and their source names as escapes
+(`\x1b`, `\n`, and so on), so a sheet cannot rewrite the terminal display. The stored values
+and the filtering rules stay unchanged.
+
 ## 7. Editing a mixed-in hint
 
 - Editing, deleting, and favoriting write to the hint's **owning file** (0019, 0014 D9). Fixing a

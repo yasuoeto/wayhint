@@ -2028,6 +2028,31 @@ failure distinction, and others)
   fixed; `wayhint validate` names the line. A hand-written `command` on a `shortcut` survives a
   form save, and stays hidden in the form.
 
+## 0051 — Escape CLI filter explanations and keep demo output behind private directories
+
+- **Date**: 2026-10-18
+- **Status**: accepted
+- **Context**: A source security scan reproduced terminal controls from imported sheet filters
+  reaching CLI output, and a shared demo output's language directory being swapped after a
+  symlink check so recursive deletion reached outside the output tree.
+- **Decision**: Escape completed filter explanation lines with `visible` in the helper shared
+  by `inspect` and `context --shown`, preserving stored and IPC values. Demo recording and
+  standalone review open output path components with directory fds and `O_NOFOLLOW`, inspect
+  owner and effective access, and create new output directories with `0700`. Current-user/root
+  owned descendants may retain group-write permissions behind a verified ancestor with no
+  group/other search access. Existing permissions are never changed to make a path acceptable.
+  Source/home ancestry and the fixed OS `/tmp` are trusted anchors; other paths start at `/`.
+  Existing regular markers are not touched and new markers are created exclusively.
+- **Alternatives**: Reject control characters in YAML (changes useful data and copy semantics);
+  recheck symlinks immediately before deletion (still races); make only deletion fd-relative
+  (leaves later recording writes and cleanup exposed); reject every group-write bit (breaks
+  ordinary owned directories beneath a private ancestor).
+- **Consequences**: Shared output paths, symlinks, `..` components and unknown owners are
+  refused. Same-uid/root modification, replacement of trusted source/home ancestry, and
+  pre-existing descriptors or mounts bypassing a private ancestor remain outside the boundary.
+  These are explicit assumptions for subsequent pathname-based tools, not full filesystem
+  isolation. The sealed scan remains a record of the original source.
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

@@ -499,6 +499,133 @@ class OutDirTest(unittest.TestCase):
         (wanted / "ja").mkdir()
         self.assertEqual(cli._out_root(self.showcase(), wanted), wanted)
 
+    def test_a_shared_output_root_is_refused_without_touching_its_contents(self) -> None:
+        parent = scratch(self)
+        parent.chmod(0o755)
+        wanted = parent / "videos"
+        wanted.mkdir()
+        wanted.chmod(0o777)
+        marker = wanted / cli.OUT_MARKER
+        marker.touch()
+        os.utime(marker, ns=(1, 1))
+        take = wanted / "ja" / "short" / "take.mp4"
+        take.parent.mkdir(parents=True)
+        take.write_text("previous take")
+        with self.assertRaisesRegex(sess.DemoError, "private"):
+            cli._out_root(self.showcase(), wanted)
+        self.assertEqual(take.read_text(), "previous take")
+        self.assertEqual(marker.stat().st_mtime_ns, 1)
+
+    def test_a_private_ancestor_protects_owned_group_writable_directories(self) -> None:
+        parent = scratch(self)
+        wanted = parent / "videos"
+        wanted.mkdir()
+        wanted.chmod(0o775)
+        show = self.showcase()
+        self.assertEqual(cli._out_root(show, wanted), wanted)
+        parent.chmod(0o755)
+        with self.assertRaisesRegex(sess.DemoError, "private"):
+            cli._out_root(show, wanted)
+
+    def test_shared_ancestors_and_language_directories_stop_the_deletion_race(self) -> None:
+        for shared in ("parent", "language"):
+            with self.subTest(shared=shared):
+                parent = scratch(self)
+                parent.chmod(0o755)
+                root = parent / "videos"
+                take = root / "ja" / "short"
+                take.mkdir(parents=True)
+                root.chmod(0o755)
+                (root / "ja").chmod(0o755)
+                (parent if shared == "parent" else root / "ja").chmod(0o777)
+                victim = scratch(self) / "short"
+                victim.mkdir()
+                sentinel = victim / "keep"
+                sentinel.write_text("outside the output tree")
+                exists = Path.exists
+                swapped = []
+
+                def redirect(
+                    path, *, take=take, swapped=swapped, root=root, victim=victim, exists=exists
+                ):
+                    if path == take and not swapped:
+                        (root / "ja").rename(root / "old-ja")
+                        (root / "ja").symlink_to(victim.parent, target_is_directory=True)
+                        swapped.append(True)
+                    return exists(path)
+
+                with unittest.mock.patch.object(Path, "exists", redirect):
+                    with self.assertRaisesRegex(sess.DemoError, "private"):
+                        cli._output_dir(root, "ja", "short")
+                self.assertFalse(swapped, "the unsafe tree reached the check-to-delete window")
+                self.assertEqual(sentinel.read_text(), "outside the output tree")
+
+    def test_foreign_owned_directories_are_refused_even_below_a_private_parent(self) -> None:
+        wanted = scratch(self) / "videos"
+        wanted.mkdir()
+        inode = wanted.stat().st_ino
+        fstat = os.fstat
+
+        def foreign_owner(fd):
+            info = fstat(fd)
+            if info.st_ino == inode:
+                fields = list(info)
+                fields[4] = os.geteuid() + 1
+                return os.stat_result(fields)
+            return info
+
+        show = self.showcase()
+        with unittest.mock.patch.object(os, "fstat", foreign_owner):
+            with self.assertRaisesRegex(sess.DemoError, "private"):
+                cli._out_root(show, wanted)
+        self.assertFalse((wanted / cli.OUT_MARKER).exists())
+
+    def test_a_symlink_inserted_during_creation_does_not_receive_a_marker(self) -> None:
+        wanted = scratch(self) / "videos"
+        victim = scratch(self)
+        show = self.showcase()
+        mkdir = os.mkdir
+
+        def competing_creator(path, mode=0o777, *, dir_fd=None):
+            if path == "videos" and dir_fd is not None:
+                os.symlink(victim, path, dir_fd=dir_fd)
+                raise FileExistsError(path)
+            return mkdir(path, mode, dir_fd=dir_fd)
+
+        with unittest.mock.patch.object(os, "mkdir", competing_creator):
+            with self.assertRaisesRegex(sess.DemoError, "is a symlink to"):
+                cli._out_root(show, wanted)
+        self.assertFalse((victim / cli.OUT_MARKER).exists())
+
+    def test_recording_creates_private_directories_even_with_an_open_umask(self) -> None:
+        show = self.showcase()
+        script = parse(MINIMAL)
+        wanted = scratch(self) / "videos"
+        work, config = scratch(self), scratch(self)
+        modes = []
+
+        def before_compositor(*args):
+            modes.extend(
+                p.stat().st_mode & 0o777 for p in (wanted, wanted / "ja", wanted / "ja" / "short")
+            )
+            raise sess.DemoError("stop before compositor")
+
+        args = unittest.mock.Mock(out_dir=wanted, fixtures=config)
+        old_umask = os.umask(0)
+        try:
+            with (
+                unittest.mock.patch.object(sess, "check_requirements"),
+                unittest.mock.patch.object(sess, "workspace", return_value=work),
+                unittest.mock.patch.object(sess, "prepare_config", return_value=config),
+                unittest.mock.patch.object(sess, "release"),
+                unittest.mock.patch.object(sess, "DemoSession", side_effect=before_compositor),
+                self.assertRaisesRegex(sess.DemoError, "stop before compositor"),
+            ):
+                cli._record(args, show, script, script.variants[0], "ja")
+        finally:
+            os.umask(old_umask)
+        self.assertEqual(modes, [0o700, 0o700, 0o700])
+
     def test_it_refuses_somebody_else_s_directory(self) -> None:
         """``--out-dir ~/Videos`` is a plausible typo, and ~/Videos/ja/3min a real directory."""
         wanted = scratch(self)
@@ -1782,6 +1909,30 @@ class ReviewTest(unittest.TestCase):
         seen, warned = self.run_review(*self.takes(stills=False))
         self.assertEqual(seen, ["steps"])
         self.assertIn("without captions", warned)
+
+    def test_standalone_review_keeps_a_shared_review_directory(self) -> None:
+        show, out = self.takes(stills=False)
+        variant = out / "ja" / "main"
+        for parent in (out, out / "ja", variant):
+            parent.chmod(0o755)
+        folder = variant / rv.REVIEW_DIR
+        folder.mkdir()
+        folder.chmod(0o777)
+        sentinel = folder / "keep"
+        sentinel.write_text("not safe to delete")
+        with self.assertRaisesRegex(sess.DemoError, "private"):
+            self.run_review(show, out)
+        self.assertEqual(sentinel.read_text(), "not safe to delete")
+
+    def test_standalone_review_creates_a_private_output_with_an_open_umask(self) -> None:
+        show, out = self.takes(stills=False)
+        old_umask = os.umask(0)
+        try:
+            self.run_review(show, out)
+        finally:
+            os.umask(old_umask)
+        folder = out / "ja" / "main" / rv.REVIEW_DIR
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
 
     def test_review_needs_an_out_dir_to_compare_against_out(self) -> None:
         stderr = io.StringIO()

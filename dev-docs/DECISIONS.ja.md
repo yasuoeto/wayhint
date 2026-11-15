@@ -1667,6 +1667,26 @@ GUI / CLI で扱う項目は **title / kind / key または command / category /
 - **Consequences**: 緩い読み方に頼っていたシートは、直すまで読み込まれない。`wayhint validate` が行を
   示す。`shortcut` に手で書いた `command` はフォームで保存しても残り、フォームには出ないまま。
 
+## 0051 — CLI の絞り込み説明をエスケープし、デモ出力を私有ディレクトリの内側に保つ
+
+- **Date**: 2026-10-18
+- **Status**: accepted
+- **Context**: ソースのセキュリティ監査で、外部シートの絞り込み値の制御文字が CLI 出力へ届くことと、
+  共有デモ出力先の言語ディレクトリを symlink 検査後に差し替えて、出力範囲外を削除できることを再現した。
+- **Decision**: `inspect` と `context --shown` が共用する helper で説明を 1 行ずつ `visible` に通し、
+  保存値と IPC の値は保持する。デモ録画と単独 review はディレクトリ fd と `O_NOFOLLOW` で出力パスを
+  開いて所有者と実効アクセスを確認し、新規出力ディレクトリを `0700` で作る。検査済み祖先が group/other
+  の検索アクセスを禁じていれば、その配下のユーザー/root 所有ディレクトリは group-write を残して使える。
+  受け入れるために既存権限を変更しない。ソース・ホームの祖先と固定の OS `/tmp` は信頼の起点とし、
+  それ以外は `/` から検査する。既存の通常 marker は触らず、新規だけ排他的に作る。
+- **Alternatives**: YAML の制御文字を禁止する(有用なデータやコピーの意味を変える)。削除直前に symlink を
+  再検査する(競合が残る)。削除だけ fd 相対にする(後続の録画書き込みと後片付けが残る)。group-write を
+  一律拒否する(私有祖先の下の通常の所有ディレクトリまで使えなくなる)。
+- **Consequences**: 共有出力パス、symlink、`..`、未知の所有者は拒否する。同一 UID/root の改変、信頼する
+  ソース・ホームの祖先の置換、私有祖先を迂回する取得済み fd や別 mount は対象外。後続のパス名ベースの
+  ツールが依存する前提を明記するもので、ファイルシステム全体の隔離ではない。確定済み監査は元ソースの
+  記録として保持する。
+
 <!--
 Entry format (this block is an example, not an entry -- it is kept as a comment so that it cannot
 be mistaken for one, and so the first real decision gets number 0001):

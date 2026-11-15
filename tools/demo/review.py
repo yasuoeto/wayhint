@@ -113,7 +113,7 @@ def write(changes: list[Change], folder: Path) -> list[Path]:
     """The crops of what changed and the whole of what is new. Returns them in order."""
     if folder.exists():
         shutil.rmtree(folder)
-    folder.mkdir(parents=True)
+    folder.mkdir(mode=0o700, parents=True)
     written = []
     for change in changes:
         if change.new is None or change.kind == "same":

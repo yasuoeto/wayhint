@@ -488,6 +488,9 @@ CLI（daemon を経由せず自分でファイルに書く。書き換え系は 
 引数一覧は `../README.ja.md`「CLI」を参照。`wayhint schema` は PATH 省略時は `editor.schema_path`、
 `--write` 無しは標準出力。`wayhint format --modeline` の path は `editor.schema_path`。
 
+`cli._filter_lines` は説明を 1 行ずつ組み立てた後、`models.visible` で非表示文字をエスケープする。
+`inspect` と `context --shown` はこの境界を共用し、シートの値と daemon の JSON 応答では元の文字列を保つ。
+
 ### 11. config 追加
 
 `editor.schema_modeline` を追加する。既定値と意味は Data model「config.yaml」を参照。
@@ -612,6 +615,13 @@ session に keybind 2 つ・`windowRules`・fixtures の作業コピーを足し
 実行と `wait_for` の判定)、capture(frame-stepping と contact sheet)、encode(ffmpeg と SRT)。
 尺は scenario の `hold` を frame 数に丸めたもので決まり、1 step につき 1 frame だけ撮って複製する。
 scenario の書き方は `../demo/README.ja.md`。
+
+デモ録画と単独 review の出力パスは `tools/demo/__main__._checked_output_path` で検査する
+(DECISIONS 0051)。ディレクトリ fd と `O_NOFOLLOW` で各要素を開き、所有者と実効アクセスを確認する。
+出力 root・言語・variant は `0700` で作り、review の出力ディレクトリも同じ mode で作る。私有祖先の
+下なら、所有者の正しい group-write ディレクトリも使える。ソース・ホームの祖先と固定の OS `/tmp` は
+信頼の起点とし、同一 UID/root の改変や私有祖先を迂回する取得済み fd・別 mount は対象外とする。
+拒否条件の詳細は `demo/README.ja.md` を参照。
 
 ### showcase と variant(DECISIONS 0032)
 

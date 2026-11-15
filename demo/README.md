@@ -91,6 +91,20 @@ To build the English version, add `fixtures/hints/en/` and a `caption.en` for ea
 directory that has content but is missing the `.wayhint-demo-out` marker is refused rather than
 deleted.
 
+Recording and standalone `--review` also check the output path before deleting or writing.
+Directories must be owned by the current user or root. A directory writable by another user
+is refused unless an already checked ancestor denies group/other search access. Newly created
+output roots, language/variant directories and review directories use `0700`, regardless of
+the umask; existing permissions are left alone.
+Symlinks in the checked path and `..` components are refused: name the destination directly.
+
+The repository and home directory are trusted starting points, including their source/user
+environment ancestors; `/tmp` is the fixed OS starting point, with sticky protection for its
+children. Other destinations are checked from `/`. This protects against another uid accessing
+the output through that path; it does not isolate the tool from the same uid, root, changes to
+trusted source/user ancestry, or pre-existing directory descriptors or mounts into the tree.
+An unrecognised owner (including an unmapped uid in a sandbox) is refused, not guessed to be root.
+
 | file | contents |
 |---|---|
 | `<stem>.mp4` | plain, no captions. For adding your own captions |
